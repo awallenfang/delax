@@ -1,3 +1,4 @@
+use delay_engine::engine::DelayEngine;
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
@@ -5,6 +6,9 @@ mod delay_engine;
 
 pub struct Delax {
     params: Arc<DelaxParams>,
+    left_delay_engine: DelayEngine,
+    right_delay_engine: DelayEngine,
+    sample_rate: f32
 }
 
 #[derive(Params)]
@@ -17,8 +21,16 @@ struct DelaxParams {
 
 impl Default for Delax {
     fn default() -> Self {
+        let mut left_delay_engine = DelayEngine::new(44100);
+        left_delay_engine.set_delay_amount(500);
+        let mut right_delay_engine = DelayEngine::new(44100);
+        right_delay_engine.set_delay_amount(400);
+
         Self {
             params: Arc::new(DelaxParams::default()),
+            left_delay_engine,
+            right_delay_engine,
+            sample_rate: 44100.
         }
     }
 }
@@ -30,14 +42,14 @@ impl Default for DelaxParams {
             delay_len: FloatParam::new(
                 "Delay",
                 5.,
-                FloatRange::Linear { min: 0., max: 1000. },
+                FloatRange::Skewed { min: 0., max: 1000., factor: 0.5},
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" ms")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
 
             feedback: FloatParam::new(
-                "Delay",
+                "Feedback",
                 0.5,
                 FloatRange::Linear { min: 0., max: 1. },
             )
@@ -98,6 +110,7 @@ impl Plugin for Delax {
         // Resize buffers and perform other potentially expensive initialization operations here.
         // The `reset()` function is always called right after this function. You can remove this
         // function if you do not need it.
+        self.sample_rate = _buffer_config.sample_rate;
         true
     }
 
@@ -112,14 +125,29 @@ impl Plugin for Delax {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        for channel_samples in buffer.iter_samples() {
-            // Smoothing is optionally built into the parameters themselves
-            let gain = self.params.feedback.smoothed.next();
 
-            for sample in channel_samples {
-                *sample *= gain;
-            }
+        for channel_samples in buffer.iter_samples() {
+            let delay_amt = seconds_to_samples(self.params.delay_len.smoothed.next(), self.sample_rate);
+
+            self.left_delay_engine.set_delay_amount(delay_amt);
+            self.right_delay_engine.set_delay_amount(delay_amt);
+
+
+            // Read it sample by sample for now
+            let mut channel_iter = channel_samples.into_iter();
+
+            let left_sample = channel_iter.next().unwrap();
+            let right_sample = channel_iter.next().unwrap();
+
+            
+
+            *left_sample = *left_sample + self.params.feedback.smoothed.next() * self.left_delay_engine.pop_sample();
+            *right_sample = *right_sample + self.params.feedback.smoothed.next() * self.right_delay_engine.pop_sample();
+
+            self.left_delay_engine.write_sample_unchecked(*left_sample);
+            self.right_delay_engine.write_sample_unchecked(*right_sample);
         }
+
 
         ProcessStatus::Normal
     }
@@ -145,3 +173,8 @@ impl Vst3Plugin for Delax {
 
 nih_export_clap!(Delax);
 nih_export_vst3!(Delax);
+
+
+pub fn seconds_to_samples(ms: f32, sample_rate: f32) -> usize {
+    ((ms / 1000.) * sample_rate).floor() as usize
+}
