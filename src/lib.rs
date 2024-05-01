@@ -8,53 +8,85 @@ pub struct Delax {
     params: Arc<DelaxParams>,
     left_delay_engine: DelayEngine,
     right_delay_engine: DelayEngine,
-    sample_rate: f32
+    sample_rate: f32,
+}
+
+#[derive(Enum, PartialEq)]
+pub enum DelayMode {
+    Mono,
+    Stereo,
 }
 
 #[derive(Params)]
 struct DelaxParams {
-    #[id = "delay"]
-    pub delay_len: FloatParam,
-    #[id = "feedback"]
-    pub feedback: FloatParam
+    #[id = "delay_l"]
+    pub delay_len_l: FloatParam,
+    #[id = "delay_r"]
+    pub delay_len_r: FloatParam,
+    #[id = "feedback_l"]
+    pub feedback_l: FloatParam,
+    #[id = "feedback_r"]
+    pub feedback_r: FloatParam,
+    #[id = "stereo"]
+    pub stereo_delay: EnumParam<DelayMode>,
 }
 
 impl Default for Delax {
     fn default() -> Self {
         let mut left_delay_engine = DelayEngine::new(44100);
-        left_delay_engine.set_delay_amount(500);
+        left_delay_engine.set_delay_amount(0);
         let mut right_delay_engine = DelayEngine::new(44100);
-        right_delay_engine.set_delay_amount(400);
+        right_delay_engine.set_delay_amount(0);
 
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
             right_delay_engine,
-            sample_rate: 44100.
+            sample_rate: 44100.,
         }
     }
 }
 
-
 impl Default for DelaxParams {
     fn default() -> Self {
         Self {
-            delay_len: FloatParam::new(
+            delay_len_l: FloatParam::new(
                 "Delay",
-                5.,
-                FloatRange::Skewed { min: 0., max: 1000., factor: 0.5},
+                500.,
+                FloatRange::Skewed {
+                    min: 0.,
+                    max: 1000.,
+                    factor: 0.5,
+                },
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" ms")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
 
-            feedback: FloatParam::new(
-                "Feedback",
+            delay_len_r: FloatParam::new(
+                "Delay Channel 2",
+                500.,
+                FloatRange::Skewed {
+                    min: 0.,
+                    max: 1000.,
+                    factor: 0.5,
+                },
+            )
+            .with_smoother(SmoothingStyle::Linear(50.0))
+            .with_unit(" ms")
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+
+            feedback_l: FloatParam::new("Feedback", 0.5, FloatRange::Linear { min: 0., max: 1. })
+                .with_smoother(SmoothingStyle::Linear(50.0))
+                .with_value_to_string(formatters::v2s_f32_rounded(2)),
+            feedback_r: FloatParam::new(
+                "Feedback Channel 2",
                 0.5,
                 FloatRange::Linear { min: 0., max: 1. },
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
-            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            .with_value_to_string(formatters::v2s_f32_rounded(2)),
+            stereo_delay: EnumParam::new("Seperate Delay", DelayMode::Mono),
         }
     }
 }
@@ -62,7 +94,7 @@ impl Default for DelaxParams {
 impl Plugin for Delax {
     const NAME: &'static str = "Delax";
     const VENDOR: &'static str = "Ava Wallenfang";
-    const URL: &'static str = env!("CARGO_PKG_HOMEPAGE");
+    const URL: &'static str = "https://ritzin.dev";
     const EMAIL: &'static str = "ava@wallenfang.de";
 
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -81,7 +113,6 @@ impl Plugin for Delax {
         // only one input and output channel would be called 'Mono'.
         names: PortNames::const_default(),
     }];
-
 
     const MIDI_INPUT: MidiConfig = MidiConfig::None;
     const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
@@ -111,6 +142,14 @@ impl Plugin for Delax {
         // The `reset()` function is always called right after this function. You can remove this
         // function if you do not need it.
         self.sample_rate = _buffer_config.sample_rate;
+
+        let mut left_delay_engine = DelayEngine::new(self.sample_rate as usize);
+        left_delay_engine.set_delay_amount(0);
+        let mut right_delay_engine = DelayEngine::new(self.sample_rate as usize);
+        right_delay_engine.set_delay_amount(0);
+
+        self.left_delay_engine = left_delay_engine;
+        self.right_delay_engine = right_delay_engine;
         true
     }
 
@@ -125,13 +164,31 @@ impl Plugin for Delax {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-
         for channel_samples in buffer.iter_samples() {
-            let delay_amt = seconds_to_samples(self.params.delay_len.smoothed.next(), self.sample_rate);
+            // Update the delay engine times
+            match self.params.stereo_delay.value() {
+                DelayMode::Mono => {
+                    let delay_amt = seconds_to_samples(
+                        self.params.delay_len_l.smoothed.next(),
+                        self.sample_rate,
+                    );
 
-            self.left_delay_engine.set_delay_amount(delay_amt);
-            self.right_delay_engine.set_delay_amount(delay_amt);
-
+                    self.left_delay_engine.set_delay_amount(delay_amt);
+                    self.right_delay_engine.set_delay_amount(delay_amt);
+                }
+                DelayMode::Stereo => {
+                    let delay_amt_l = seconds_to_samples(
+                        self.params.delay_len_l.smoothed.next(),
+                        self.sample_rate,
+                    );
+                    let delay_amt_r = seconds_to_samples(
+                        self.params.delay_len_r.smoothed.next(),
+                        self.sample_rate,
+                    );
+                    self.left_delay_engine.set_delay_amount(delay_amt_l);
+                    self.right_delay_engine.set_delay_amount(delay_amt_r);
+                }
+            }
 
             // Read it sample by sample for now
             let mut channel_iter = channel_samples.into_iter();
@@ -139,15 +196,29 @@ impl Plugin for Delax {
             let left_sample = channel_iter.next().unwrap();
             let right_sample = channel_iter.next().unwrap();
 
-            
-
-            *left_sample = *left_sample + self.params.feedback.smoothed.next() * self.left_delay_engine.pop_sample();
-            *right_sample = *right_sample + self.params.feedback.smoothed.next() * self.right_delay_engine.pop_sample();
+            match self.params.stereo_delay.value() {
+                DelayMode::Mono => {
+                    *left_sample = *left_sample
+                        + self.params.feedback_l.smoothed.next()
+                            * self.left_delay_engine.pop_sample();
+                    *right_sample = *right_sample
+                        + self.params.feedback_l.smoothed.next()
+                            * self.right_delay_engine.pop_sample();
+                }
+                DelayMode::Stereo => {
+                    *left_sample = *left_sample
+                        + self.params.feedback_l.smoothed.next()
+                            * self.left_delay_engine.pop_sample();
+                    *right_sample = *right_sample
+                        + self.params.feedback_r.smoothed.next()
+                            * self.right_delay_engine.pop_sample();
+                }
+            }
 
             self.left_delay_engine.write_sample_unchecked(*left_sample);
-            self.right_delay_engine.write_sample_unchecked(*right_sample);
+            self.right_delay_engine
+                .write_sample_unchecked(*right_sample);
         }
-
 
         ProcessStatus::Normal
     }
@@ -173,7 +244,6 @@ impl Vst3Plugin for Delax {
 
 nih_export_clap!(Delax);
 nih_export_vst3!(Delax);
-
 
 pub fn seconds_to_samples(ms: f32, sample_rate: f32) -> usize {
     ((ms / 1000.) * sample_rate).floor() as usize
