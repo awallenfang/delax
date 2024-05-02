@@ -16,11 +16,11 @@ pub struct SimperTanSVF {
 
 impl SimperTanSVF {
     /// Create a new filter given a sample rate. This rate can be updated later on.
-    /// 
+    ///
     /// Usage:
     /// ```
-    /// use delax::filters::SimperTanSVF;
-    /// 
+    /// use delax::filters::simper::SimperTanSVF;
+    ///
     /// let mut filter = SimperTanSVF::new(44100.);
     /// let (low, band, high) = filter.tick_sample(0.4);
     /// ```
@@ -30,9 +30,9 @@ impl SimperTanSVF {
 
         let cutoff = 1000.;
         let res = 0.2;
-        
+
         let g = (PI * cutoff / sample_rate).tan();
-        
+
         // The values in k could be fine-tuned
         let k = 2. - 2. * res;
 
@@ -70,7 +70,7 @@ impl SimperTanSVF {
         self.reinit();
     }
 
-    /// Recalculate all the held values. 
+    /// Recalculate all the held values.
     /// This should be called after a value like the resonance is changed.
     fn reinit(&mut self) {
         self.g = (PI * self.cutoff / self.sample_rate).tan();
@@ -82,23 +82,23 @@ impl SimperTanSVF {
     }
 
     /// Run the filter on a sample.
-    /// 
-    /// This returns the values as (low, band, high). 
+    ///
+    /// This returns the values as (low, band, high).
     /// Other filter types can be calculated based on these as follows:
-    /// 
+    ///
     /// notch = low + high
-    /// 
+    ///
     /// peak = low - high
-    /// 
+    ///
     /// For an all-pass filter use [SimperTanSVF::tick_sample_allpass()]
-    /// 
+    ///
     /// Usage:
     /// ```
-    /// use delax::filters::SimperTanSVF;
-    /// 
+    /// use delax::filters::simper::SimperTanSVF;
+    ///
     /// let mut filter = SimperTanSVF::new(44100.);
     /// let (low, band, high) = filter.tick_sample(0.4);
-    /// 
+    ///
     /// let notch = low + high;
     /// let peak = low - high;
     /// ```
@@ -117,12 +117,12 @@ impl SimperTanSVF {
     }
 
     /// Run the filter on a sample in allpass mode.
-    /// 
+    ///
     /// For all the other filter modes use [SimperTanSVF::tick_sample()].
     /// Usage:
     /// ```
-    /// use delax::filters::SimperTanSVF;
-    /// 
+    /// use delax::filters::simper::SimperTanSVF;
+    ///
     /// let mut filter = SimperTanSVF::new(44100.);
     /// let all = filter.tick_sample_allpass(0.4);
     /// ```
@@ -130,7 +130,6 @@ impl SimperTanSVF {
         let (low, band, high) = self.tick_sample(sample);
         low + high - self.k * band
     }
-
 }
 
 /// A SVF filter implemented using the paper by Andrew Simper from Cytomic
@@ -146,16 +145,16 @@ pub struct SimperSinSVF {
     k: f32,
     g0: f32,
     g1: f32,
-    g2: f32
+    g2: f32,
 }
 
 impl SimperSinSVF {
     /// Create a new filter given a sample rate. This rate can be updated later on.
-    /// 
+    ///
     /// Usage:
     /// ```
-    /// use delax::filters::SimperSinSVF;
-    /// 
+    /// use delax::filters::simper::SimperSinSVF;
+    ///
     /// let mut filter = SimperSinSVF::new(44100.);
     /// let (low, band, high) = filter.tick_sample(0.4);
     /// ```
@@ -174,7 +173,7 @@ impl SimperSinSVF {
         let s1 = w.sin();
         let s2 = (2. * w).sin();
 
-        let nrm = 1. / (2. + k *s2);
+        let nrm = 1. / (2. + k * s2);
 
         let g0 = s2 * nrm;
         let g1 = (-2. * s1 * s1 - k * s2) * nrm;
@@ -189,7 +188,7 @@ impl SimperSinSVF {
             k,
             g0,
             g1,
-            g2
+            g2,
         }
     }
 
@@ -211,17 +210,17 @@ impl SimperSinSVF {
         self.reinit();
     }
 
-    /// Recalculate all the held values. 
+    /// Recalculate all the held values.
     /// This should be called after a value like the resonance is changed.
     fn reinit(&mut self) {
         let w = PI * self.cutoff / self.sample_rate;
 
         self.k = 2. - 2. * self.res;
-        
+
         let s1 = w.sin();
         let s2 = (2. * w).sin();
 
-        let nrm = 1. / (2. + self.k *s2);
+        let nrm = 1. / (2. + self.k * s2);
 
         self.g0 = s2 * nrm;
         self.g1 = (-2. * s1 * s1 - self.k * s2) * nrm;
@@ -229,27 +228,27 @@ impl SimperSinSVF {
     }
 
     /// Run the filter on a sample.
-    /// 
-    /// This returns the values as (low, band, high). 
+    ///
+    /// This returns the values as (low, band, high).
     /// Other filter types can be calculated based on these as follows:
-    /// 
+    ///
     /// notch = low + high
-    /// 
+    ///
     /// peak = low - high
-    /// 
+    ///
     /// Usage:
     /// ```
-    /// use delax::filters::SimperSinSVF;
-    /// 
+    /// use delax::filters::simper::SimperSinSVF;
+    ///
     /// let mut filter = SimperSinSVF::new(44100.);
     /// let (low, band, high) = filter.tick_sample(0.4);
-    /// 
+    ///
     /// let notch = low + high;
     /// let peak = low - high;
     /// ```
     pub fn tick_sample(&mut self, sample: f32) -> (f32, f32, f32) {
         let t0 = sample - self.ic2eq;
-        let t1 = self.g0 * t0 + self.g1*self.ic1eq;
+        let t1 = self.g0 * t0 + self.g1 * self.ic1eq;
         let t2 = self.g2 * t0 + self.g0 * self.ic1eq;
         let v1 = t1 + self.ic1eq;
         let v2 = t2 + self.ic2eq;

@@ -1,6 +1,5 @@
-
 /// The entry of the delay engine for Delax. It holds the buffers and handles the input and output of samples for specific parameters.
-/// 
+///
 /// Usage:
 /// ```rs
 /// let mut engine = DelayEngine::new(44100);
@@ -17,9 +16,9 @@ pub struct DelayEngine {
 }
 
 impl DelayEngine {
-    /// Initialize the engine using the size. 
+    /// Initialize the engine using the size.
     /// The given size is the maximum size of the buffer and describes the maximum amount of data that can be held per bank.
-    /// 
+    ///
     /// The buffer size can later be changed using [DelayEngine::set_buffer_size()].
     pub fn new(size: usize) -> Self {
         Self {
@@ -60,11 +59,11 @@ impl DelayEngine {
     /// ```
     pub fn write_sample(&mut self, sample: f32) {
         self.buffer[self.write_head] = sample;
-        
+
         if let Some(jump) = self.check_jumps(self.write_head, &self.write_jumps) {
             self.write_head = jump.1;
         }
-        
+
         self.write_head += 1;
     }
 
@@ -75,9 +74,9 @@ impl DelayEngine {
     }
 
     /// Changes the delay duration in samples.
-    /// 
+    ///
     /// For now this changes the position of the write head relative to the read head.
-    /// 
+    ///
     /// Values larger than the bank size will simply result in a duration of `samples % bank_size``
     pub fn set_delay_amount(&mut self, delay_samples: usize) {
         self.write_head = (self.read_head + delay_samples) % self.buffer.len();
@@ -112,7 +111,7 @@ impl DelayEngine {
 
 /// A jump inside of the banks. Currently this holds `Jump(from, to)`
 #[derive(Clone)]
-struct Jump(usize, usize);
+pub struct Jump(usize, usize);
 
 #[cfg(test)]
 mod tests {
@@ -125,7 +124,7 @@ mod tests {
         assert_eq!(engine.pop_sample(), 0.);
         assert_eq!(engine.get_buffer_ptr().len(), 44100);
     }
- 
+
     #[test]
     fn check_sample_inout() {
         let mut engine = DelayEngine::new(5);
@@ -156,7 +155,7 @@ mod tests {
 
         let buffer = engine.get_buffer_ptr();
 
-        assert_eq!(buffer, [1.,2.,3.,4.,5.])
+        assert_eq!(buffer, [1., 2., 3., 4., 5.])
     }
 
     #[test]
@@ -177,7 +176,7 @@ mod tests {
     #[test]
     fn read_jumps() {
         let mut engine = DelayEngine::new(10);
-        engine.set_raw_read_jumps(&vec![Jump(10,0), Jump(2, 5), Jump(8, 2), Jump(5, 8)]);
+        engine.set_raw_read_jumps(&vec![Jump(10, 0), Jump(2, 5), Jump(8, 2), Jump(5, 8)]);
 
         engine.write_sample(1.);
         engine.write_sample(2.);
