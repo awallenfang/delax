@@ -41,8 +41,8 @@ impl DelayEngine {
     /// ```
     pub fn pop_sample(&mut self) -> f32 {
         let sample = self.buffer[self.read_head];
-
         self.read_head += 1;
+
         if let Some(jump) = self.check_jumps(self.read_head, &self.read_jumps) {
             self.read_head = jump.1;
         }
@@ -60,12 +60,12 @@ impl DelayEngine {
     /// ```
     pub fn write_sample(&mut self, sample: f32) {
         self.buffer[self.write_head] = sample;
-        self.write_head += 1;
-
+        
         if let Some(jump) = self.check_jumps(self.write_head, &self.write_jumps) {
             self.write_head = jump.1;
         }
-
+        
+        self.write_head += 1;
     }
 
     /// Returns the state of the internal buffer banks as an immutable pointer.
@@ -102,6 +102,12 @@ impl DelayEngine {
         }
         None
     }
+
+    /// Set the raw read jump vector. This assumes that the vector of jumps is valid and covers the whole buffer.
+    #[allow(dead_code)]
+    pub fn set_raw_read_jumps(&mut self, jumps: &Vec<Jump>) {
+        self.read_jumps = jumps.clone();
+    }
 }
 
 /// A jump inside of the banks. Currently this holds `Jump(from, to)`
@@ -110,7 +116,7 @@ struct Jump(usize, usize);
 
 #[cfg(test)]
 mod tests {
-    use super::DelayEngine;
+    use super::{DelayEngine, Jump};
 
     #[test]
     fn init() {
@@ -119,7 +125,7 @@ mod tests {
         assert_eq!(engine.pop_sample(), 0.);
         assert_eq!(engine.get_buffer_ptr().len(), 44100);
     }
-
+ 
     #[test]
     fn check_sample_inout() {
         let mut engine = DelayEngine::new(5);
@@ -166,5 +172,33 @@ mod tests {
         let buffer = engine.get_buffer_ptr();
 
         assert_eq!(buffer.len(), 10);
+    }
+
+    #[test]
+    fn read_jumps() {
+        let mut engine = DelayEngine::new(10);
+        engine.set_raw_read_jumps(&vec![Jump(10,0), Jump(2, 5), Jump(8, 2), Jump(5, 8)]);
+
+        engine.write_sample(1.);
+        engine.write_sample(2.);
+        engine.write_sample(3.);
+        engine.write_sample(4.);
+        engine.write_sample(5.);
+        engine.write_sample(6.);
+        engine.write_sample(7.);
+        engine.write_sample(8.);
+        engine.write_sample(9.);
+        engine.write_sample(10.);
+
+        assert_eq!(engine.pop_sample(), 1.);
+        assert_eq!(engine.pop_sample(), 2.);
+        assert_eq!(engine.pop_sample(), 6.);
+        assert_eq!(engine.pop_sample(), 7.);
+        assert_eq!(engine.pop_sample(), 8.);
+        assert_eq!(engine.pop_sample(), 3.);
+        assert_eq!(engine.pop_sample(), 4.);
+        assert_eq!(engine.pop_sample(), 5.);
+        assert_eq!(engine.pop_sample(), 9.);
+        assert_eq!(engine.pop_sample(), 10.);
     }
 }
