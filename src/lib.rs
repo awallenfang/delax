@@ -3,6 +3,7 @@ use nih_plug::prelude::*;
 use std::sync::Arc;
 
 mod delay_engine;
+mod filters;
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -215,9 +216,9 @@ impl Plugin for Delax {
                 }
             }
 
-            self.left_delay_engine.write_sample_unchecked(*left_sample);
+            self.left_delay_engine.write_sample(*left_sample);
             self.right_delay_engine
-                .write_sample_unchecked(*right_sample);
+                .write_sample(*right_sample);
         }
 
         ProcessStatus::Normal
