@@ -115,7 +115,7 @@ impl Plugin for Delax {
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         for channel_samples in buffer.iter_samples() {
-            // Update the delay engine params
+            // Update all the elements to the current params
             match self.params.delay_params.stereo_delay.value() {
                 DelayMode::Mono => {
                     let delay_amt = seconds_to_samples(
@@ -142,16 +142,19 @@ impl Plugin for Delax {
 
             // Update the filter params
             match self.params.filter_params.svf_stereo_mode.value() {
+                // For mono params it's important to just call the params function once. Otherwise the smoothing is out of sync
                 filters::params::SVFStereoMode::Mono => {
+                    let res = self.params.filter_params.svf_res_l.smoothed.next();
                     self.sin_svf_l
-                        .set_res(self.params.filter_params.svf_res_l.smoothed.next());
+                        .set_res(res);
                     self.sin_svf_r
-                        .set_res(self.params.filter_params.svf_res_l.smoothed.next());
+                        .set_res(res);
 
+                    let cutoff = self.params.filter_params.svf_cutoff_l.smoothed.next();
                     self.sin_svf_l
-                        .set_cutoff(self.params.filter_params.svf_cutoff_l.smoothed.next());
+                        .set_cutoff(cutoff);
                     self.sin_svf_r
-                        .set_cutoff(self.params.filter_params.svf_cutoff_l.smoothed.next());
+                        .set_cutoff(cutoff);
                 }
                 filters::params::SVFStereoMode::Stereo => {
                     self.sin_svf_l
@@ -166,35 +169,37 @@ impl Plugin for Delax {
                 }
             }
 
-            // Read it sample by sample for now
+            // ########## Input ###########
+            // Read the values sample by sample for now
             let mut channel_iter = channel_samples.into_iter();
 
             let left_sample = channel_iter.next().unwrap();
             let right_sample = channel_iter.next().unwrap();
 
-            let dry_left = left_sample.clone();
-            let dry_right = right_sample.clone();
-
+            // The output of the banks
             let pop_left = self.left_delay_engine.pop_sample();
             let pop_right = self.right_delay_engine.pop_sample();
 
+            // ####### Feedback loop #########
+            // The feedback values, used for the feedback loop.
             let feedbacked_left;
             let feedbacked_right;
 
             match self.params.delay_params.stereo_delay.value() {
                 DelayMode::Mono => {
                     let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
-                    feedbacked_left = dry_left + feedback_l * pop_left;
-                    feedbacked_right = dry_right + feedback_l * pop_right;
+                    feedbacked_left = *left_sample + feedback_l * pop_left;
+                    feedbacked_right = *right_sample + feedback_l * pop_right;
                 }
                 DelayMode::Stereo => {
                     let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
                     let feedback_r = self.params.delay_params.feedback_r.smoothed.next();
-                    feedbacked_left = dry_left + feedback_l * pop_left;
-                    feedbacked_right = dry_right + feedback_r * pop_right;
+                    feedbacked_left = *left_sample + feedback_l * pop_left;
+                    feedbacked_right = *right_sample + feedback_r * pop_right;
                 }
             }
 
+            // ############ Filtering ###############
             let filtered_output_l;
             let filtered_output_r;
 
@@ -280,12 +285,15 @@ impl Plugin for Delax {
                 }
             }
 
+            // ########### Mixing #######
+            // Get the mix amount
             let mix_left;
             let mix_right;
             match self.params.filter_params.svf_stereo_mode.value() {
                 filters::params::SVFStereoMode::Mono => {
-                    mix_left = self.params.filter_params.svf_mix_l.smoothed.next();
-                    mix_right = self.params.filter_params.svf_mix_l.smoothed.next();
+                    let mix = self.params.filter_params.svf_mix_l.smoothed.next();
+                    mix_left = mix;
+                    mix_right = mix;
                 }
                 filters::params::SVFStereoMode::Stereo => {
                     mix_left = self.params.filter_params.svf_mix_l.smoothed.next();
@@ -293,11 +301,14 @@ impl Plugin for Delax {
                 }
             }
 
+            // Mix the feedback and filtered signal together
             self.left_delay_engine
                 .write_sample(feedbacked_left * (1. - mix_left) + filtered_output_l * mix_left);
             self.right_delay_engine
                 .write_sample(feedbacked_right * (1. - mix_right) + filtered_output_r * mix_right);
 
+
+            // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
 
             *left_sample = *left_sample + pop_left * wetness;
