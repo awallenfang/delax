@@ -104,7 +104,7 @@ impl SimperSinSVF {
         let ic2eq = 0.;
 
         let cutoff = 500.;
-        let w = (PI * cutoff / sample_rate);
+        let w = PI * cutoff / sample_rate;
 
         // These can be fine-tuned
         // Q is taken from the paper
