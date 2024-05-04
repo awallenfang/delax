@@ -78,7 +78,7 @@ impl SimperTanSVF {
         self.k = 2. - 2. * self.res;
 
         self.a1 = 1. / (1. + self.g * (self.g * self.k));
-        self.a2 = self.g * self.a2;
+        self.a2 *= self.g;
     }
 
     /// Run the filter on a sample.
@@ -215,7 +215,9 @@ impl SimperSinSVF {
     fn reinit(&mut self) {
         let w = PI * self.cutoff / self.sample_rate;
 
-        self.k = 2. - 2. * self.res;
+        // Note: A res of 1 is very unstable for this delay, so it's limited using the lower. At 1.45 it's just still stable with res = 1.
+        // self.k = 2. - 2. * self.res
+        self.k = 2. - 1.45 * self.res;
 
         let s1 = w.sin();
         let s2 = (2. * w).sin();
@@ -253,8 +255,8 @@ impl SimperSinSVF {
         let v1 = t1 + self.ic1eq;
         let v2 = t2 + self.ic2eq;
 
-        self.ic1eq = self.ic1eq + 2. * t1;
-        self.ic2eq = self.ic2eq + 2. * t2;
+        self.ic1eq += 2. * t1;
+        self.ic2eq += 2. * t2;
 
         let high = sample - self.k * v1 - v2;
         let band = v1;

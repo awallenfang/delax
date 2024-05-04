@@ -64,9 +64,9 @@ impl Default for FilterParams {
             .with_smoother(SmoothingStyle::Linear(50.))
             .with_value_to_string(formatters::v2s_f32_hz_then_khz(2))
             .with_string_to_value(formatters::s2v_f32_hz_then_khz()),
-            svf_res_r: FloatParam::new("SVF Res", 0.2, FloatRange::Linear { min: 0., max: 1. })
+            svf_res_l: FloatParam::new("SVF Res", 0.2, FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.)),
-            svf_res_l: FloatParam::new(
+            svf_res_r: FloatParam::new(
                 "SVF Res Channel 2",
                 0.2,
                 FloatRange::Linear { min: 0., max: 1. },
@@ -75,11 +75,11 @@ impl Default for FilterParams {
             svf_filter_mode_l: EnumParam::new("SVF Filter Mode", SVFFilterMode::Low),
             svf_filter_mode_r: EnumParam::new("SVF Filter Mode Channel 2", SVFFilterMode::Low),
             svf_stereo_mode: EnumParam::new("SVF Seperated", SVFStereoMode::Mono),
-            svf_mix_l: FloatParam::new("Mix", 0.5, FloatRange::Linear { min: 0., max: 1. })
+            svf_mix_l: FloatParam::new("Mix", 1., FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.)),
             svf_mix_r: FloatParam::new(
                 "Mix Channel 2",
-                0.5,
+                1.,
                 FloatRange::Linear { min: 0., max: 1. },
             )
             .with_smoother(SmoothingStyle::Linear(50.)),

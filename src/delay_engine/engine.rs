@@ -23,8 +23,8 @@ impl DelayEngine {
     pub fn new(size: usize) -> Self {
         Self {
             buffer: vec![0.; size],
-            read_jumps: vec![Jump(size, 0)],
-            write_jumps: vec![Jump(size, 0)],
+            read_jumps: vec![Jump(size - 1, 0)],
+            write_jumps: vec![Jump(size - 1, 0)],
             write_head: 0,
             read_head: 0,
         }
@@ -40,10 +40,10 @@ impl DelayEngine {
     /// ```
     pub fn pop_sample(&mut self) -> f32 {
         let sample = self.buffer[self.read_head];
-        self.read_head += 1;
-
         if let Some(jump) = self.check_jumps(self.read_head, &self.read_jumps) {
             self.read_head = jump.1;
+        } else {
+            self.read_head += 1;
         }
 
         sample
@@ -88,8 +88,8 @@ impl DelayEngine {
     /// This resets the whole buffer to zero.
     pub fn set_buffer_size(&mut self, size: usize) {
         self.buffer = vec![0.; size];
-        self.write_head = self.write_head % size;
-        self.read_head = self.read_head % size;
+        self.write_head %= size;
+        self.read_head %= size;
     }
 
     /// Check if there is a jump in the current index. If there is a jump, return it.
@@ -104,12 +104,13 @@ impl DelayEngine {
 
     /// Set the raw read jump vector. This assumes that the vector of jumps is valid and covers the whole buffer.
     #[allow(dead_code)]
-    pub fn set_raw_read_jumps(&mut self, jumps: &Vec<Jump>) {
-        self.read_jumps = jumps.clone();
+    pub fn set_raw_read_jumps(&mut self, jumps: &[Jump]) {
+        self.read_jumps = jumps.to_owned();
     }
 }
 
-/// A jump inside of the banks. Currently this holds `Jump(from, to)`
+/// A jump inside of the banks. Currently this holds `Jump(from, to)`.
+/// Both are inclusive, so with `Jump(10,100)` the read order will be 8,9,10,100
 #[derive(Clone)]
 pub struct Jump(usize, usize);
 
@@ -176,7 +177,7 @@ mod tests {
     #[test]
     fn read_jumps() {
         let mut engine = DelayEngine::new(10);
-        engine.set_raw_read_jumps(&vec![Jump(10, 0), Jump(2, 5), Jump(8, 2), Jump(5, 8)]);
+        engine.set_raw_read_jumps(&vec![Jump(9, 0), Jump(2, 5), Jump(7, 3), Jump(4, 8)]);
 
         engine.write_sample(1.);
         engine.write_sample(2.);
@@ -191,10 +192,21 @@ mod tests {
 
         assert_eq!(engine.pop_sample(), 1.);
         assert_eq!(engine.pop_sample(), 2.);
+        assert_eq!(engine.pop_sample(), 3.);
         assert_eq!(engine.pop_sample(), 6.);
         assert_eq!(engine.pop_sample(), 7.);
         assert_eq!(engine.pop_sample(), 8.);
+        assert_eq!(engine.pop_sample(), 4.);
+        assert_eq!(engine.pop_sample(), 5.);
+        assert_eq!(engine.pop_sample(), 9.);
+        assert_eq!(engine.pop_sample(), 10.);
+
+        assert_eq!(engine.pop_sample(), 1.);
+        assert_eq!(engine.pop_sample(), 2.);
         assert_eq!(engine.pop_sample(), 3.);
+        assert_eq!(engine.pop_sample(), 6.);
+        assert_eq!(engine.pop_sample(), 7.);
+        assert_eq!(engine.pop_sample(), 8.);
         assert_eq!(engine.pop_sample(), 4.);
         assert_eq!(engine.pop_sample(), 5.);
         assert_eq!(engine.pop_sample(), 9.);
