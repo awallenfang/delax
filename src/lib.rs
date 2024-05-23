@@ -2,12 +2,14 @@ use delay_engine::{
     engine::{DelayEngine, DelayInterpolationMode},
     params::DelayMode,
 };
-use filters::{params::SVFFilterMode, simper::SimperSinSVF};
+use filter_pipeline::pipeline::FilterPipeline;
+use filters::simper::SimperSinSVF;
 use nih_plug::prelude::*;
 use params::DelaxParams;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 mod delay_engine;
+mod filter_pipeline;
 pub mod filters;
 mod params;
 
@@ -20,6 +22,8 @@ pub struct Delax {
     sin_svf_r: SimperSinSVF,
     input_sin_svf_l: SimperSinSVF,
     input_sin_svf_r: SimperSinSVF,
+    filter_pipeline: FilterPipeline,
+    initial_filter_pipeline: FilterPipeline,
 }
 
 impl Default for Delax {
@@ -44,6 +48,8 @@ impl Default for Delax {
             sin_svf_r,
             input_sin_svf_l,
             input_sin_svf_r,
+            filter_pipeline: FilterPipeline::new(),
+            initial_filter_pipeline: FilterPipeline::new(),
         }
     }
 }
@@ -112,6 +118,15 @@ impl Plugin for Delax {
         self.sin_svf_r.set_sample_rate(self.sample_rate);
         self.input_sin_svf_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_r.set_sample_rate(self.sample_rate);
+
+        self.filter_pipeline.register_stereo_pair(
+            Arc::new(Mutex::new(self.sin_svf_l.clone())),
+            Arc::new(Mutex::new(self.sin_svf_r.clone())),
+        );
+        self.initial_filter_pipeline.register_stereo_pair(
+            Arc::new(Mutex::new(self.input_sin_svf_l.clone())),
+            Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
+        );
         true
     }
 
@@ -268,180 +283,13 @@ impl Delax {
     }
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.
-    fn run_filters(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
-        let filtered_output_l;
-        let filtered_output_r;
-
-        match self.params.filter_params.svf_stereo_mode.value() {
-            // In mono mode, set both to the left value
-            filters::params::SVFStereoMode::Mono => {
-                match self.params.filter_params.svf_filter_mode_l.value() {
-                    SVFFilterMode::Low => {
-                        (filtered_output_l, _, _) = self.sin_svf_l.tick_sample_full(input_left);
-                        (filtered_output_r, _, _) = self.sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Band => {
-                        (_, filtered_output_l, _) = self.sin_svf_l.tick_sample_full(input_left);
-                        (_, filtered_output_r, _) = self.sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::High => {
-                        (_, _, filtered_output_l) = self.sin_svf_l.tick_sample_full(input_left);
-                        (_, _, filtered_output_r) = self.sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Notch => {
-                        let (low_l, _, high_l) = self.sin_svf_l.tick_sample_full(input_left);
-                        let (low_r, _, high_r) = self.sin_svf_r.tick_sample_full(input_right);
-                        filtered_output_l = low_l + high_l;
-                        filtered_output_r = low_r + high_r;
-                    }
-                    SVFFilterMode::Peak => {
-                        let (low_l, _, high_l) = self.sin_svf_l.tick_sample_full(input_left);
-                        let (low_r, _, high_r) = self.sin_svf_r.tick_sample_full(input_right);
-                        filtered_output_l = low_l - high_l;
-                        filtered_output_r = low_r - high_r;
-                    }
-                }
-            }
-            // In stereo mode set the seperately
-            filters::params::SVFStereoMode::Stereo => {
-                match self.params.filter_params.svf_filter_mode_l.value() {
-                    SVFFilterMode::Low => {
-                        (filtered_output_l, _, _) = self.sin_svf_l.tick_sample_full(input_left);
-                    }
-                    SVFFilterMode::Band => {
-                        (_, filtered_output_l, _) = self.sin_svf_l.tick_sample_full(input_left);
-                    }
-
-                    SVFFilterMode::High => {
-                        (_, _, filtered_output_l) = self.sin_svf_l.tick_sample_full(input_left);
-                    }
-
-                    SVFFilterMode::Notch => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_left);
-                        filtered_output_l = low + high;
-                    }
-                    SVFFilterMode::Peak => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_left);
-                        filtered_output_l = low - high;
-                    }
-                }
-                match self.params.filter_params.svf_filter_mode_r.value() {
-                    SVFFilterMode::Low => {
-                        (filtered_output_r, _, _) = self.sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Band => {
-                        (_, filtered_output_r, _) = self.sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::High => {
-                        (_, _, filtered_output_r) = self.sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Notch => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_right);
-                        filtered_output_r = low + high;
-                    }
-                    SVFFilterMode::Peak => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_right);
-                        filtered_output_r = low - high;
-                    }
-                }
-            }
-        }
-
-        (filtered_output_l, filtered_output_r)
+    fn run_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
+        self.filter_pipeline.process_stereo(input_l, input_r)
     }
 
-    fn run_input_filters(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
-        let filtered_output_l;
-        let filtered_output_r;
-
-        match self.params.filter_params.svf_stereo_mode.value() {
-            // In mono mode, set both to the left value
-            filters::params::SVFStereoMode::Mono => {
-                match self.params.filter_params.svf_filter_mode_l.value() {
-                    SVFFilterMode::Low => {
-                        (filtered_output_l, _, _) =
-                            self.input_sin_svf_l.tick_sample_full(input_left);
-                        (filtered_output_r, _, _) =
-                            self.input_sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Band => {
-                        (_, filtered_output_l, _) =
-                            self.input_sin_svf_l.tick_sample_full(input_left);
-                        (_, filtered_output_r, _) =
-                            self.input_sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::High => {
-                        (_, _, filtered_output_l) =
-                            self.input_sin_svf_l.tick_sample_full(input_left);
-                        (_, _, filtered_output_r) =
-                            self.input_sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Notch => {
-                        let (low_l, _, high_l) = self.input_sin_svf_l.tick_sample_full(input_left);
-                        let (low_r, _, high_r) = self.input_sin_svf_r.tick_sample_full(input_right);
-                        filtered_output_l = low_l + high_l;
-                        filtered_output_r = low_r + high_r;
-                    }
-                    SVFFilterMode::Peak => {
-                        let (low_l, _, high_l) = self.input_sin_svf_l.tick_sample_full(input_left);
-                        let (low_r, _, high_r) = self.input_sin_svf_r.tick_sample_full(input_right);
-                        filtered_output_l = low_l - high_l;
-                        filtered_output_r = low_r - high_r;
-                    }
-                }
-            }
-            // In stereo mode set the seperately
-            filters::params::SVFStereoMode::Stereo => {
-                match self.params.filter_params.svf_filter_mode_l.value() {
-                    SVFFilterMode::Low => {
-                        (filtered_output_l, _, _) =
-                            self.input_sin_svf_l.tick_sample_full(input_left);
-                    }
-                    SVFFilterMode::Band => {
-                        (_, filtered_output_l, _) =
-                            self.input_sin_svf_l.tick_sample_full(input_left);
-                    }
-
-                    SVFFilterMode::High => {
-                        (_, _, filtered_output_l) =
-                            self.input_sin_svf_l.tick_sample_full(input_left);
-                    }
-
-                    SVFFilterMode::Notch => {
-                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_left);
-                        filtered_output_l = low + high;
-                    }
-                    SVFFilterMode::Peak => {
-                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_left);
-                        filtered_output_l = low - high;
-                    }
-                }
-                match self.params.filter_params.svf_filter_mode_r.value() {
-                    SVFFilterMode::Low => {
-                        (filtered_output_r, _, _) =
-                            self.input_sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Band => {
-                        (_, filtered_output_r, _) =
-                            self.input_sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::High => {
-                        (_, _, filtered_output_r) =
-                            self.input_sin_svf_r.tick_sample_full(input_right);
-                    }
-                    SVFFilterMode::Notch => {
-                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_right);
-                        filtered_output_r = low + high;
-                    }
-                    SVFFilterMode::Peak => {
-                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_right);
-                        filtered_output_r = low - high;
-                    }
-                }
-            }
-        }
-
-        (filtered_output_l, filtered_output_r)
+    /// Run the filter chain on the input signal. This can probably be refactored out down the line. But for now it doesn't work correctly without
+    fn run_input_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
+        self.initial_filter_pipeline.process_stereo(input_l, input_r)
     }
 }
 

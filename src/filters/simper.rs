@@ -155,7 +155,7 @@ impl SimperTanSVF {
                 low + high
             }
             SVFFilterMode::Peak => {
-                let (low, band, high) = self.tick_sample_full(sample);
+                let (low, _, high) = self.tick_sample_full(sample);
                 low - high
             }
         }
@@ -164,6 +164,7 @@ impl SimperTanSVF {
 
 /// A SVF filter implemented using the paper by Andrew Simper from Cytomic
 /// https://cytomic.com/files/dsp/SvfLinearTrapezoidalSin.pdf
+#[derive(Debug, Clone)]
 pub struct SimperSinSVF {
     res: f32,
     cutoff: f32,
@@ -321,7 +322,7 @@ impl SimperSinSVF {
                 low + high
             }
             SVFFilterMode::Peak => {
-                let (low, band, high) = self.tick_sample_full(sample);
+                let (low, _, high) = self.tick_sample_full(sample);
                 low - high
             }
         }

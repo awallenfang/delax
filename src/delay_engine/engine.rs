@@ -10,12 +10,19 @@ use nih_plug::nih_dbg;
 /// assert_eq!(out, 0.5);
 /// ```
 pub struct DelayEngine {
+    /// The internal mono buffer
     buffer: Vec<f32>,
+    /// The sample rate to be used for internal conversions
     sample_rate: f32,
+    /// The delay time in ms
     delay_time: f32,
+    /// The positions at which the read head should jump
     read_jumps: Vec<Jump>,
+    /// The positions at which the write head should jump
     write_jumps: Vec<Jump>,
+    /// The current write head position
     write_head: usize,
+    /// The current read head position
     read_head: usize,
 }
 
@@ -44,6 +51,7 @@ impl DelayEngine {
     /// let out = engine.pop_sample();
     /// assert_eq!(out, 0.5);
     /// ```
+    #[allow(dead_code)]
     pub fn pop_sample(&mut self) -> f32 {
         let sample = self.buffer[self.read_head];
         if let Some(jump) = self.check_jumps(self.read_head, &self.read_jumps) {
@@ -55,6 +63,7 @@ impl DelayEngine {
         sample
     }
 
+    /// Interpolate the buffer at the current delay time using the method specified as interpolation mode.
     pub fn interpolate_sample(&self, interpolation_mode: DelayInterpolationMode) -> f32 {
         match interpolation_mode {
             DelayInterpolationMode::Nearest => {
@@ -144,6 +153,7 @@ impl DelayEngine {
         self.read_jumps = jumps.to_owned();
     }
 
+    /// Reset the internal buffers to zero.
     pub fn reset(&mut self) {
         self.buffer.iter_mut().for_each(|sample| *sample = 0.);
     }
@@ -154,6 +164,7 @@ impl DelayEngine {
 #[derive(Clone)]
 pub struct Jump(usize, usize);
 
+#[allow(dead_code)]
 pub enum DelayInterpolationMode {
     Nearest,
     Linear,
