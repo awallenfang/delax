@@ -1,4 +1,7 @@
-use delay_engine::{engine::DelayEngine, params::DelayMode};
+use delay_engine::{
+    engine::{DelayEngine, DelayInterpolationMode},
+    params::DelayMode,
+};
 use filters::{params::SVFFilterMode, simper::SimperSinSVF};
 use nih_plug::prelude::*;
 use params::DelaxParams;
@@ -15,14 +18,19 @@ pub struct Delax {
     sample_rate: f32,
     sin_svf_l: SimperSinSVF,
     sin_svf_r: SimperSinSVF,
+    input_sin_svf_l: SimperSinSVF,
+    input_sin_svf_r: SimperSinSVF,
 }
 
 impl Default for Delax {
     fn default() -> Self {
-        let mut left_delay_engine = DelayEngine::new(44100);
-        left_delay_engine.set_delay_amount(0);
-        let mut right_delay_engine = DelayEngine::new(44100);
-        right_delay_engine.set_delay_amount(0);
+        let mut left_delay_engine = DelayEngine::new(44100, 44100.);
+        left_delay_engine.set_delay_amount(0.);
+        let mut right_delay_engine = DelayEngine::new(44100, 44100.);
+        right_delay_engine.set_delay_amount(0.);
+
+        let input_sin_svf_l = SimperSinSVF::new(44100.);
+        let input_sin_svf_r = SimperSinSVF::new(44100.);
 
         let sin_svf_l = SimperSinSVF::new(44100.);
         let sin_svf_r = SimperSinSVF::new(44100.);
@@ -34,6 +42,8 @@ impl Default for Delax {
             sample_rate: 44100.,
             sin_svf_l,
             sin_svf_r,
+            input_sin_svf_l,
+            input_sin_svf_r,
         }
     }
 }
@@ -90,22 +100,26 @@ impl Plugin for Delax {
         // function if you do not need it.
         self.sample_rate = buffer_config.sample_rate;
 
-        let mut left_delay_engine = DelayEngine::new(self.sample_rate as usize);
-        left_delay_engine.set_delay_amount(0);
-        let mut right_delay_engine = DelayEngine::new(self.sample_rate as usize);
-        right_delay_engine.set_delay_amount(0);
+        let mut left_delay_engine = DelayEngine::new(self.sample_rate as usize, self.sample_rate);
+        left_delay_engine.set_delay_amount(0.);
+        let mut right_delay_engine = DelayEngine::new(self.sample_rate as usize, self.sample_rate);
+        right_delay_engine.set_delay_amount(0.);
 
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
 
         self.sin_svf_l.set_sample_rate(self.sample_rate);
         self.sin_svf_r.set_sample_rate(self.sample_rate);
+        self.input_sin_svf_l.set_sample_rate(self.sample_rate);
+        self.input_sin_svf_r.set_sample_rate(self.sample_rate);
         true
     }
 
     fn reset(&mut self) {
         // Reset buffers and envelopes here. This can be called from the audio thread and may not
         // allocate. You can remove this function if you do not need it.
+        self.left_delay_engine.reset();
+        self.right_delay_engine.reset();
     }
 
     fn process(
@@ -127,8 +141,12 @@ impl Plugin for Delax {
             let right_sample = channel_iter.next().unwrap();
 
             // The output of the banks
-            let pop_left = self.left_delay_engine.pop_sample();
-            let pop_right = self.right_delay_engine.pop_sample();
+            let pop_left = self
+                .left_delay_engine
+                .interpolate_sample(DelayInterpolationMode::Nearest);
+            let pop_right = self
+                .right_delay_engine
+                .interpolate_sample(DelayInterpolationMode::Nearest);
 
             // ####### Feedback loop #########
             // The feedback values, used for the feedback loop.
@@ -138,14 +156,14 @@ impl Plugin for Delax {
             match self.params.delay_params.stereo_delay.value() {
                 DelayMode::Mono => {
                     let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
-                    feedbacked_left = *left_sample + feedback_l * pop_left;
-                    feedbacked_right = *right_sample + feedback_l * pop_right;
+                    feedbacked_left = feedback_l * pop_left;
+                    feedbacked_right = feedback_l * pop_right;
                 }
                 DelayMode::Stereo => {
                     let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
                     let feedback_r = self.params.delay_params.feedback_r.smoothed.next();
-                    feedbacked_left = *left_sample + feedback_l * pop_left;
-                    feedbacked_right = *right_sample + feedback_r * pop_right;
+                    feedbacked_left = feedback_l * pop_left;
+                    feedbacked_right = feedback_r * pop_right;
                 }
             }
 
@@ -173,10 +191,13 @@ impl Plugin for Delax {
 
             // Mix the feedback and filtered signal together
             // Make the filtered output more stable by using the feedback param as well
-            self.left_delay_engine
-                .write_sample(feedbacked_left * (1. - mix_left) + filtered_output_l * mix_left);
-            self.right_delay_engine
-                .write_sample(feedbacked_right * (1. - mix_right) + filtered_output_r * mix_right);
+            let (input_left, input_right) = self.run_input_filters(*left_sample, *right_sample);
+            self.left_delay_engine.write_sample(
+                input_left + (feedbacked_left * (1. - mix_left) + filtered_output_l * mix_left),
+            );
+            self.right_delay_engine.write_sample(
+                input_right + (feedbacked_right * (1. - mix_right) + filtered_output_r * mix_right),
+            );
 
             // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
@@ -193,23 +214,14 @@ impl Delax {
     fn update_params(&mut self) {
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
-                let delay_amt = seconds_to_samples(
-                    self.params.delay_params.delay_len_l.smoothed.next(),
-                    self.sample_rate,
-                );
+                let delay_amt = self.params.delay_params.delay_len_l.smoothed.next();
 
                 self.left_delay_engine.set_delay_amount(delay_amt);
                 self.right_delay_engine.set_delay_amount(delay_amt);
             }
             DelayMode::Stereo => {
-                let delay_amt_l = seconds_to_samples(
-                    self.params.delay_params.delay_len_l.smoothed.next(),
-                    self.sample_rate,
-                );
-                let delay_amt_r = seconds_to_samples(
-                    self.params.delay_params.delay_len_r.smoothed.next(),
-                    self.sample_rate,
-                );
+                let delay_amt_l = self.params.delay_params.delay_len_l.smoothed.next();
+                let delay_amt_r = self.params.delay_params.delay_len_r.smoothed.next();
                 self.left_delay_engine.set_delay_amount(delay_amt_l);
                 self.right_delay_engine.set_delay_amount(delay_amt_r);
             }
@@ -222,21 +234,35 @@ impl Delax {
                 let res = self.params.filter_params.svf_res_l.smoothed.next();
                 self.sin_svf_l.set_res(res);
                 self.sin_svf_r.set_res(res);
+                self.input_sin_svf_l.set_res(res);
+                self.input_sin_svf_r.set_res(res);
 
                 let cutoff = self.params.filter_params.svf_cutoff_l.smoothed.next();
                 self.sin_svf_l.set_cutoff(cutoff);
                 self.sin_svf_r.set_cutoff(cutoff);
+                self.input_sin_svf_l.set_cutoff(cutoff);
+                self.input_sin_svf_r.set_cutoff(cutoff);
+
+                let mode = self.params.filter_params.svf_filter_mode_l.value();
+                self.sin_svf_l.set_mode(mode);
+                self.sin_svf_r.set_mode(mode);
             }
             filters::params::SVFStereoMode::Stereo => {
-                self.sin_svf_l
-                    .set_res(self.params.filter_params.svf_res_l.smoothed.next());
-                self.sin_svf_r
-                    .set_res(self.params.filter_params.svf_res_r.smoothed.next());
+                let res_l = self.params.filter_params.svf_res_l.smoothed.next();
+                let res_r = self.params.filter_params.svf_res_r.smoothed.next();
 
-                self.sin_svf_l
-                    .set_cutoff(self.params.filter_params.svf_cutoff_l.smoothed.next());
-                self.sin_svf_r
-                    .set_cutoff(self.params.filter_params.svf_cutoff_r.smoothed.next());
+                self.sin_svf_l.set_res(res_l);
+                self.sin_svf_r.set_res(res_r);
+
+                let cutoff_l = self.params.filter_params.svf_cutoff_l.smoothed.next();
+                let cutoff_r = self.params.filter_params.svf_cutoff_r.smoothed.next();
+                self.sin_svf_l.set_cutoff(cutoff_l);
+                self.sin_svf_r.set_cutoff(cutoff_r);
+
+                let mode_l = self.params.filter_params.svf_filter_mode_l.value();
+                let mode_r = self.params.filter_params.svf_filter_mode_r.value();
+                self.sin_svf_l.set_mode(mode_l);
+                self.sin_svf_r.set_mode(mode_r);
             }
         }
     }
@@ -251,26 +277,26 @@ impl Delax {
             filters::params::SVFStereoMode::Mono => {
                 match self.params.filter_params.svf_filter_mode_l.value() {
                     SVFFilterMode::Low => {
-                        (filtered_output_l, _, _) = self.sin_svf_l.tick_sample(input_left);
-                        (filtered_output_r, _, _) = self.sin_svf_r.tick_sample(input_right);
+                        (filtered_output_l, _, _) = self.sin_svf_l.tick_sample_full(input_left);
+                        (filtered_output_r, _, _) = self.sin_svf_r.tick_sample_full(input_right);
                     }
                     SVFFilterMode::Band => {
-                        (_, filtered_output_l, _) = self.sin_svf_l.tick_sample(input_left);
-                        (_, filtered_output_r, _) = self.sin_svf_r.tick_sample(input_right);
+                        (_, filtered_output_l, _) = self.sin_svf_l.tick_sample_full(input_left);
+                        (_, filtered_output_r, _) = self.sin_svf_r.tick_sample_full(input_right);
                     }
                     SVFFilterMode::High => {
-                        (_, _, filtered_output_l) = self.sin_svf_l.tick_sample(input_left);
-                        (_, _, filtered_output_r) = self.sin_svf_r.tick_sample(input_right);
+                        (_, _, filtered_output_l) = self.sin_svf_l.tick_sample_full(input_left);
+                        (_, _, filtered_output_r) = self.sin_svf_r.tick_sample_full(input_right);
                     }
                     SVFFilterMode::Notch => {
-                        let (low_l, _, high_l) = self.sin_svf_l.tick_sample(input_left);
-                        let (low_r, _, high_r) = self.sin_svf_r.tick_sample(input_right);
+                        let (low_l, _, high_l) = self.sin_svf_l.tick_sample_full(input_left);
+                        let (low_r, _, high_r) = self.sin_svf_r.tick_sample_full(input_right);
                         filtered_output_l = low_l + high_l;
                         filtered_output_r = low_r + high_r;
                     }
                     SVFFilterMode::Peak => {
-                        let (low_l, _, high_l) = self.sin_svf_l.tick_sample(input_left);
-                        let (low_r, _, high_r) = self.sin_svf_r.tick_sample(input_right);
+                        let (low_l, _, high_l) = self.sin_svf_l.tick_sample_full(input_left);
+                        let (low_r, _, high_r) = self.sin_svf_r.tick_sample_full(input_right);
                         filtered_output_l = low_l - high_l;
                         filtered_output_r = low_r - high_r;
                     }
@@ -280,41 +306,135 @@ impl Delax {
             filters::params::SVFStereoMode::Stereo => {
                 match self.params.filter_params.svf_filter_mode_l.value() {
                     SVFFilterMode::Low => {
-                        (filtered_output_l, _, _) = self.sin_svf_l.tick_sample(input_left);
+                        (filtered_output_l, _, _) = self.sin_svf_l.tick_sample_full(input_left);
                     }
                     SVFFilterMode::Band => {
-                        (_, filtered_output_l, _) = self.sin_svf_l.tick_sample(input_left);
+                        (_, filtered_output_l, _) = self.sin_svf_l.tick_sample_full(input_left);
                     }
 
                     SVFFilterMode::High => {
-                        (_, _, filtered_output_l) = self.sin_svf_l.tick_sample(input_left);
+                        (_, _, filtered_output_l) = self.sin_svf_l.tick_sample_full(input_left);
                     }
 
                     SVFFilterMode::Notch => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample(input_left);
+                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_left);
                         filtered_output_l = low + high;
                     }
                     SVFFilterMode::Peak => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample(input_left);
+                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_left);
                         filtered_output_l = low - high;
                     }
                 }
                 match self.params.filter_params.svf_filter_mode_r.value() {
                     SVFFilterMode::Low => {
-                        (filtered_output_r, _, _) = self.sin_svf_r.tick_sample(input_right);
+                        (filtered_output_r, _, _) = self.sin_svf_r.tick_sample_full(input_right);
                     }
                     SVFFilterMode::Band => {
-                        (_, filtered_output_r, _) = self.sin_svf_r.tick_sample(input_right);
+                        (_, filtered_output_r, _) = self.sin_svf_r.tick_sample_full(input_right);
                     }
                     SVFFilterMode::High => {
-                        (_, _, filtered_output_r) = self.sin_svf_r.tick_sample(input_right);
+                        (_, _, filtered_output_r) = self.sin_svf_r.tick_sample_full(input_right);
                     }
                     SVFFilterMode::Notch => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample(input_right);
+                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_right);
                         filtered_output_r = low + high;
                     }
                     SVFFilterMode::Peak => {
-                        let (low, _, high) = self.sin_svf_l.tick_sample(input_right);
+                        let (low, _, high) = self.sin_svf_l.tick_sample_full(input_right);
+                        filtered_output_r = low - high;
+                    }
+                }
+            }
+        }
+
+        (filtered_output_l, filtered_output_r)
+    }
+
+    fn run_input_filters(&mut self, input_left: f32, input_right: f32) -> (f32, f32) {
+        let filtered_output_l;
+        let filtered_output_r;
+
+        match self.params.filter_params.svf_stereo_mode.value() {
+            // In mono mode, set both to the left value
+            filters::params::SVFStereoMode::Mono => {
+                match self.params.filter_params.svf_filter_mode_l.value() {
+                    SVFFilterMode::Low => {
+                        (filtered_output_l, _, _) =
+                            self.input_sin_svf_l.tick_sample_full(input_left);
+                        (filtered_output_r, _, _) =
+                            self.input_sin_svf_r.tick_sample_full(input_right);
+                    }
+                    SVFFilterMode::Band => {
+                        (_, filtered_output_l, _) =
+                            self.input_sin_svf_l.tick_sample_full(input_left);
+                        (_, filtered_output_r, _) =
+                            self.input_sin_svf_r.tick_sample_full(input_right);
+                    }
+                    SVFFilterMode::High => {
+                        (_, _, filtered_output_l) =
+                            self.input_sin_svf_l.tick_sample_full(input_left);
+                        (_, _, filtered_output_r) =
+                            self.input_sin_svf_r.tick_sample_full(input_right);
+                    }
+                    SVFFilterMode::Notch => {
+                        let (low_l, _, high_l) = self.input_sin_svf_l.tick_sample_full(input_left);
+                        let (low_r, _, high_r) = self.input_sin_svf_r.tick_sample_full(input_right);
+                        filtered_output_l = low_l + high_l;
+                        filtered_output_r = low_r + high_r;
+                    }
+                    SVFFilterMode::Peak => {
+                        let (low_l, _, high_l) = self.input_sin_svf_l.tick_sample_full(input_left);
+                        let (low_r, _, high_r) = self.input_sin_svf_r.tick_sample_full(input_right);
+                        filtered_output_l = low_l - high_l;
+                        filtered_output_r = low_r - high_r;
+                    }
+                }
+            }
+            // In stereo mode set the seperately
+            filters::params::SVFStereoMode::Stereo => {
+                match self.params.filter_params.svf_filter_mode_l.value() {
+                    SVFFilterMode::Low => {
+                        (filtered_output_l, _, _) =
+                            self.input_sin_svf_l.tick_sample_full(input_left);
+                    }
+                    SVFFilterMode::Band => {
+                        (_, filtered_output_l, _) =
+                            self.input_sin_svf_l.tick_sample_full(input_left);
+                    }
+
+                    SVFFilterMode::High => {
+                        (_, _, filtered_output_l) =
+                            self.input_sin_svf_l.tick_sample_full(input_left);
+                    }
+
+                    SVFFilterMode::Notch => {
+                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_left);
+                        filtered_output_l = low + high;
+                    }
+                    SVFFilterMode::Peak => {
+                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_left);
+                        filtered_output_l = low - high;
+                    }
+                }
+                match self.params.filter_params.svf_filter_mode_r.value() {
+                    SVFFilterMode::Low => {
+                        (filtered_output_r, _, _) =
+                            self.input_sin_svf_r.tick_sample_full(input_right);
+                    }
+                    SVFFilterMode::Band => {
+                        (_, filtered_output_r, _) =
+                            self.input_sin_svf_r.tick_sample_full(input_right);
+                    }
+                    SVFFilterMode::High => {
+                        (_, _, filtered_output_r) =
+                            self.input_sin_svf_r.tick_sample_full(input_right);
+                    }
+                    SVFFilterMode::Notch => {
+                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_right);
+                        filtered_output_r = low + high;
+                    }
+                    SVFFilterMode::Peak => {
+                        let (low, _, high) = self.input_sin_svf_l.tick_sample_full(input_right);
                         filtered_output_r = low - high;
                     }
                 }
@@ -353,7 +473,3 @@ impl ClapPlugin for Delax {
 
 nih_export_clap!(Delax);
 // nih_export_vst3!(Delax);
-
-pub fn seconds_to_samples(ms: f32, sample_rate: f32) -> usize {
-    ((ms / 1000.) * sample_rate).floor() as usize
-}
