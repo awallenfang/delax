@@ -3,7 +3,7 @@ use delay_engine::{
     params::DelayMode,
 };
 use filter_pipeline::pipeline::FilterPipeline;
-use filters::simper::SimperSinSVF;
+use filters::{simper::SimperSinSVF, dattorro::DattorroReverb};
 use nih_plug::prelude::*;
 use params::DelaxParams;
 use std::sync::{Arc, Mutex};
@@ -24,6 +24,8 @@ pub struct Delax {
     input_sin_svf_r: SimperSinSVF,
     filter_pipeline: FilterPipeline,
     initial_filter_pipeline: FilterPipeline,
+    datorro: DattorroReverb,
+    initial_dattorro: DattorroReverb
 }
 
 impl Default for Delax {
@@ -50,6 +52,8 @@ impl Default for Delax {
             input_sin_svf_r,
             filter_pipeline: FilterPipeline::new(),
             initial_filter_pipeline: FilterPipeline::new(),
+            datorro: DattorroReverb::new(44100., 0.5),
+            initial_dattorro: DattorroReverb::new(44100., 0.5),
         }
     }
 }
@@ -119,14 +123,22 @@ impl Plugin for Delax {
         self.input_sin_svf_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_r.set_sample_rate(self.sample_rate);
 
-        self.filter_pipeline.register_stereo_pair(
-            Arc::new(Mutex::new(self.sin_svf_l.clone())),
-            Arc::new(Mutex::new(self.sin_svf_r.clone())),
-        );
-        self.initial_filter_pipeline.register_stereo_pair(
-            Arc::new(Mutex::new(self.input_sin_svf_l.clone())),
-            Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
-        );
+        self.datorro.set_sample_rate(self.sample_rate);
+        self.initial_dattorro.set_sample_rate(self.sample_rate);
+
+        // self.filter_pipeline.register_stereo_pair(
+        //     Arc::new(Mutex::new(self.sin_svf_l.clone())),
+        //     Arc::new(Mutex::new(self.sin_svf_r.clone())),
+        // );
+        // self.initial_filter_pipeline.register_stereo_pair(
+        //     Arc::new(Mutex::new(self.input_sin_svf_l.clone())),
+        //     Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
+        // );
+
+        self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
+        self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
+
+
         true
     }
 
@@ -219,6 +231,7 @@ impl Plugin for Delax {
 
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
+
         }
 
         ProcessStatus::Normal
@@ -289,7 +302,8 @@ impl Delax {
 
     /// Run the filter chain on the input signal. This can probably be refactored out down the line. But for now it doesn't work correctly without
     fn run_input_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
-        self.initial_filter_pipeline.process_stereo(input_l, input_r)
+        self.initial_filter_pipeline
+            .process_stereo(input_l, input_r)
     }
 }
 

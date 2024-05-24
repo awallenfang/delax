@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::filters::Filter;
+use crate::filters::{Filter, StereoFilter};
 
 /// A pipeline to send the signal through different filters in different orders
 pub struct FilterPipeline {
@@ -26,7 +26,17 @@ impl FilterPipeline {
         filter_r: Arc<Mutex<dyn Filter>>,
     ) {
         self.registered_filters
-            .push(FilterPipelineElement::Stereo(filter_l, filter_r));
+            .push(FilterPipelineElement::StereoMonoFilter(
+                filter_l, filter_r,
+            ));
+        self.order.push(self.registered_filters.len() - 1);
+    }
+
+    /// Register a stereo filter that's combined
+    #[allow(dead_code)]
+    pub fn register_stereo(&mut self, filter: Arc<Mutex<dyn StereoFilter>>) {
+        self.registered_filters
+            .push(FilterPipelineElement::StereoStereoFilter(filter));
         self.order.push(self.registered_filters.len() - 1);
     }
 
@@ -37,9 +47,14 @@ impl FilterPipeline {
 
         for i in &self.order {
             match &self.registered_filters[*i] {
-                FilterPipelineElement::Stereo(filter_l, filter_r) => {
+                FilterPipelineElement::StereoMonoFilter(filter_l, filter_r) => {
                     l = filter_l.lock().unwrap().process(l);
                     r = filter_r.lock().unwrap().process(r);
+                }
+                FilterPipelineElement::StereoStereoFilter(filter) => {
+                    let (new_l, new_r) = filter.lock().unwrap().process_stereo(l, r);
+                    l = new_l;
+                    r = new_r;
                 }
                 FilterPipelineElement::Mono(_) => {}
             }
@@ -52,7 +67,7 @@ impl FilterPipeline {
 #[allow(dead_code)]
 /// A bundle of filter instances to be used in the pipeline
 pub enum FilterPipelineElement {
-    Stereo(Arc<Mutex<dyn Filter>>, Arc<Mutex<dyn Filter>>),
-
+    StereoMonoFilter(Arc<Mutex<dyn Filter>>, Arc<Mutex<dyn Filter>>),
+    StereoStereoFilter(Arc<Mutex<dyn StereoFilter>>),
     Mono(Arc<Mutex<dyn Filter>>),
 }
