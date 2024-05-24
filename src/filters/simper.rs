@@ -1,5 +1,7 @@
 use std::f32::consts::PI;
 
+use super::{params::SVFFilterMode, Filter};
+
 /// A SVF filter implemented using the paper by Andrew Simper from Cytomic
 /// https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
 pub struct SimperTanSVF {
@@ -12,6 +14,7 @@ pub struct SimperTanSVF {
     k: f32,
     a1: f32,
     a2: f32,
+    mode: SVFFilterMode,
 }
 
 impl SimperTanSVF {
@@ -22,7 +25,7 @@ impl SimperTanSVF {
     /// use delax::filters::simper::SimperTanSVF;
     ///
     /// let mut filter = SimperTanSVF::new(44100.);
-    /// let (low, band, high) = filter.tick_sample(0.4);
+    /// let (low, band, high) = filter.tick_sample_full(0.4);
     /// ```
     pub fn new(sample_rate: f32) -> Self {
         let ic1eq = 0.;
@@ -49,6 +52,7 @@ impl SimperTanSVF {
             k,
             a1,
             a2,
+            mode: SVFFilterMode::Low,
         }
     }
 
@@ -97,12 +101,12 @@ impl SimperTanSVF {
     /// use delax::filters::simper::SimperTanSVF;
     ///
     /// let mut filter = SimperTanSVF::new(44100.);
-    /// let (low, band, high) = filter.tick_sample(0.4);
+    /// let (low, band, high) = filter.tick_sample_full(0.4);
     ///
     /// let notch = low + high;
     /// let peak = low - high;
     /// ```
-    pub fn tick_sample(&mut self, sample: f32) -> (f32, f32, f32) {
+    pub fn tick_sample_full(&mut self, sample: f32) -> (f32, f32, f32) {
         let v1 = self.a1 * self.ic1eq + self.a2 * (sample - self.ic2eq);
         let v2 = self.ic2eq + self.g * v1;
 
@@ -127,13 +131,40 @@ impl SimperTanSVF {
     /// let all = filter.tick_sample_allpass(0.4);
     /// ```
     pub fn tick_sample_allpass(&mut self, sample: f32) -> f32 {
-        let (low, band, high) = self.tick_sample(sample);
+        let (low, band, high) = self.tick_sample_full(sample);
         low + high - self.k * band
+    }
+
+    /// Run the filter using the model that is set internally
+    pub fn tick_sample(&mut self, sample: f32) -> f32 {
+        match self.mode {
+            SVFFilterMode::Low => {
+                let (low, _, _) = self.tick_sample_full(sample);
+                low
+            }
+            SVFFilterMode::Band => {
+                let (_, band, _) = self.tick_sample_full(sample);
+                band
+            }
+            SVFFilterMode::High => {
+                let (_, _, high) = self.tick_sample_full(sample);
+                high
+            }
+            SVFFilterMode::Notch => {
+                let (low, _, high) = self.tick_sample_full(sample);
+                low + high
+            }
+            SVFFilterMode::Peak => {
+                let (low, _, high) = self.tick_sample_full(sample);
+                low - high
+            }
+        }
     }
 }
 
 /// A SVF filter implemented using the paper by Andrew Simper from Cytomic
 /// https://cytomic.com/files/dsp/SvfLinearTrapezoidalSin.pdf
+#[derive(Debug, Clone)]
 pub struct SimperSinSVF {
     res: f32,
     cutoff: f32,
@@ -146,6 +177,8 @@ pub struct SimperSinSVF {
     g0: f32,
     g1: f32,
     g2: f32,
+
+    mode: SVFFilterMode,
 }
 
 impl SimperSinSVF {
@@ -156,7 +189,7 @@ impl SimperSinSVF {
     /// use delax::filters::simper::SimperSinSVF;
     ///
     /// let mut filter = SimperSinSVF::new(44100.);
-    /// let (low, band, high) = filter.tick_sample(0.4);
+    /// let (low, band, high) = filter.tick_sample_full(0.4);
     /// ```
     pub fn new(sample_rate: f32) -> Self {
         let ic1eq = 0.;
@@ -189,6 +222,7 @@ impl SimperSinSVF {
             g0,
             g1,
             g2,
+            mode: SVFFilterMode::Low,
         }
     }
 
@@ -208,6 +242,10 @@ impl SimperSinSVF {
     pub fn set_res(&mut self, res: f32) {
         self.res = res;
         self.reinit();
+    }
+
+    pub fn set_mode(&mut self, mode: SVFFilterMode) {
+        self.mode = mode;
     }
 
     /// Recalculate all the held values.
@@ -243,12 +281,12 @@ impl SimperSinSVF {
     /// use delax::filters::simper::SimperSinSVF;
     ///
     /// let mut filter = SimperSinSVF::new(44100.);
-    /// let (low, band, high) = filter.tick_sample(0.4);
+    /// let (low, band, high) = filter.tick_sample_full(0.4);
     ///
     /// let notch = low + high;
     /// let peak = low - high;
     /// ```
-    pub fn tick_sample(&mut self, sample: f32) -> (f32, f32, f32) {
+    pub fn tick_sample_full(&mut self, sample: f32) -> (f32, f32, f32) {
         let t0 = sample - self.ic2eq;
         let t1 = self.g0 * t0 + self.g1 * self.ic1eq;
         let t2 = self.g2 * t0 + self.g0 * self.ic1eq;
@@ -262,5 +300,37 @@ impl SimperSinSVF {
         let band = v1;
         let low = v2;
         (low, band, high)
+    }
+
+    /// Run the filter using the model that is set internally
+    pub fn tick_sample(&mut self, sample: f32) -> f32 {
+        match self.mode {
+            SVFFilterMode::Low => {
+                let (low, _, _) = self.tick_sample_full(sample);
+                low
+            }
+            SVFFilterMode::Band => {
+                let (_, band, _) = self.tick_sample_full(sample);
+                band
+            }
+            SVFFilterMode::High => {
+                let (_, _, high) = self.tick_sample_full(sample);
+                high
+            }
+            SVFFilterMode::Notch => {
+                let (low, _, high) = self.tick_sample_full(sample);
+                low + high
+            }
+            SVFFilterMode::Peak => {
+                let (low, _, high) = self.tick_sample_full(sample);
+                low - high
+            }
+        }
+    }
+}
+
+impl Filter for SimperSinSVF {
+    fn process(&mut self, input: f32) -> f32 {
+        self.tick_sample(input)
     }
 }

@@ -1,6 +1,6 @@
 use nih_plug::prelude::*;
 
-#[derive(Enum, PartialEq)]
+#[derive(Debug, Enum, PartialEq, Clone, Copy)]
 pub enum SVFFilterMode {
     Low,
     Band,
