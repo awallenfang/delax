@@ -126,17 +126,17 @@ impl Plugin for Delax {
         self.datorro.set_sample_rate(self.sample_rate);
         self.initial_dattorro.set_sample_rate(self.sample_rate);
 
-        // self.filter_pipeline.register_stereo_pair(
-        //     Arc::new(Mutex::new(self.sin_svf_l.clone())),
-        //     Arc::new(Mutex::new(self.sin_svf_r.clone())),
-        // );
-        // self.initial_filter_pipeline.register_stereo_pair(
-        //     Arc::new(Mutex::new(self.input_sin_svf_l.clone())),
-        //     Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
-        // );
+        self.filter_pipeline.register_stereo_pair(
+            Arc::new(Mutex::new(self.sin_svf_l.clone())),
+            Arc::new(Mutex::new(self.sin_svf_r.clone())),
+        );
+        self.initial_filter_pipeline.register_stereo_pair(
+            Arc::new(Mutex::new(self.input_sin_svf_l.clone())),
+            Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
+        );
 
-        self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
-        self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
+        // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
+        // self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
 
 
         true
