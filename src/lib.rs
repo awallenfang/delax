@@ -3,7 +3,7 @@ use delay_engine::{
     params::DelayMode,
 };
 use filter_pipeline::pipeline::FilterPipeline;
-use filters::{simper::SimperSinSVF, dattorro::DattorroReverb};
+use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
 use nih_plug::prelude::*;
 use params::DelaxParams;
 use std::sync::{Arc, Mutex};
@@ -12,6 +12,7 @@ mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
+mod ui;
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -25,7 +26,7 @@ pub struct Delax {
     filter_pipeline: FilterPipeline,
     initial_filter_pipeline: FilterPipeline,
     datorro: DattorroReverb,
-    initial_dattorro: DattorroReverb
+    initial_dattorro: DattorroReverb,
 }
 
 impl Default for Delax {
@@ -99,6 +100,10 @@ impl Plugin for Delax {
         self.params.clone()
     }
 
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        ui::create(self.params.clone(), self.params.editor_state.clone())
+    }
+
     fn initialize(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
@@ -137,7 +142,6 @@ impl Plugin for Delax {
 
         // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
         // self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
-
 
         true
     }
@@ -231,7 +235,6 @@ impl Plugin for Delax {
 
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
-
         }
 
         ProcessStatus::Normal
