@@ -29,6 +29,8 @@ pub(crate) fn create(
         move |cx, _| {
             assets::register_noto_sans_light(cx);
             assets::register_noto_sans_thin(cx);
+            let _ = cx.add_stylesheet(include_style!("src/ui/style.css"));
+
 
             Data {
                 params: params.clone(),
@@ -37,19 +39,22 @@ pub(crate) fn create(
             VStack::new(cx, |cx| {
                 HStack::new(cx, |cx| {
                     VStack::new(cx, |cx| {
+                        // TODO: Peakmeter
                         Element::new(cx)
                             .width(Pixels(50.))
                             .height(Stretch(1.))
                             .background_color(Color::black());
                     })
-                    .width(Pixels(50.));
+                    .class("meter-box");
                     VStack::new(cx, |cx| {
-                        Label::new(cx, "Delax").left(Stretch(1.)).right(Stretch(1.));
+                        Label::new(cx, "Delax").class("centered");
                         HStack::new(cx, |cx| {
+                            // TODO: Toggle button
                             Label::new(cx, "Mono").left(Stretch(1.));
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
                         .col_between(Pixels(20.));
+                        // TODO: Delay visualizer
                         Element::new(cx)
                             .width(Stretch(1.))
                             .height(Pixels(50.))
@@ -60,36 +65,33 @@ pub(crate) fn create(
                                 Data::params,
                                 |params| &params.delay_params.delay_len_l,
                                 params.delay_params.delay_len_l.default_normalized_value(),
-                            )
-                            .width(Pixels(50.))
-                            .height(Pixels(50.));
+                                None
+                            );
                             ParamKnob::new(
                                 cx,
                                 Data::params,
                                 |params| &params.delay_params.feedback_l,
                                 params.delay_params.feedback_l.default_normalized_value(),
-                            )
-                            .width(Pixels(50.))
-                            .height(Pixels(50.));
+                                None
+                            );
                             ParamKnob::new(
                                 cx,
                                 Data::params,
                                 |params| &params.delay_params.delay_len_r,
                                 params.delay_params.delay_len_r.default_normalized_value(),
-                            )
-                            .width(Pixels(50.))
-                            .height(Pixels(50.));
+                                Some("Delay".to_string())
+                            );
                             ParamKnob::new(
                                 cx,
                                 Data::params,
                                 |params| &params.delay_params.feedback_r,
                                 params.delay_params.feedback_r.default_normalized_value(),
-                            )
-                            .width(Pixels(50.))
-                            .height(Pixels(50.));
+                                Some("Feedback".to_string())
+                            );
                         }).col_between(Stretch(1.));
-                        Label::new(cx, "Filter").left(Stretch(1.)).right(Stretch(1.));
+                        Label::new(cx, "Filter").class("centered");
                         HStack::new(cx, |cx| {
+                            // TODO: Toggle Button
                             Label::new(cx, "Mono").left(Stretch(1.));
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
@@ -105,23 +107,17 @@ pub(crate) fn create(
                             Data::params,
                             |params| &params.wetness,
                             params.wetness.default_normalized_value(),
-                        )
-                        .width(Pixels(50.))
-                        .height(Pixels(50.));
+                            None
+                        );
                     })
-                    .width(Pixels(50.));
+                    .class("meter-box");
                 })
-                .col_between(Stretch(1.));
+                .id("main-hstack");
                 HStack::new(cx, |cx| {
-                    ResizeHandle::new(cx).left(Stretch(1.));
+                    ResizeHandle::new(cx);
                 })
-                .height(Pixels(25.));
-            });
-
-            // Label::new(cx, "Test");
-            // ParamSlider::new(cx, Data::params, |params| &params.wetness);
-            // ParamKnob::new(cx, Data::params, |params| &params.wetness, params.wetness.default_normalized_value())
-            // ;
+                .id("resize-handle-box");
+            }).id("main");
         },
     )
 }

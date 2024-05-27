@@ -33,6 +33,7 @@ impl ParamKnob {
         params: L,
         params_to_param: FMap,
         default_val: f32,
+        custom_label: Option<String>
     ) -> Handle<Self>
     where
         L: Lens<Target = Params> + Clone,
@@ -51,10 +52,21 @@ impl ParamKnob {
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
                 let wetness_lens =
                     param_data.make_lens(|param| param.unmodulated_normalized_value());
+                VStack::new(cx, |cx| {
+                    KnobVisual::new(cx, default_val).value(wetness_lens).class("knob-visual").tooltip(|cx| {
+                        Label::new(cx, "TODO: Number");
+                    });
+                    if let Some(text) = custom_label {
+                        Label::new(cx,  &text).class("knob-label");
 
-                KnobVisual::new(cx, default_val).value(wetness_lens);
+                    } else {
 
-                Label::new(cx, &param_data.param().to_string()).font_size(12.).left(Stretch(1.)).right(Stretch(1.));
+                        Label::new(cx,  *(&param_data.param().name())).class("knob-label");
+                    }
+
+                // Label::new(cx, &param_data.param().to_string()).class("knob-label");
+                });
+                
             }),
         )
     }
@@ -113,7 +125,7 @@ impl View for ParamKnob {
                     let delta_y = *y - drag_status.start_y * cx.scale_factor();
 
                     self.param_base
-                        .set_normalized_value(cx, drag_status.start_val + delta_y / 1000.);
+                        .set_normalized_value(cx, drag_status.start_val - delta_y / 1000.);
                     event_meta.consume();
                 }
             }
@@ -147,6 +159,9 @@ impl KnobVisual {
 }
 
 impl View for KnobVisual {
+    fn element(&self) -> Option<&'static str> {
+        Some("knob-visual")
+    }
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|visual_event, _| match visual_event {
             KnobVisualEvent::SetValue(val) => {
@@ -179,16 +194,33 @@ impl View for KnobVisual {
             start,
             Solidity::Solid,
         );
+        let arc_color = cx.border_color();
+        let mut arc_paint = Paint::color(arc_color.into());
+        arc_paint.set_line_width(girthiness);
+        arc_paint.set_line_cap(LineCap::Round);
 
-        let mut paint = Paint::color(Color::red().into());
-        paint.set_line_width(girthiness);
-        paint.set_line_cap(LineCap::Round);
+        canvas.stroke_path(&path, &arc_paint);
 
-        canvas.stroke_path(&path, &paint);
-
+        let body_color = cx.background_color();
+        let mut body_paint = Paint::color(body_color.into());
         path = Path::new();
         path.circle(center_x, center_y, radius - girthiness * 2.);
-        canvas.fill_path(&path, &paint)
+        canvas.fill_path(&path, &body_paint);
+
+        let arc_pos_x = center_x + (radius - girthiness*2.) * (0.75 * PI + self.val * range).cos();
+        let arc_pos_y = center_y + (radius - girthiness*2.) * (0.75 * PI + self.val * range).sin();
+
+        let line_paint = cx.caret_color();
+        let mut line_paint = Paint::color(line_paint.into());
+        path = Path::new();
+
+        path.move_to(center_x, center_y);
+        path.line_to(arc_pos_x, arc_pos_y);
+
+        line_paint.set_line_width(girthiness);
+        line_paint.set_line_cap(LineCap::Round);
+
+        canvas.stroke_path(&path, &line_paint);
     }
 }
 
