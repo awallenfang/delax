@@ -6,6 +6,7 @@ use filter_pipeline::pipeline::FilterPipeline;
 use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
 use nih_plug::prelude::*;
 use params::DelaxParams;
+use peak_follower::PeakFollower;
 use std::sync::{Arc, Mutex};
 use ui::InputData;
 
@@ -13,6 +14,7 @@ mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
+mod peak_follower;
 mod ui;
 
 pub struct Delax {
@@ -29,6 +31,10 @@ pub struct Delax {
     datorro: DattorroReverb,
     initial_dattorro: DattorroReverb,
     input_data: Arc<InputData>,
+    peak_follower_in_l: PeakFollower,
+    peak_follower_in_r: PeakFollower,
+    peak_follower_out_l: PeakFollower,
+    peak_follower_out_r: PeakFollower,
 }
 
 impl Default for Delax {
@@ -58,6 +64,10 @@ impl Default for Delax {
             datorro: DattorroReverb::new(44100., 0.5),
             initial_dattorro: DattorroReverb::new(44100., 0.5),
             input_data: Arc::new(InputData::default()),
+            peak_follower_in_l: PeakFollower::new(2., 0.2, 44100., 10),
+            peak_follower_in_r: PeakFollower::new(2., 0.2, 44100., 10),
+            peak_follower_out_l: PeakFollower::new(2., 0.2, 44100., 10),
+            peak_follower_out_r: PeakFollower::new(2., 0.2, 44100., 10),
         }
     }
 }
@@ -146,6 +156,11 @@ impl Plugin for Delax {
             Arc::new(Mutex::new(self.input_sin_svf_l.clone())),
             Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
         );
+
+        self.peak_follower_in_l.set_sample_rate(self.sample_rate);
+        self.peak_follower_in_r.set_sample_rate(self.sample_rate);
+        self.peak_follower_out_l.set_sample_rate(self.sample_rate);
+        self.peak_follower_out_r.set_sample_rate(self.sample_rate);
 
         // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
         // self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
@@ -321,6 +336,12 @@ impl Delax {
     }
 
     fn input_ui_send(&mut self, l: f32, r: f32) {
+        let l = 1. + util::gain_to_db(l) / 100.;
+        let r = 1. + util::gain_to_db(r) / 100.;
+
+        let l = self.peak_follower_in_l.process(l);
+        let r = self.peak_follower_in_r.process(r);
+
         self.input_data
             .in_l
             .store(l, std::sync::atomic::Ordering::Relaxed);
@@ -330,6 +351,12 @@ impl Delax {
     }
 
     fn output_ui_send(&mut self, l: f32, r: f32) {
+        let l = 1. + util::gain_to_db_fast(l) / 100.;
+        let r = 1. + util::gain_to_db_fast(r) / 100.;
+
+        let l = self.peak_follower_out_l.process(l);
+        let r = self.peak_follower_out_r.process(r);
+
         self.input_data
             .out_l
             .store(l, std::sync::atomic::Ordering::Relaxed);

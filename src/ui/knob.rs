@@ -24,9 +24,6 @@ pub struct ParamKnob {
     drag_status: Option<DragState>,
 }
 
-#[allow(dead_code)]
-enum ParamKnobEvent {}
-
 impl ParamKnob {
     pub fn new<L, Params, P, FMap>(
         cx: &mut Context,

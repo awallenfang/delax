@@ -34,6 +34,11 @@ resize-handle {
 
 .meter-box {
     width: 50px;
+    height: 250px;
+}
+
+.main-box {
+    width: 400px;
 }
 
 #main {

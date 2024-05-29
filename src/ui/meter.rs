@@ -19,6 +19,7 @@ impl PeakMeter {
     {
         Self {}.build(cx, |cx| {
             PeakMeterBar::new(cx, val.clone());
+            Label::new(cx, val.get(cx)).overflow(Overflow::Visible);
         })
     }
 }
@@ -67,7 +68,7 @@ where
         let mut paint = Paint::color(Color::red().into());
 
         let mut path = Path::new();
-        path.rect(bounds.x, bounds.y + height / 2., width, height * val);
+        path.rect(bounds.x, bounds.y, width, height * val);
 
         canvas.fill_path(&path, &paint);
     }

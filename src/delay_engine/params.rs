@@ -18,6 +18,10 @@ pub struct EngineParams {
     pub feedback_r: FloatParam,
     #[id = "stereo"]
     pub stereo_delay: EnumParam<DelayMode>,
+    #[id = "bpm_bound_l"]
+    pub bpm_bound_l: BoolParam,
+    #[id = "bpm_bound_r"]
+    pub bpm_bound_r: BoolParam,
 }
 
 impl Default for EngineParams {
@@ -60,6 +64,8 @@ impl Default for EngineParams {
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_value_to_string(formatters::v2s_f32_rounded(2)),
             stereo_delay: EnumParam::new("Seperate Delay", DelayMode::Mono),
+            bpm_bound_l: BoolParam::new("BPM Bound", false),
+            bpm_bound_r: BoolParam::new("BPM Bound Channel 2", false),
         }
     }
 }
