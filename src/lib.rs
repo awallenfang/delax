@@ -6,8 +6,8 @@ use filter_pipeline::pipeline::FilterPipeline;
 use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
 use nih_plug::prelude::*;
 use params::DelaxParams;
-use ui::InputData;
 use std::sync::{Arc, Mutex};
+use ui::InputData;
 
 mod delay_engine;
 mod filter_pipeline;
@@ -104,8 +104,11 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-
-        ui::create(self.params.clone(), self.params.editor_state.clone(), self.input_data.clone())
+        ui::create(
+            self.params.clone(),
+            self.params.editor_state.clone(),
+            self.input_data.clone(),
+        )
     }
 
     fn initialize(
@@ -318,13 +321,21 @@ impl Delax {
     }
 
     fn input_ui_send(&mut self, l: f32, r: f32) {
-        self.input_data.in_l.store(l, std::sync::atomic::Ordering::Relaxed);
-        self.input_data.in_r.store(r, std::sync::atomic::Ordering::Relaxed);
+        self.input_data
+            .in_l
+            .store(l, std::sync::atomic::Ordering::Relaxed);
+        self.input_data
+            .in_r
+            .store(r, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn output_ui_send(&mut self, l: f32, r: f32) {
-        self.input_data.out_l.store(l, std::sync::atomic::Ordering::Relaxed);
-        self.input_data.out_r.store(r, std::sync::atomic::Ordering::Relaxed);
+        self.input_data
+            .out_l
+            .store(l, std::sync::atomic::Ordering::Relaxed);
+        self.input_data
+            .out_r
+            .store(r, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
