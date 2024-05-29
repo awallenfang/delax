@@ -6,6 +6,7 @@ use filter_pipeline::pipeline::FilterPipeline;
 use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
 use nih_plug::prelude::*;
 use params::DelaxParams;
+use ui::InputData;
 use std::sync::{Arc, Mutex};
 
 mod delay_engine;
@@ -27,6 +28,7 @@ pub struct Delax {
     initial_filter_pipeline: FilterPipeline,
     datorro: DattorroReverb,
     initial_dattorro: DattorroReverb,
+    input_data: Arc<InputData>,
 }
 
 impl Default for Delax {
@@ -55,6 +57,7 @@ impl Default for Delax {
             initial_filter_pipeline: FilterPipeline::new(),
             datorro: DattorroReverb::new(44100., 0.5),
             initial_dattorro: DattorroReverb::new(44100., 0.5),
+            input_data: Arc::new(InputData::default()),
         }
     }
 }
@@ -101,7 +104,8 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        ui::create(self.params.clone(), self.params.editor_state.clone())
+
+        ui::create(self.params.clone(), self.params.editor_state.clone(), self.input_data.clone())
     }
 
     fn initialize(
@@ -171,6 +175,8 @@ impl Plugin for Delax {
             let left_sample = channel_iter.next().unwrap();
             let right_sample = channel_iter.next().unwrap();
 
+            self.input_ui_send(*left_sample, *right_sample);
+
             // The output of the banks
             let pop_left = self
                 .left_delay_engine
@@ -235,6 +241,8 @@ impl Plugin for Delax {
 
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
+
+            self.output_ui_send(*left_sample, *right_sample);
         }
 
         ProcessStatus::Normal
@@ -307,6 +315,16 @@ impl Delax {
     fn run_input_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
         self.initial_filter_pipeline
             .process_stereo(input_l, input_r)
+    }
+
+    fn input_ui_send(&mut self, l: f32, r: f32) {
+        self.input_data.in_l.store(l, std::sync::atomic::Ordering::Relaxed);
+        self.input_data.in_r.store(r, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn output_ui_send(&mut self, l: f32, r: f32) {
+        self.input_data.out_l.store(l, std::sync::atomic::Ordering::Relaxed);
+        self.input_data.out_r.store(r, std::sync::atomic::Ordering::Relaxed);
     }
 }
 

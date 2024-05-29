@@ -1,16 +1,36 @@
 use std::sync::Arc;
 
 use crate::params::DelaxParams;
-use nih_plug::{editor::Editor, formatters::v2s_f32_rounded, params::Param};
-use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, widgets::*, ViziaState};
+use nih_plug::{editor::Editor, formatters::v2s_f32_rounded, params::Param, prelude::*};
+use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, widgets::ResizeHandle, ViziaState};
 
-use self::knob::ParamKnob;
+use self::{knob::ParamKnob, meter::PeakMeter};
 
 mod knob;
+mod meter;
+
+pub struct InputData {
+    pub in_l: AtomicF32,
+    pub in_r: AtomicF32,
+    pub out_l: AtomicF32,
+    pub out_r: AtomicF32,
+}
+
+impl Default for InputData {
+    fn default() -> Self {
+        Self {
+            in_l: AtomicF32::new(0.),
+            in_r: AtomicF32::new(0.),
+            out_l: AtomicF32::new(0.),
+            out_r: AtomicF32::new(0.),
+        }
+    }
+}
 
 #[derive(Lens)]
 struct Data {
     params: Arc<DelaxParams>,
+    input_data: Arc<InputData>
 }
 
 impl Model for Data {}
@@ -22,6 +42,7 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 pub(crate) fn create(
     params: Arc<DelaxParams>,
     editor_state: Arc<ViziaState>,
+    input_data: Arc<InputData>
 ) -> Option<Box<dyn Editor>> {
     create_vizia_editor(
         editor_state,
@@ -34,16 +55,13 @@ pub(crate) fn create(
 
             Data {
                 params: params.clone(),
+                input_data: input_data.clone()
             }
             .build(cx);
             VStack::new(cx, |cx| {
                 HStack::new(cx, |cx| {
                     VStack::new(cx, |cx| {
-                        // TODO: Peakmeter
-                        Element::new(cx)
-                            .width(Pixels(50.))
-                            .height(Stretch(1.))
-                            .background_color(Color::black());
+                        PeakMeter::new(cx, Data::input_data.map(|d| d.in_l.load(std::sync::atomic::Ordering::Relaxed))).width(Pixels(10.)).height(Pixels(200.));
                     })
                     .class("meter-box");
                     VStack::new(cx, |cx| {
