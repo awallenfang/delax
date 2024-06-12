@@ -104,6 +104,7 @@ pub(crate) fn create(
                                 |params| &params.delay_params.delay_len_l,
                                 params.delay_params.delay_len_l.default_normalized_value(),
                                 None,
+                                Data::params.map(|p| true),
                             );
                             ParamKnob::new(
                                 cx,
@@ -111,6 +112,7 @@ pub(crate) fn create(
                                 |params| &params.delay_params.feedback_l,
                                 params.delay_params.feedback_l.default_normalized_value(),
                                 None,
+                                Data::params.map(|p| true),
                             );
 
                             // Only show the stereo delay knobs if the whole delay is stereo
@@ -121,8 +123,6 @@ pub(crate) fn create(
                                 |params| &params.delay_params.delay_len_r,
                                 params.delay_params.delay_len_r.default_normalized_value(),
                                 Some("Delay".to_string()),
-                            )
-                            .active(
                                 Data::params.map(|p| {
                                     p.delay_params.stereo_delay.value() == DelayMode::Stereo
                                 }),
@@ -133,8 +133,6 @@ pub(crate) fn create(
                                 |params| &params.delay_params.feedback_r,
                                 params.delay_params.feedback_r.default_normalized_value(),
                                 Some("Feedback".to_string()),
-                            )
-                            .active(
                                 Data::params.map(|p| {
                                     p.delay_params.stereo_delay.value() == DelayMode::Stereo
                                 }),
@@ -161,6 +159,7 @@ pub(crate) fn create(
                                 |params| &params.filter_params.svf_cutoff_l,
                                 params.filter_params.svf_cutoff_l.default_normalized_value(),
                                 Some("Cutoff".to_string()),
+                                Data::params.map(|p| true),
                             );
                             ParamKnob::new(
                                 cx,
@@ -168,6 +167,7 @@ pub(crate) fn create(
                                 |params| &params.filter_params.svf_res_l,
                                 params.filter_params.svf_res_l.default_normalized_value(),
                                 Some("Res".to_string()),
+                                Data::params.map(|p| true),
                             );
                             ParamKnob::new(
                                 cx,
@@ -175,49 +175,39 @@ pub(crate) fn create(
                                 |params| &params.filter_params.svf_mix_l,
                                 params.filter_params.svf_mix_l.default_normalized_value(),
                                 Some("Mix".to_string()),
+                                Data::params.map(|p| true),
                             );
 
                             // Only show the stereo filter knobs if the whole filter is stereo
-                            let params_clone = params.clone();
-                            Binding::new(
+                            ParamKnob::new(
                                 cx,
+                                Data::params,
+                                |params| &params.filter_params.svf_cutoff_r,
+                                params.filter_params.svf_cutoff_r.default_normalized_value(),
+                                Some("Cutoff".to_string()),
                                 Data::params.map(|p| {
                                     p.filter_params.svf_stereo_mode.value() == SVFStereoMode::Stereo
                                 }),
-                                move |cx, val| {
-                                    if val.get(cx) {
-                                        ParamKnob::new(
-                                            cx,
-                                            Data::params,
-                                            |params| &params.filter_params.svf_cutoff_r,
-                                            params_clone
-                                                .filter_params
-                                                .svf_cutoff_r
-                                                .default_normalized_value(),
-                                            Some("Cutoff".to_string()),
-                                        );
-                                        ParamKnob::new(
-                                            cx,
-                                            Data::params,
-                                            |params| &params.filter_params.svf_res_r,
-                                            params_clone
-                                                .filter_params
-                                                .svf_res_r
-                                                .default_normalized_value(),
-                                            Some("Res".to_string()),
-                                        );
-                                        ParamKnob::new(
-                                            cx,
-                                            Data::params,
-                                            |params| &params.filter_params.svf_mix_r,
-                                            params_clone
-                                                .filter_params
-                                                .svf_mix_r
-                                                .default_normalized_value(),
-                                            Some("Mix".to_string()),
-                                        );
-                                    }
-                                },
+                            );
+                            ParamKnob::new(
+                                cx,
+                                Data::params,
+                                |params| &params.filter_params.svf_res_r,
+                                params.filter_params.svf_res_r.default_normalized_value(),
+                                Some("Res".to_string()),
+                                Data::params.map(|p| {
+                                    p.filter_params.svf_stereo_mode.value() == SVFStereoMode::Stereo
+                                }),
+                            );
+                            ParamKnob::new(
+                                cx,
+                                Data::params,
+                                |params| &params.filter_params.svf_mix_r,
+                                params.filter_params.svf_mix_r.default_normalized_value(),
+                                Some("Mix".to_string()),
+                                Data::params.map(|p| {
+                                    p.filter_params.svf_stereo_mode.value() == SVFStereoMode::Stereo
+                                }),
                             );
                         })
                         .col_between(Stretch(1.));
@@ -234,6 +224,7 @@ pub(crate) fn create(
                             |params| &params.wetness,
                             params.wetness.default_normalized_value(),
                             None,
+                            Data::params.map(|p| true),
                         )
                         .top(Stretch(1.));
                     })

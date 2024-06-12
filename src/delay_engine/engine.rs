@@ -124,7 +124,6 @@ impl DelayEngine {
         let delay_samples = ms_to_samples(delay_time, self.sample_rate);
         self.read_head = (self.write_head + delay_samples) % self.buffer.len();
         self.delay_time = delay_time;
-        nih_dbg!(delay_samples);
     }
 
     #[allow(dead_code)]

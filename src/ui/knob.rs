@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, sync::Arc};
 
 use nih_plug::{nih_dbg, prelude::Param};
 use nih_plug_vizia::{
@@ -22,7 +22,7 @@ pub struct ParamKnob {
     drag_active: bool,
     default_val: f32,
     drag_status: Option<DragState>,
-    active: bool
+    active: bool,
 }
 
 pub enum ParamKnobEvent {
@@ -30,15 +30,17 @@ pub enum ParamKnobEvent {
 }
 
 impl ParamKnob {
-    pub fn new<L, Params, P, FMap>(
+    pub fn new<L, La, Params, P, FMap>(
         cx: &mut Context,
         params: L,
         params_to_param: FMap,
         default_val: f32,
         custom_label: Option<String>,
+        active_lens: La,
     ) -> Handle<Self>
     where
         L: Lens<Target = Params> + Clone,
+        La: Lens<Target = bool> + Clone,
         Params: 'static,
         P: Param + 'static,
         FMap: Fn(&Params) -> &P + Copy + 'static,
@@ -48,13 +50,18 @@ impl ParamKnob {
             drag_active: false,
             default_val,
             drag_status: None,
-            active: true
+            active: true,
         }
         .build(
             cx,
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
                 let wetness_lens =
                     param_data.make_lens(|param| param.unmodulated_normalized_value());
+                let entity = cx.current();
+                Binding::new(cx, active_lens, move |cx, val| {
+                    let value = val.get(cx);
+                    cx.emit_to(entity, ParamKnobEvent::SetActive(value));
+                });
 
                 VStack::new(cx, |cx| {
                     KnobVisual::new(cx, default_val)
@@ -73,14 +80,14 @@ impl ParamKnob {
                                 )
                                 .class("knob-tooltip");
                             });
-                        });
+                        })
+                        .active(active_lens);
 
                     if let Some(text) = custom_label {
                         Label::new(cx, &text).class("knob-label");
                     } else {
                         Label::new(cx, *(&param_data.param().name())).class("knob-label");
                     }
-                    
                 });
             }),
         )
@@ -96,21 +103,21 @@ impl View for ParamKnob {
         event.map(|param_knob_event, _| match param_knob_event {
             ParamKnobEvent::SetActive(active) => {
                 self.active = *active;
-                // Send it down to the visual element
-                cx.emit(KnobVisualEvent::SetActive(*active));
                 cx.needs_redraw();
-            },
+            }
         });
         event.map(|window_event, event_meta| match window_event {
             WindowEvent::MouseDown(MouseButton::Left) => {
-                // Start dragging
-                self.drag_active = true;
-                event_meta.consume();
-                cx.capture();
-                cx.focus();
-                cx.set_active(true);
+                if self.active {
+                    // Start dragging
+                    self.drag_active = true;
+                    event_meta.consume();
+                    cx.capture();
+                    cx.focus();
+                    cx.set_active(true);
 
-                self.param_base.begin_set_parameter(cx);
+                    self.param_base.begin_set_parameter(cx);
+                }
             }
             WindowEvent::MouseUp(MouseButton::Left) => {
                 // Stop dragging
@@ -128,13 +135,15 @@ impl View for ParamKnob {
                 }
             }
             WindowEvent::MouseDoubleClick(_) => {
-                // Reset to default
-                self.param_base.begin_set_parameter(cx);
-                self.param_base
-                    .set_normalized_value(cx, self.param_base.default_normalized_value());
-                self.param_base.end_set_parameter(cx);
+                if self.active {
+                    // Reset to default
+                    self.param_base.begin_set_parameter(cx);
+                    self.param_base
+                        .set_normalized_value(cx, self.param_base.default_normalized_value());
+                    self.param_base.end_set_parameter(cx);
 
-                event_meta.consume();
+                    event_meta.consume();
+                }
             }
             WindowEvent::MouseMove(x, y) => {
                 if self.drag_active {
@@ -153,14 +162,16 @@ impl View for ParamKnob {
                 }
             }
             WindowEvent::MouseScroll(_x, y) => {
-                let delta = *y as f32 / 25.;
-                self.param_base.begin_set_parameter(cx);
-                self.param_base.set_normalized_value(
-                    cx,
-                    self.param_base.unmodulated_normalized_value() + delta,
-                );
-                self.param_base.end_set_parameter(cx);
-                event_meta.consume();
+                if self.active {
+                    let delta = *y as f32 / 25.;
+                    self.param_base.begin_set_parameter(cx);
+                    self.param_base.set_normalized_value(
+                        cx,
+                        self.param_base.unmodulated_normalized_value() + delta,
+                    );
+                    self.param_base.end_set_parameter(cx);
+                    event_meta.consume();
+                }
             }
 
             _ => (),
@@ -192,9 +203,9 @@ impl View for KnobVisual {
     fn element(&self) -> Option<&'static str> {
         Some("knob-visual")
     }
-    
+
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
-        event.map(|visual_event, _| match visual_event {
+        event.map(|visual_event, meta| match visual_event {
             KnobVisualEvent::SetValue(val) => {
                 self.val = *val;
                 cx.needs_redraw();
@@ -202,8 +213,9 @@ impl View for KnobVisual {
             KnobVisualEvent::SetActive(active) => {
                 println!("Setting active: {}", active);
                 self.active = *active;
+                nih_dbg!(*active);
                 cx.needs_redraw();
-            },
+            }
         });
     }
 
