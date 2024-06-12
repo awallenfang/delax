@@ -2,7 +2,6 @@ use std::sync::{atomic::Ordering, Arc};
 
 use crate::{delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams};
 use decay_visualizer::DecayVisualizer;
-use knob::ParamKnobExt;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
 use nih_plug_vizia::{
     assets, create_vizia_editor,

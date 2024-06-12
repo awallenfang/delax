@@ -1,6 +1,6 @@
-use std::{f32::consts::PI, sync::Arc};
+use std::f32::consts::PI;
 
-use nih_plug::{nih_dbg, prelude::Param};
+use nih_plug::prelude::Param;
 use nih_plug_vizia::{
     vizia::{
         prelude::*,
@@ -153,8 +153,7 @@ impl View for ParamKnob {
                         start_y: *y,
                     });
 
-                    // let delta_x = *x - drag_status.start_x * cx.scale_factor();
-                    let delta_y = *y - drag_status.start_y * cx.scale_factor();
+                    let delta_y = *y - drag_status.start_y;
 
                     self.param_base
                         .set_normalized_value(cx, drag_status.start_val - delta_y / 1000.);
@@ -205,15 +204,13 @@ impl View for KnobVisual {
     }
 
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
-        event.map(|visual_event, meta| match visual_event {
+        event.map(|visual_event, _| match visual_event {
             KnobVisualEvent::SetValue(val) => {
                 self.val = *val;
                 cx.needs_redraw();
             }
             KnobVisualEvent::SetActive(active) => {
-                println!("Setting active: {}", active);
                 self.active = *active;
-                nih_dbg!(*active);
                 cx.needs_redraw();
             }
         });
@@ -297,7 +294,6 @@ impl KnobVisualExt for Handle<'_, KnobVisual> {
         let entity = self.entity();
         Binding::new(self.context(), lens, move |cx, val| {
             let value = val.get(cx);
-            nih_dbg!(value);
             cx.emit_to(entity, KnobVisualEvent::SetValue(value));
         });
 
@@ -309,22 +305,6 @@ impl KnobVisualExt for Handle<'_, KnobVisual> {
         Binding::new(self.context(), lens, move |cx, val| {
             let value = val.get(cx);
             cx.emit_to(entity, KnobVisualEvent::SetActive(value));
-        });
-
-        self
-    }
-}
-
-pub trait ParamKnobExt {
-    fn active<L: Lens<Target = bool>>(self, lens: L) -> Self;
-}
-
-impl ParamKnobExt for Handle<'_, ParamKnob> {
-    fn active<L: Lens<Target = bool>>(mut self, lens: L) -> Self {
-        let entity = self.entity();
-        Binding::new(self.context(), lens, move |cx, val| {
-            let value = val.get(cx);
-            cx.emit_to(entity, ParamKnobEvent::SetActive(value));
         });
 
         self
