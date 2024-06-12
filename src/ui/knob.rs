@@ -22,6 +22,11 @@ pub struct ParamKnob {
     drag_active: bool,
     default_val: f32,
     drag_status: Option<DragState>,
+    active: bool
+}
+
+pub enum ParamKnobEvent {
+    SetActive(bool),
 }
 
 impl ParamKnob {
@@ -43,6 +48,7 @@ impl ParamKnob {
             drag_active: false,
             default_val,
             drag_status: None,
+            active: true
         }
         .build(
             cx,
@@ -74,6 +80,7 @@ impl ParamKnob {
                     } else {
                         Label::new(cx, *(&param_data.param().name())).class("knob-label");
                     }
+                    
                 });
             }),
         )
@@ -86,6 +93,14 @@ impl View for ParamKnob {
     }
 
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+        event.map(|param_knob_event, _| match param_knob_event {
+            ParamKnobEvent::SetActive(active) => {
+                self.active = *active;
+                // Send it down to the visual element
+                cx.emit(KnobVisualEvent::SetActive(*active));
+                cx.needs_redraw();
+            },
+        });
         event.map(|window_event, event_meta| match window_event {
             WindowEvent::MouseDown(MouseButton::Left) => {
                 // Start dragging
@@ -147,6 +162,7 @@ impl View for ParamKnob {
                 self.param_base.end_set_parameter(cx);
                 event_meta.consume();
             }
+
             _ => (),
         })
     }
@@ -154,15 +170,21 @@ impl View for ParamKnob {
 
 enum KnobVisualEvent {
     SetValue(f32),
+    SetActive(bool),
 }
 
 struct KnobVisual {
     val: f32,
+    active: bool,
 }
 
 impl KnobVisual {
     pub fn new(cx: &mut Context, default_val: f32) -> Handle<Self> {
-        Self { val: default_val }.build(cx, |_| {})
+        Self {
+            val: default_val,
+            active: true,
+        }
+        .build(cx, |_| {})
     }
 }
 
@@ -170,12 +192,18 @@ impl View for KnobVisual {
     fn element(&self) -> Option<&'static str> {
         Some("knob-visual")
     }
+    
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|visual_event, _| match visual_event {
             KnobVisualEvent::SetValue(val) => {
                 self.val = *val;
                 cx.needs_redraw();
             }
+            KnobVisualEvent::SetActive(active) => {
+                println!("Setting active: {}", active);
+                self.active = *active;
+                cx.needs_redraw();
+            },
         });
     }
 
@@ -202,14 +230,22 @@ impl View for KnobVisual {
             start,
             Solidity::Solid,
         );
-        let arc_color = cx.border_color();
+        let mut arc_color = cx.border_color();
+
+        if !self.active {
+            arc_color = Color::rgba(arc_color.r(), arc_color.g(), arc_color.b(), 100);
+        }
+
         let mut arc_paint = Paint::color(arc_color.into());
         arc_paint.set_line_width(girthiness);
         arc_paint.set_line_cap(LineCap::Round);
 
         canvas.stroke_path(&path, &arc_paint);
 
-        let body_color = cx.background_color();
+        let mut body_color = cx.background_color();
+        if !self.active {
+            body_color = Color::rgba(body_color.r(), body_color.g(), body_color.b(), 100);
+        }
         let body_paint = Paint::color(body_color.into());
         path = Path::new();
         path.circle(center_x, center_y, radius - girthiness * 2.);
@@ -220,7 +256,12 @@ impl View for KnobVisual {
         let arc_pos_y =
             center_y + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).sin();
 
-        let line_paint = cx.caret_color();
+        let mut line_paint = cx.caret_color();
+
+        if !self.active {
+            line_paint = Color::rgba(line_paint.r(), line_paint.g(), line_paint.b(), 100);
+        }
+
         let mut line_paint = Paint::color(line_paint.into());
         path = Path::new();
 
@@ -236,6 +277,7 @@ impl View for KnobVisual {
 
 pub trait KnobVisualExt {
     fn value<L: Lens<Target = f32>>(self, lens: L) -> Self;
+    fn active<L: Lens<Target = bool>>(self, lens: L) -> Self;
 }
 
 impl KnobVisualExt for Handle<'_, KnobVisual> {
@@ -245,6 +287,32 @@ impl KnobVisualExt for Handle<'_, KnobVisual> {
             let value = val.get(cx);
             nih_dbg!(value);
             cx.emit_to(entity, KnobVisualEvent::SetValue(value));
+        });
+
+        self
+    }
+
+    fn active<L: Lens<Target = bool>>(mut self, lens: L) -> Self {
+        let entity = self.entity();
+        Binding::new(self.context(), lens, move |cx, val| {
+            let value = val.get(cx);
+            cx.emit_to(entity, KnobVisualEvent::SetActive(value));
+        });
+
+        self
+    }
+}
+
+pub trait ParamKnobExt {
+    fn active<L: Lens<Target = bool>>(self, lens: L) -> Self;
+}
+
+impl ParamKnobExt for Handle<'_, ParamKnob> {
+    fn active<L: Lens<Target = bool>>(mut self, lens: L) -> Self {
+        let entity = self.entity();
+        Binding::new(self.context(), lens, move |cx, val| {
+            let value = val.get(cx);
+            cx.emit_to(entity, ParamKnobEvent::SetActive(value));
         });
 
         self

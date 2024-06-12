@@ -21,8 +21,8 @@ pub struct DelaxParams {
 impl Default for DelaxParams {
     fn default() -> Self {
         Self {
-            delay_params: Default::default(),
-            filter_params: Default::default(),
+            delay_params: EngineParams::default(),
+            filter_params: FilterParams::default(),
             wetness: FloatParam::new("Wetness", 0.5, FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.)),
             editor_state: ui::default_state(),

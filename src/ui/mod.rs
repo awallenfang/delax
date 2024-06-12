@@ -2,6 +2,7 @@ use std::sync::{atomic::Ordering, Arc};
 
 use crate::{delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams};
 use decay_visualizer::DecayVisualizer;
+use knob::ParamKnobExt;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
 use nih_plug_vizia::{
     assets, create_vizia_editor,
@@ -113,36 +114,30 @@ pub(crate) fn create(
                             );
 
                             // Only show the stereo delay knobs if the whole delay is stereo
-                            let params_clone = params.clone();
-                            Binding::new(
+
+                            ParamKnob::new(
                                 cx,
+                                Data::params,
+                                |params| &params.delay_params.delay_len_r,
+                                params.delay_params.delay_len_r.default_normalized_value(),
+                                Some("Delay".to_string()),
+                            )
+                            .active(
                                 Data::params.map(|p| {
                                     p.delay_params.stereo_delay.value() == DelayMode::Stereo
                                 }),
-                                move |cx, val| {
-                                    if val.get(cx) {
-                                        ParamKnob::new(
-                                            cx,
-                                            Data::params,
-                                            |params| &params.delay_params.delay_len_r,
-                                            params_clone
-                                                .delay_params
-                                                .delay_len_r
-                                                .default_normalized_value(),
-                                            Some("Delay".to_string()),
-                                        );
-                                        ParamKnob::new(
-                                            cx,
-                                            Data::params,
-                                            |params| &params.delay_params.feedback_r,
-                                            params_clone
-                                                .delay_params
-                                                .feedback_r
-                                                .default_normalized_value(),
-                                            Some("Feedback".to_string()),
-                                        );
-                                    }
-                                },
+                            );
+                            ParamKnob::new(
+                                cx,
+                                Data::params,
+                                |params| &params.delay_params.feedback_r,
+                                params.delay_params.feedback_r.default_normalized_value(),
+                                Some("Feedback".to_string()),
+                            )
+                            .active(
+                                Data::params.map(|p| {
+                                    p.delay_params.stereo_delay.value() == DelayMode::Stereo
+                                }),
                             );
                         })
                         .col_between(Stretch(1.));
