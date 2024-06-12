@@ -16,6 +16,7 @@ pub struct DragState {
     start_y: f32,
 }
 
+/// A knob for nih_plug parameters.
 #[derive(Lens)]
 pub struct ParamKnob {
     param_base: ParamWidgetBase,
@@ -30,6 +31,16 @@ pub enum ParamKnobEvent {
 }
 
 impl ParamKnob {
+    /// Create a new knob for a nih_plug parameter
+    /// 
+    /// Requires the following:
+    /// 
+    /// - context
+    /// - Lens to all params
+    /// - Function mapping all params to a param
+    /// - Default value
+    /// - Option for custom label
+    /// - Lens to whether or not it is active. Can just be a lens on true
     pub fn new<L, La, Params, P, FMap>(
         cx: &mut Context,
         params: L,
@@ -55,20 +66,24 @@ impl ParamKnob {
         .build(
             cx,
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
-                let wetness_lens =
+                // Grab a lens to the bound value
+                let param_lens =
                     param_data.make_lens(|param| param.unmodulated_normalized_value());
+
+                // Make a binding to the active_lens
                 let entity = cx.current();
                 Binding::new(cx, active_lens, move |cx, val| {
                     let value = val.get(cx);
                     cx.emit_to(entity, ParamKnobEvent::SetActive(value));
                 });
 
+                // Stack the knob and a label vertically
                 VStack::new(cx, |cx| {
                     KnobVisual::new(cx, default_val)
-                        .value(wetness_lens)
+                        .value(param_lens)
                         .class("knob-visual")
                         .tooltip(|cx| {
-                            Binding::new(cx, wetness_lens, move |cx, val| {
+                            Binding::new(cx, param_lens, move |cx, val| {
                                 Label::new(
                                     cx,
                                     &format!(
@@ -100,12 +115,15 @@ impl View for ParamKnob {
     }
 
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+        // Internal events
         event.map(|param_knob_event, _| match param_knob_event {
             ParamKnobEvent::SetActive(active) => {
                 self.active = *active;
                 cx.needs_redraw();
             }
         });
+
+        // External events
         event.map(|window_event, event_meta| match window_event {
             WindowEvent::MouseDown(MouseButton::Left) => {
                 if self.active {
@@ -217,6 +235,7 @@ impl View for KnobVisual {
     }
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
+        // Grab all the bounds
         let bounds = cx.bounds();
 
         let center_x = bounds.x + bounds.w / 2.;
@@ -227,6 +246,25 @@ impl View for KnobVisual {
         let girthiness = 0.1 * radius;
         radius -= girthiness;
 
+        // Grab all the colors
+        let mut arc_color = cx.border_color();
+
+        if !self.active {
+            arc_color = Color::rgba(arc_color.r(), arc_color.g(), arc_color.b(), 100);
+        }
+
+        let mut body_color = cx.background_color();
+        if !self.active {
+            body_color = Color::rgba(body_color.r(), body_color.g(), body_color.b(), 100);
+        }
+
+        let mut line_paint = cx.caret_color();
+
+        if !self.active {
+            line_paint = Color::rgba(line_paint.r(), line_paint.g(), line_paint.b(), 100);
+        }
+
+        // Arc path
         let mut path = Path::new();
         let start = 0.75 * PI;
         let range = 1.5 * PI;
@@ -239,11 +277,7 @@ impl View for KnobVisual {
             start,
             Solidity::Solid,
         );
-        let mut arc_color = cx.border_color();
-
-        if !self.active {
-            arc_color = Color::rgba(arc_color.r(), arc_color.g(), arc_color.b(), 100);
-        }
+        
 
         let mut arc_paint = Paint::color(arc_color.into());
         arc_paint.set_line_width(girthiness);
@@ -251,10 +285,8 @@ impl View for KnobVisual {
 
         canvas.stroke_path(&path, &arc_paint);
 
-        let mut body_color = cx.background_color();
-        if !self.active {
-            body_color = Color::rgba(body_color.r(), body_color.g(), body_color.b(), 100);
-        }
+        
+        // Body path
         let body_paint = Paint::color(body_color.into());
         path = Path::new();
         path.circle(center_x, center_y, radius - girthiness * 2.);
@@ -265,12 +297,8 @@ impl View for KnobVisual {
         let arc_pos_y =
             center_y + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).sin();
 
-        let mut line_paint = cx.caret_color();
-
-        if !self.active {
-            line_paint = Color::rgba(line_paint.r(), line_paint.g(), line_paint.b(), 100);
-        }
-
+        
+        // Line path
         let mut line_paint = Paint::color(line_paint.into());
         path = Path::new();
 
