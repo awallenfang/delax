@@ -9,12 +9,14 @@ use nih_plug_vizia::{
     widgets::{ParamButton, ResizeHandle},
     ViziaState,
 };
+use switch::ParamSwitch;
 
 use self::{knob::ParamKnob, meter::PeakMeter};
 
 mod decay_visualizer;
 mod knob;
 mod meter;
+mod switch;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -85,9 +87,12 @@ pub(crate) fn create(
                         HStack::new(cx, |cx| {
                             // TODO: Toggle button
                             Label::new(cx, "Mono").left(Stretch(1.));
-                            ParamButton::new(cx, Data::params, |params| {
-                                &params.delay_params.stereo_delay
-                            });
+                            ParamSwitch::new(
+                                cx,
+                                Data::params,
+                                |params| &params.delay_params.stereo_delay,
+                                false,
+                            );
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
                         .col_between(Pixels(20.));
@@ -142,9 +147,12 @@ pub(crate) fn create(
                         HStack::new(cx, |cx| {
                             // TODO: Toggle Button
                             Label::new(cx, "Mono").left(Stretch(1.));
-                            ParamButton::new(cx, Data::params, |params| {
-                                &params.filter_params.svf_stereo_mode
-                            });
+                            ParamSwitch::new(
+                                cx,
+                                Data::params,
+                                |params| &params.filter_params.svf_stereo_mode,
+                                false,
+                            );
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
                         .col_between(Pixels(20.));

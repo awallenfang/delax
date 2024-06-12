@@ -32,9 +32,9 @@ pub enum ParamKnobEvent {
 
 impl ParamKnob {
     /// Create a new knob for a nih_plug parameter
-    /// 
+    ///
     /// Requires the following:
-    /// 
+    ///
     /// - context
     /// - Lens to all params
     /// - Function mapping all params to a param
@@ -67,8 +67,7 @@ impl ParamKnob {
             cx,
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
                 // Grab a lens to the bound value
-                let param_lens =
-                    param_data.make_lens(|param| param.unmodulated_normalized_value());
+                let param_lens = param_data.make_lens(|param| param.unmodulated_normalized_value());
 
                 // Make a binding to the active_lens
                 let entity = cx.current();
@@ -277,7 +276,6 @@ impl View for KnobVisual {
             start,
             Solidity::Solid,
         );
-        
 
         let mut arc_paint = Paint::color(arc_color.into());
         arc_paint.set_line_width(girthiness);
@@ -285,7 +283,6 @@ impl View for KnobVisual {
 
         canvas.stroke_path(&path, &arc_paint);
 
-        
         // Body path
         let body_paint = Paint::color(body_color.into());
         path = Path::new();
@@ -297,7 +294,6 @@ impl View for KnobVisual {
         let arc_pos_y =
             center_y + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).sin();
 
-        
         // Line path
         let mut line_paint = Paint::color(line_paint.into());
         path = Path::new();

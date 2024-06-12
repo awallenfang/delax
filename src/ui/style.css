@@ -23,6 +23,18 @@ knob-visual {
     caret-color: #F1F8F9;
 }
 
+param-switch {
+    width: 40px;
+    height: 20px;
+}
+
+switch-visual {
+    background-color: #86AAAC;
+    border-color: #9AD1D4;
+    caret-color: #F1F8F9;
+    border-width: 2px;
+}
+
 .centered {
     left: 1s;
     right: 1s;
