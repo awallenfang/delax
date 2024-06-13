@@ -7,9 +7,9 @@ use nih_plug_vizia::{
     widgets::param_base::ParamWidgetBase,
 };
 
+/// A switch to control a boolean nih-plug parameter
 pub struct ParamSwitch {
     param_base: ParamWidgetBase,
-    val: bool,
 }
 
 impl ParamSwitch {
@@ -27,13 +27,13 @@ impl ParamSwitch {
     {
         Self {
             param_base: ParamWidgetBase::new(cx, params, params_to_param),
-            val: default_val,
         }
         .build(
             cx,
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
                 let param_lens = param_data.make_lens(|param| param.unmodulated_normalized_value());
 
+                // Simply create a visual instance on the lens
                 ParamSwitchVisual::new(cx, default_val)
                     .value(param_lens)
                     .class("switch-visual")
@@ -43,6 +43,7 @@ impl ParamSwitch {
         )
     }
 
+    /// Toggles the value of the parameter
     fn toggle(&mut self, cx: &mut EventContext) {
         let current = self.param_base.unmodulated_normalized_value();
 
@@ -89,7 +90,8 @@ impl View for ParamSwitchVisual {
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
         // Grab all the bounds
-        // This assumes a horizontal alignment
+        // This assumes a horizontal alignment, so it restricts the height if it is larger.
+        // NOTE: At a later point this can be change to also allow vertical switches, but that might be kinda weird
         let bounds = cx.bounds();
 
         let x = bounds.x;
@@ -115,6 +117,7 @@ impl View for ParamSwitchVisual {
 
         canvas.stroke_path(&path, &paint);
 
+        // Place the circle based on the value
         path = Path::new();
         let paint = Paint::color(border_col.into());
         let center_x = if !self.val {
@@ -134,7 +137,7 @@ impl View for ParamSwitchVisual {
         canvas.fill_path(&path, &paint);
     }
 
-    fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+    fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
         event.map(|visual_event, _| match visual_event {
             ParamSwitchVisualEvent::SetValue(val) => {
                 if *val < 0.5 {
