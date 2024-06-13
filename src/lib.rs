@@ -3,15 +3,19 @@ use delay_engine::{
     params::DelayMode,
 };
 use filter_pipeline::pipeline::FilterPipeline;
-use filters::{simper::SimperSinSVF, dattorro::DattorroReverb};
+use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
 use nih_plug::prelude::*;
 use params::DelaxParams;
+use peak_follower::PeakFollower;
 use std::sync::{Arc, Mutex};
+use ui::InputData;
 
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
+mod peak_follower;
+mod ui;
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -25,7 +29,12 @@ pub struct Delax {
     filter_pipeline: FilterPipeline,
     initial_filter_pipeline: FilterPipeline,
     datorro: DattorroReverb,
-    initial_dattorro: DattorroReverb
+    initial_dattorro: DattorroReverb,
+    input_data: Arc<InputData>,
+    peak_follower_in_l: PeakFollower,
+    peak_follower_in_r: PeakFollower,
+    peak_follower_out_l: PeakFollower,
+    peak_follower_out_r: PeakFollower,
 }
 
 impl Default for Delax {
@@ -54,6 +63,11 @@ impl Default for Delax {
             initial_filter_pipeline: FilterPipeline::new(),
             datorro: DattorroReverb::new(44100., 0.5),
             initial_dattorro: DattorroReverb::new(44100., 0.5),
+            input_data: Arc::new(InputData::default()),
+            peak_follower_in_l: PeakFollower::new(2., 0.2, 44100., 10),
+            peak_follower_in_r: PeakFollower::new(2., 0.2, 44100., 10),
+            peak_follower_out_l: PeakFollower::new(2., 0.2, 44100., 10),
+            peak_follower_out_r: PeakFollower::new(2., 0.2, 44100., 10),
         }
     }
 }
@@ -99,6 +113,14 @@ impl Plugin for Delax {
         self.params.clone()
     }
 
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        ui::create(
+            self.params.clone(),
+            self.params.editor_state.clone(),
+            self.input_data.clone(),
+        )
+    }
+
     fn initialize(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
@@ -135,9 +157,13 @@ impl Plugin for Delax {
             Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
         );
 
+        self.peak_follower_in_l.set_sample_rate(self.sample_rate);
+        self.peak_follower_in_r.set_sample_rate(self.sample_rate);
+        self.peak_follower_out_l.set_sample_rate(self.sample_rate);
+        self.peak_follower_out_r.set_sample_rate(self.sample_rate);
+
         // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
         // self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
-
 
         true
     }
@@ -166,6 +192,8 @@ impl Plugin for Delax {
             // If for some reason the iterator is empty something went very wrong and ig a panic is in order
             let left_sample = channel_iter.next().unwrap();
             let right_sample = channel_iter.next().unwrap();
+
+            self.input_ui_send(*left_sample, *right_sample);
 
             // The output of the banks
             let pop_left = self
@@ -232,6 +260,7 @@ impl Plugin for Delax {
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
 
+            self.output_ui_send(*left_sample, *right_sample);
         }
 
         ProcessStatus::Normal
@@ -304,6 +333,36 @@ impl Delax {
     fn run_input_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
         self.initial_filter_pipeline
             .process_stereo(input_l, input_r)
+    }
+
+    fn input_ui_send(&mut self, l: f32, r: f32) {
+        let l = 1. + util::gain_to_db(l) / 100.;
+        let r = 1. + util::gain_to_db(r) / 100.;
+
+        let l = self.peak_follower_in_l.process(l);
+        let r = self.peak_follower_in_r.process(r);
+
+        self.input_data
+            .in_l
+            .store(l, std::sync::atomic::Ordering::Relaxed);
+        self.input_data
+            .in_r
+            .store(r, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn output_ui_send(&mut self, l: f32, r: f32) {
+        let l = 1. + util::gain_to_db_fast(l) / 100.;
+        let r = 1. + util::gain_to_db_fast(r) / 100.;
+
+        let l = self.peak_follower_out_l.process(l);
+        let r = self.peak_follower_out_r.process(r);
+
+        self.input_data
+            .out_l
+            .store(l, std::sync::atomic::Ordering::Relaxed);
+        self.input_data
+            .out_r
+            .store(r, std::sync::atomic::Ordering::Relaxed);
     }
 }
 

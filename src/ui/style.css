@@ -1,0 +1,62 @@
+.knob-label {
+    font-size: 12;
+    left: 1s;
+    right: 1s;
+}
+
+#resize-handle-box {
+    height: 25px;
+}
+
+#main-hstack {
+    col-between: 1s;
+}
+
+param-knob {
+    width: 50px;
+    height: 50px;
+}
+
+knob-visual {
+    background-color: #86AAAC;
+    border-color: #9AD1D4;
+    caret-color: #F1F8F9;
+}
+
+param-switch {
+    width: 40px;
+    height: 20px;
+}
+
+switch-visual {
+    background-color: #86AAAC;
+    border-color: #9AD1D4;
+    caret-color: #F1F8F9;
+    border-width: 2px;
+}
+
+.centered {
+    left: 1s;
+    right: 1s;
+}
+
+resize-handle {
+    left: 1s;
+}
+
+.meter-box {
+    width: 50px;
+    height: 250px;
+}
+
+.main-box {
+    width: 400px;
+}
+
+#main {
+    background-color: #003249;
+}
+
+label {
+    color: #F1F8F9;
+}

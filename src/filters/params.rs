@@ -72,8 +72,8 @@ impl Default for FilterParams {
                 FloatRange::Linear { min: 0., max: 1. },
             )
             .with_smoother(SmoothingStyle::Linear(50.)),
-            svf_filter_mode_l: EnumParam::new("SVF Filter Mode", SVFFilterMode::Low),
-            svf_filter_mode_r: EnumParam::new("SVF Filter Mode Channel 2", SVFFilterMode::Low),
+            svf_filter_mode_l: EnumParam::new("SVF Filter Mode", SVFFilterMode::Band),
+            svf_filter_mode_r: EnumParam::new("SVF Filter Mode Channel 2", SVFFilterMode::Band),
             svf_stereo_mode: EnumParam::new("SVF Seperated", SVFStereoMode::Mono),
             svf_mix_l: FloatParam::new("Mix", 1., FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.)),

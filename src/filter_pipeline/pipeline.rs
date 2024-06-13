@@ -26,9 +26,7 @@ impl FilterPipeline {
         filter_r: Arc<Mutex<dyn Filter>>,
     ) {
         self.registered_filters
-            .push(FilterPipelineElement::StereoMonoFilter(
-                filter_l, filter_r,
-            ));
+            .push(FilterPipelineElement::StereoMonoFilter(filter_l, filter_r));
         self.order.push(self.registered_filters.len() - 1);
     }
 
