@@ -1,10 +1,10 @@
 use std::f32::consts::PI;
 
 use nih_plug::prelude::Param;
-use nih_plug_vizia::{
+use vizia_plug::{
     vizia::{
         prelude::*,
-        vg::{LineCap, Paint, Path, Solidity},
+        vg::{self, Paint, PaintCap, Path},
     },
     widgets::param_base::ParamWidgetBase,
 };
@@ -77,23 +77,25 @@ impl ParamKnob {
                 });
 
                 // Stack the knob and a label vertically
-                VStack::new(cx, |cx| {
+                VStack::new(cx, move |cx| {
                     KnobVisual::new(cx, default_val)
                         .value(param_lens)
                         .class("knob-visual")
-                        .tooltip(|cx| {
-                            Binding::new(cx, param_lens, move |cx, val| {
-                                Label::new(
-                                    cx,
-                                    &format!(
-                                        "{}",
-                                        param_data
-                                            .param()
-                                            .normalized_value_to_string(val.get(cx), true)
-                                    ),
-                                )
-                                .class("knob-tooltip");
-                            });
+                        .tooltip(move |cx| {
+                            Tooltip::new(cx, |cx| {
+                                Binding::new(cx, param_lens, move |cx, val| {
+                                    Label::new(
+                                        cx,
+                                        &format!(
+                                            "{}",
+                                            param_data
+                                                .param()
+                                                .normalized_value_to_string(val.get(cx), true)
+                                        ),
+                                    )
+                                    .class("knob-tooltip");
+                                })
+                            })
                         })
                         .active(active_lens);
 
@@ -233,7 +235,7 @@ impl View for KnobVisual {
         });
     }
 
-    fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
+    fn draw(&self, cx: &mut DrawContext, canvas: &vg::Canvas) {
         // Grab all the bounds
         let bounds = cx.bounds();
 
@@ -257,37 +259,40 @@ impl View for KnobVisual {
             body_color = Color::rgba(body_color.r(), body_color.g(), body_color.b(), 100);
         }
 
-        let mut line_paint = cx.caret_color();
+        let mut line_color = cx.caret_color();
 
         if !self.active {
-            line_paint = Color::rgba(line_paint.r(), line_paint.g(), line_paint.b(), 100);
+            line_color = Color::rgba(line_color.r(), line_color.g(), line_color.b(), 100);
         }
 
         // Arc path
         let mut path = Path::new();
-        let start = 0.75 * PI;
-        let range = 1.5 * PI;
+        let start = 135.;
+        let range = 270.;
 
-        path.arc(
-            center_x,
-            center_y,
-            radius,
-            start + self.val * range,
-            start,
-            Solidity::Solid,
-        );
+        let arc_oval = vg::Rect::new(center_x-radius, center_y-radius, center_x+radius, center_y+radius);
 
-        let mut arc_paint = Paint::color(arc_color.into());
-        arc_paint.set_line_width(girthiness);
-        arc_paint.set_line_cap(LineCap::Round);
+        path.arc_to(arc_oval, start, self.val * range, true);
+        // path.arc_to(arc_oval, 0., PI);
 
-        canvas.stroke_path(&path, &arc_paint);
+        let mut arc_paint = Paint::default();
+        arc_paint.set_color(arc_color);
+        arc_paint.set_stroke_width(girthiness);
+        arc_paint.set_stroke_cap(PaintCap::Round);
+        arc_paint.set_style(vg::PaintStyle::Stroke);
+        arc_paint.set_anti_alias(true);
+
+        canvas.draw_path(&path, &arc_paint);
 
         // Body path
-        let body_paint = Paint::color(body_color.into());
+        let mut body_paint = Paint::default();
+        body_paint.set_color(body_color);
+        body_paint.set_style(vg::PaintStyle::Fill);
+        body_paint.set_anti_alias(true);
+
         path = Path::new();
-        path.circle(center_x, center_y, radius - girthiness * 2.);
-        canvas.fill_path(&path, &body_paint);
+        path.add_circle((center_x, center_y), radius - girthiness * 2., None);
+        canvas.draw_path(&path, &body_paint);
 
         let arc_pos_x =
             center_x + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).cos();
@@ -295,16 +300,19 @@ impl View for KnobVisual {
             center_y + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).sin();
 
         // Line path
-        let mut line_paint = Paint::color(line_paint.into());
+        let mut line_paint = Paint::default();
+        line_paint.set_color(line_color);
+        line_paint.set_stroke_width(girthiness);
+        line_paint.set_stroke_cap(PaintCap::Round);
+        line_paint.set_style(vg::PaintStyle::Fill);
+        line_paint.set_anti_alias(true);
+        
         path = Path::new();
 
-        path.move_to(center_x, center_y);
-        path.line_to(arc_pos_x, arc_pos_y);
+        path.move_to((center_x, center_y));
+        path.line_to((arc_pos_x, arc_pos_y));
 
-        line_paint.set_line_width(girthiness);
-        line_paint.set_line_cap(LineCap::Round);
-
-        canvas.stroke_path(&path, &line_paint);
+        canvas.draw_path(&path, &line_paint);
     }
 }
 

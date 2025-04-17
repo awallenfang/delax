@@ -1,17 +1,12 @@
 use std::sync::{atomic::Ordering, Arc};
 
 use crate::{delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams};
-use decay_visualizer::DecayVisualizer;
+// use decay_visualizer::DecayVisualizer;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
-use nih_plug_vizia::{
-    assets, create_vizia_editor,
-    vizia::prelude::*,
-    widgets::{ParamButton, ResizeHandle},
-    ViziaState,
-};
 use switch::ParamSwitch;
+use vizia_plug::{create_vizia_editor, vizia::prelude::*, widgets::ParamButton, ViziaState};
 
-use self::{knob::ParamKnob, meter::PeakMeter};
+use self::knob::ParamKnob;
 
 mod decay_visualizer;
 mod knob;
@@ -55,10 +50,10 @@ pub(crate) fn create(
 ) -> Option<Box<dyn Editor>> {
     create_vizia_editor(
         editor_state,
-        nih_plug_vizia::ViziaTheming::Custom,
+        vizia_plug::ViziaTheming::Custom,
         move |cx, _| {
-            assets::register_noto_sans_light(cx);
-            assets::register_noto_sans_thin(cx);
+            // assets::register_noto_sans_light(cx);
+            // assets::register_noto_sans_thin(cx);
             let _ = cx.add_stylesheet(include_style!("src/ui/style.css"));
 
             Data {
@@ -95,7 +90,7 @@ pub(crate) fn create(
                             );
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
-                        .col_between(Pixels(20.));
+                        .horizontal_gap(Pixels(20.));
                         // TODO: Delay visualizer
                         // DecayVisualizer::new(cx);
 
@@ -142,7 +137,7 @@ pub(crate) fn create(
                                 }),
                             );
                         })
-                        .col_between(Stretch(1.));
+                        .horizontal_gap(Stretch(1.));
                         Label::new(cx, "Filter").class("centered");
                         HStack::new(cx, |cx| {
                             // TODO: Toggle Button
@@ -155,7 +150,7 @@ pub(crate) fn create(
                             );
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
-                        .col_between(Pixels(20.));
+                        .horizontal_gap(Pixels(20.));
 
                         // All the filter knobs
                         HStack::new(cx, |cx| {
@@ -217,7 +212,7 @@ pub(crate) fn create(
                                 }),
                             );
                         })
-                        .col_between(Stretch(1.));
+                        .horizontal_gap(Stretch(1.));
                     })
                     .class("main-box");
                     VStack::new(cx, |cx| {
@@ -238,10 +233,10 @@ pub(crate) fn create(
                     .class("meter-box");
                 })
                 .id("main-hstack");
-                HStack::new(cx, |cx| {
-                    ResizeHandle::new(cx);
-                })
-                .id("resize-handle-box");
+                // HStack::new(cx, |cx| {
+                //     ResizeHandle::new(cx);
+                // })
+                // .id("resize-handle-box");
             })
             .id("main");
         },
