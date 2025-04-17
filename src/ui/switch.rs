@@ -1,8 +1,8 @@
 use nih_plug::params::Param;
-use nih_plug_vizia::{
+use vizia_plug::{
     vizia::{
         prelude::*,
-        vg::{LineCap, Paint, Path},
+        vg::{Canvas, Paint, PaintCap, PaintStyle, Path, Point},
     },
     widgets::param_base::ParamWidgetBase,
 };
@@ -88,7 +88,7 @@ impl View for ParamSwitchVisual {
         Some("switch-visual")
     }
 
-    fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
+    fn draw(&self, cx: &mut DrawContext, canvas: &Canvas) {
         // Grab all the bounds
         // This assumes a horizontal alignment, so it restricts the height if it is larger.
         // NOTE: At a later point this can be change to also allow vertical switches, but that might be kinda weird
@@ -96,54 +96,67 @@ impl View for ParamSwitchVisual {
 
         let x = bounds.x;
         let y = bounds.y;
-        let w = bounds.w;
+        let w = bounds.width();
         let mut h = bounds.h;
 
         if h > w {
             h = w;
         }
-
+        let opacity = cx.opacity();
         let bg_col = cx.background_color();
         let border_col = cx.border_color();
         let inside_col = cx.caret_color();
 
         let mut path = Path::new();
-        let paint = Paint::color(bg_col.into())
-            .with_line_cap(LineCap::Round)
-            .with_line_width(h);
+        // bg_col.into()
+        let mut paint = Paint::default();
+        paint.set_color(bg_col);
+        paint.set_stroke_width(h);
+        paint.set_stroke_cap(PaintCap::Round);
+        paint.set_style(PaintStyle::Stroke);
+        paint.set_anti_alias(true);
 
-        path.move_to(x + h / 2., y + h / 2.);
-        path.line_to(x + w - h / 2., y + h / 2.);
+        path.move_to((x + h / 2., y + h / 2.));
+        path.line_to((x + w - h / 2., y + h / 2.));
 
-        canvas.stroke_path(&path, &paint);
+        canvas.draw_path(&path, &paint);
 
         // Place the circle based on the value
+        let mut paint = Paint::default();
+        paint.set_color(border_col);
+        paint.set_style(PaintStyle::Fill);
+        paint.set_anti_alias(true);
+
         path = Path::new();
-        let paint = Paint::color(border_col.into());
+
         let center_x = if !self.val {
             x + h / 2.
         } else {
             x + w - h / 2.
         };
-        path.circle(center_x, y + h / 2., h / 2.);
+        path.add_circle((center_x, y + h / 2.), h / 2., None);
 
-        canvas.fill_path(&path, &paint);
+        canvas.draw_path(&path, &paint);
+
+        let mut paint = Paint::default();
+        paint.set_color(inside_col);
+        paint.set_anti_alias(true);
 
         path = Path::new();
-        let paint = Paint::color(inside_col.into());
+        path.add_circle((center_x, y + h / 2.), h / 2. - cx.border_width(), None);
 
-        path.circle(center_x, y + h / 2., h / 2. - cx.border_width());
-
-        canvas.fill_path(&path, &paint);
+        canvas.draw_path(&path, &paint);
     }
 
-    fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
+    fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|visual_event, _| match visual_event {
             ParamSwitchVisualEvent::SetValue(val) => {
                 if *val < 0.5 {
                     self.val = false;
+                    cx.needs_redraw();
                 } else {
                     self.val = true;
+                    cx.needs_redraw();
                 }
             }
         })

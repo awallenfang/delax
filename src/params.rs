@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
-use nih_plug_vizia::ViziaState;
+use vizia_plug::ViziaState;
 
 use crate::{delay_engine::params::EngineParams, filters::params::FilterParams, ui};
 
