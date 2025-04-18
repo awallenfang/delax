@@ -3,18 +3,16 @@ pub struct PeakFollower {
     pub peak: f32,
     pub hold: f32,
     pub hold_counter: f32,
-    sample_rate: f32,
     peak_smoother: PeakSmoother,
 }
 
 impl PeakFollower {
-    pub fn new(release: f32, hold: f32, sample_rate: f32, smoothing: usize) -> Self {
+    pub fn new(release: f32, hold: f32, smoothing: f32) -> Self {
         Self {
             release,
             peak: 0.,
             hold,
             hold_counter: 0.,
-            sample_rate,
             peak_smoother: PeakSmoother::new(smoothing),
         }
     }
@@ -25,34 +23,32 @@ impl PeakFollower {
             self.peak = input;
             self.hold_counter = self.hold;
         } else {
-            self.hold_counter -= 1. / self.sample_rate;
+            self.hold_counter -= 1.;
             if self.hold_counter < 0. {
-                self.peak -= self.release / self.sample_rate;
+                self.peak -= self.release;
             }
         }
 
         self.peak
     }
-
-    pub fn set_sample_rate(&mut self, sample_rate: f32) {
-        self.sample_rate = sample_rate;
-    }
 }
 
 struct PeakSmoother {
-    buffer: Vec<f32>,
+    prev: f32,
+    smoothness: f32
 }
 
 impl PeakSmoother {
-    pub fn new(size: usize) -> Self {
+    pub fn new(smooth: f32) -> Self {
         Self {
-            buffer: vec![0.; size],
+            prev: 0.,
+            smoothness: smooth
         }
     }
 
     pub fn process(&mut self, input: f32) -> f32 {
-        self.buffer.remove(0);
-        self.buffer.push(input);
-        self.buffer.iter().sum::<f32>() / self.buffer.len() as f32
+        let smoothed = self.prev + (input - self.prev) * self.smoothness;
+        self.prev = smoothed;
+        smoothed
     }
 }
