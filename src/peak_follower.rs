@@ -21,12 +21,8 @@ impl PeakFollower {
         let input = self.peak_smoother.process(input.abs());
         if input.abs() > self.peak {
             self.peak = input;
-            self.hold_counter = self.hold;
         } else {
-            self.hold_counter -= 1.;
-            if self.hold_counter < 0. {
-                self.peak -= self.release;
-            }
+            self.peak -= self.release;
         }
 
         self.peak
@@ -35,20 +31,25 @@ impl PeakFollower {
 
 struct PeakSmoother {
     prev: f32,
-    smoothness: f32
+    smoothness: f32,
 }
 
 impl PeakSmoother {
     pub fn new(smooth: f32) -> Self {
         Self {
             prev: 0.,
-            smoothness: smooth
+            smoothness: smooth,
         }
     }
 
     pub fn process(&mut self, input: f32) -> f32 {
-        let smoothed = self.prev + (input - self.prev) * self.smoothness;
-        self.prev = smoothed;
-        smoothed
+        if input < self.prev {
+            let smoothed = self.prev + (input - self.prev) * self.smoothness;
+            self.prev = smoothed;
+            smoothed
+        } else {
+            self.prev = input;
+            return input;
+        }
     }
 }
