@@ -1,4 +1,7 @@
-use std::{cell::Cell, sync::{Arc, Mutex}};
+use std::{
+    cell::Cell,
+    sync::{Arc, Mutex},
+};
 
 use vizia_plug::vizia::{
     prelude::*,
@@ -8,16 +11,14 @@ use vizia_plug::vizia::{
 use crate::peak_follower::PeakFollower;
 
 #[derive(Lens)]
-pub struct PeakMeter {
-    
-}
+pub struct PeakMeter {}
 
 impl PeakMeter {
     pub fn new<L>(cx: &mut Context, val: L) -> Handle<Self>
     where
         L: Lens<Target = f32> + Clone,
     {
-        let peak_follower = Mutex::new(PeakFollower::new(0.1, 0., 0.5));
+        let peak_follower = Mutex::new(PeakFollower::new(0.1, 0., 0.03));
 
         Self {}.build(cx, |cx| {
             let followed_peak = val.map(move |level| -> f32 {
@@ -52,7 +53,6 @@ where
     L: Lens<Target = f32> + Clone,
 {
     pub fn new(cx: &mut Context, val: L) -> Handle<Self> {
-        
         Self { val }.build(cx, |cx| {})
     }
 }
@@ -73,27 +73,49 @@ where
             return;
         }
 
-        let base_color = cx.background_color();
-        let loud_color = cx.selection_color();
-        let peak_color = cx.caret_color();
-
+        // Base region
+        if val < 0.01 {
+            return;
+        }
         let width = bounds.w;
         let height = bounds.h;
 
-        let mut paint = Paint::default();
-        paint.set_color(base_color);
-        paint.set_style(vg::PaintStyle::Fill);
-
-
-        let mut path = Path::new();
-        let rect = Rect::new(
+        let base_color = cx.background_color();
+        let base_rect = Rect::new(
             bounds.x,
             bounds.y + (1. - val) * height,
             bounds.x + width,
             bounds.y + height,
         );
-        path.add_rect(rect, None);
+        let mut paint = Paint::default();
+        paint.set_color(base_color);
+        paint.set_style(vg::PaintStyle::Fill);
+
+        let mut path = Path::new();
+
+        path.add_rect(base_rect, None);
 
         canvas.draw_path(&path, &paint);
+
+        if val < 0.85 {
+            return;
+        }
+        let loud_color = cx.selection_color();
+        let loud_rect = Rect::new(
+            bounds.x,
+            bounds.y + (1. - val) * height,
+            bounds.x + width,
+            bounds.y + height * 0.15,
+        );
+        let mut paint = Paint::default();
+        paint.set_color(loud_color);
+        paint.set_style(vg::PaintStyle::Fill);
+
+        let mut path = Path::new();
+
+        path.add_rect(loud_rect, None);
+
+        canvas.draw_path(&path, &paint);
+        let peak_color = cx.caret_color();
     }
 }
