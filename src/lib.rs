@@ -64,10 +64,10 @@ impl Default for Delax {
             datorro: DattorroReverb::new(44100., 0.5),
             initial_dattorro: DattorroReverb::new(44100., 0.5),
             input_data: Arc::new(InputData::default()),
-            peak_follower_in_l: PeakFollower::new(2., 0.2, 44100., 10),
-            peak_follower_in_r: PeakFollower::new(2., 0.2, 44100., 10),
-            peak_follower_out_l: PeakFollower::new(2., 0.2, 44100., 10),
-            peak_follower_out_r: PeakFollower::new(2., 0.2, 44100., 10),
+            peak_follower_in_l: PeakFollower::new(2., 0., 44100., 20),
+            peak_follower_in_r: PeakFollower::new(2., 0., 44100., 20),
+            peak_follower_out_l: PeakFollower::new(2., 0., 44100., 20),
+            peak_follower_out_r: PeakFollower::new(2., 0., 44100., 20),
         }
     }
 }

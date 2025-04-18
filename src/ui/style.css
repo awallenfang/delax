@@ -9,7 +9,7 @@
 }
 
 #main-hstack {
-    col-between: 1s;
+    horizontal-gap: 1s;
 }
 
 param-knob {
@@ -33,11 +33,6 @@ switch-visual {
     border-color: #9AD1D4;
     caret-color: #F1F8F9;
     border-width: 2px;
-}
-
-.centered {
-    left: 1s;
-    right: 1s;
 }
 
 resize-handle {

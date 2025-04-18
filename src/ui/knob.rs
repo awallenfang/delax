@@ -104,7 +104,8 @@ impl ParamKnob {
                     } else {
                         Label::new(cx, *(&param_data.param().name())).class("knob-label");
                     }
-                });
+                })
+                .alignment(Alignment::Center);
             }),
         )
     }
@@ -270,7 +271,12 @@ impl View for KnobVisual {
         let start = 135.;
         let range = 270.;
 
-        let arc_oval = vg::Rect::new(center_x-radius, center_y-radius, center_x+radius, center_y+radius);
+        let arc_oval = vg::Rect::new(
+            center_x - radius,
+            center_y - radius,
+            center_x + radius,
+            center_y + radius,
+        );
 
         path.arc_to(arc_oval, start, self.val * range, true);
         // path.arc_to(arc_oval, 0., PI);
@@ -306,7 +312,7 @@ impl View for KnobVisual {
         line_paint.set_stroke_cap(PaintCap::Round);
         line_paint.set_style(vg::PaintStyle::Fill);
         line_paint.set_anti_alias(true);
-        
+
         path = Path::new();
 
         path.move_to((center_x, center_y));
