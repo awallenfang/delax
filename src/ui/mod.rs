@@ -1,6 +1,7 @@
 use std::sync::{atomic::Ordering, Arc};
 
 use crate::{delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams};
+use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
 use switch::ParamSwitch;
@@ -65,14 +66,13 @@ pub(crate) fn create(
                 HStack::new(cx, |cx| {
                     // Box for the input meters
                     VStack::new(cx, |cx| {
-                        // PeakMeter::new(
-                        //     cx,
-                        //     Data::input_data
-                        //         .map(|d| d.in_l.load(Ordering::Relaxed)),
-                        // )
-                        // .width(Pixels(50.))
-                        // .height(Pixels(200.));
-                        // Label::new(cx, Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)));
+                        PeakMeter::new(
+                            cx,
+                            Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)),
+                        )
+                        .width(Pixels(50.))
+                        .height(Pixels(200.));
+                        Label::new(cx, Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)));
                     })
                     .class("meter-box");
 
@@ -80,7 +80,6 @@ pub(crate) fn create(
                     VStack::new(cx, |cx| {
                         Label::new(cx, "Delax").class("centered");
                         HStack::new(cx, |cx| {
-                            // TODO: Toggle button
                             Label::new(cx, "Mono").left(Stretch(1.));
                             ParamSwitch::new(
                                 cx,
@@ -90,7 +89,8 @@ pub(crate) fn create(
                             );
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
-                        .horizontal_gap(Pixels(20.));
+                        .horizontal_gap(Pixels(20.))
+                        .alignment(Alignment::Center);
                         // TODO: Delay visualizer
                         // DecayVisualizer::new(cx);
 
@@ -150,7 +150,8 @@ pub(crate) fn create(
                             );
                             Label::new(cx, "Stereo").right(Stretch(1.));
                         })
-                        .horizontal_gap(Pixels(20.));
+                        .horizontal_gap(Pixels(20.))
+                        .alignment(Alignment::Center);
 
                         // All the filter knobs
                         HStack::new(cx, |cx| {
@@ -214,7 +215,8 @@ pub(crate) fn create(
                         })
                         .horizontal_gap(Stretch(1.));
                     })
-                    .class("main-box");
+                    .class("main-box")
+                    .alignment(Alignment::Center);
                     VStack::new(cx, |cx| {
                         // Element::new(cx)
                         //     .width(Pixels(50.))
@@ -230,7 +232,8 @@ pub(crate) fn create(
                         )
                         .top(Stretch(1.));
                     })
-                    .class("meter-box");
+                    .class("meter-box")
+                    .alignment(Alignment::BottomCenter);
                 })
                 .id("main-hstack");
                 // HStack::new(cx, |cx| {
