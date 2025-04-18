@@ -41,7 +41,7 @@ struct Data {
 impl Model for Data {}
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (500, 275))
+    ViziaState::new(|| (550, 275))
 }
 
 pub(crate) fn create(
@@ -65,17 +65,23 @@ pub(crate) fn create(
             VStack::new(cx, |cx| {
                 HStack::new(cx, |cx| {
                     // Box for the input meters
-                    VStack::new(cx, |cx| {
+                    HStack::new(cx, |cx| {
                         PeakMeter::new(
                             cx,
                             Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)),
                         )
-                        .width(Pixels(50.))
-                        .height(Pixels(200.));
-                        Label::new(cx, Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)));
-                    })
-                    .class("meter-box");
-
+                        .width(Pixels(5.))
+                        .height(Stretch(1.))
+                        ;
+                        PeakMeter::new(
+                            cx,
+                            Data::input_data.map(|d| d.in_r.load(Ordering::Relaxed)),
+                        )
+                        .width(Pixels(5.))
+                        .height(Stretch(1.));
+                    }).width(Stretch(1.))
+                    .alignment(Alignment::Center)
+                    .gap(Pixels(5.));
                     // Box for most of the parameter controls
                     VStack::new(cx, |cx| {
                         Label::new(cx, "Delax").class("centered");
@@ -91,8 +97,6 @@ pub(crate) fn create(
                         })
                         .horizontal_gap(Pixels(20.))
                         .alignment(Alignment::Center);
-                        // TODO: Delay visualizer
-                        // DecayVisualizer::new(cx);
 
                         // All the delay knobs
                         HStack::new(cx, |cx| {
@@ -217,11 +221,24 @@ pub(crate) fn create(
                     })
                     .class("main-box")
                     .alignment(Alignment::Center);
+                    HStack::new(cx, |cx| {
+                        PeakMeter::new(
+                            cx,
+                            Data::input_data.map(|d| d.out_l.load(Ordering::Relaxed)),
+                        )
+                        .width(Pixels(5.))
+                        .height(Stretch(1.))
+                        ;
+                        PeakMeter::new(
+                            cx,
+                            Data::input_data.map(|d| d.out_r.load(Ordering::Relaxed)),
+                        )
+                        .width(Pixels(5.))
+                        .height(Stretch(1.));
+                    }).width(Stretch(1.))
+                    .alignment(Alignment::Center)
+                    .gap(Pixels(5.));
                     VStack::new(cx, |cx| {
-                        // Element::new(cx)
-                        //     .width(Pixels(50.))
-                        //     .height(Stretch(1.))
-                        //     .background_color(Color::black());
                         ParamKnob::new(
                             cx,
                             Data::params,
@@ -236,10 +253,6 @@ pub(crate) fn create(
                     .alignment(Alignment::BottomCenter);
                 })
                 .id("main-hstack");
-                // HStack::new(cx, |cx| {
-                //     ResizeHandle::new(cx);
-                // })
-                // .id("resize-handle-box");
             })
             .id("main");
         },

@@ -1,19 +1,35 @@
+use std::{cell::Cell, sync::{Arc, Mutex}};
+
 use vizia_plug::vizia::{
     prelude::*,
-    vg::{self, Paint, Path, Rect},
+    vg::{self, Paint, Path, Rect, Shader},
 };
 
+use crate::peak_follower::PeakFollower;
+
 #[derive(Lens)]
-pub struct PeakMeter {}
+pub struct PeakMeter {
+    
+}
 
 impl PeakMeter {
     pub fn new<L>(cx: &mut Context, val: L) -> Handle<Self>
     where
         L: Lens<Target = f32> + Clone,
     {
+        let peak_follower = Mutex::new(PeakFollower::new(0.1, 0., 0.5));
+
         Self {}.build(cx, |cx| {
-            PeakMeterBar::new(cx, val.clone());
-            Label::new(cx, val.get(cx)).overflow(Overflow::Visible);
+            let followed_peak = val.map(move |level| -> f32 {
+                if let Ok(mut fol) = peak_follower.try_lock() {
+                    fol.process(*level)
+                } else {
+                    *level
+                }
+            });
+            PeakMeterBar::new(cx, followed_peak).bind(followed_peak, |mut handle, _| {
+                handle.needs_redraw();
+            });
         })
     }
 }
@@ -36,9 +52,8 @@ where
     L: Lens<Target = f32> + Clone,
 {
     pub fn new(cx: &mut Context, val: L) -> Handle<Self> {
-        Self { val }.build(cx, |cx| {}).bind(val, |mut handle, _| {
-            handle.needs_redraw();
-        })
+        
+        Self { val }.build(cx, |cx| {})
     }
 }
 
@@ -58,12 +73,17 @@ where
             return;
         }
 
+        let base_color = cx.background_color();
+        let loud_color = cx.selection_color();
+        let peak_color = cx.caret_color();
+
         let width = bounds.w;
         let height = bounds.h;
 
         let mut paint = Paint::default();
-        paint.set_color(Color::red());
+        paint.set_color(base_color);
         paint.set_style(vg::PaintStyle::Fill);
+
 
         let mut path = Path::new();
         let rect = Rect::new(
