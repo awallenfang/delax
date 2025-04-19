@@ -45,7 +45,7 @@ resize-handle {
 }
 
 .main-box {
-    width: 400px;
+    width: 1s;
 }
 
 #main {
@@ -57,6 +57,8 @@ label {
 }
 
 peak-meter-bar {
+    /* Bg color */
+    color: #004b6e;
     /* Base color */
     background-color: #c4f862;
     /* Loud color */
