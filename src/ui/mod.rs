@@ -82,66 +82,10 @@ pub(crate) fn create(
             }
             .build(cx);
             let internal_params = params.clone();
-            VStack::new(cx, move |cx| {
+            VStack::new(cx, |cx| {
                 // Top bar
-
-                HStack::new(cx, |cx| {
-                    VStack::new(cx, |cx| {
-                        PeakMeter::new(
-                            cx,
-                            Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)),
-                            meter::MeterDirection::Right,
-                        )
-                        .height(Pixels(5.))
-                        .width(Stretch(1.));
-                        PeakMeter::new(
-                            cx,
-                            Data::input_data.map(|d| d.in_r.load(Ordering::Relaxed)),
-                            meter::MeterDirection::Right,
-                        )
-                        .height(Pixels(5.))
-                        .width(Stretch(1.));
-                    })
-                    .width(Pixels(100.))
-                    .alignment(Alignment::Center)
-                    .gap(Pixels(5.));
-                    Button::new(cx, |cx| Label::new(cx, "Delay"))
-                        .on_press(|ex| ex.emit(DelaxEvent::OpenTab(0)));
-                    Button::new(cx, |cx| Label::new(cx, "Filters"))
-                        .on_press(|ex| ex.emit(DelaxEvent::OpenTab(1)));
-                    Button::new(cx, |cx| Label::new(cx, "Banks"))
-                        .on_press(|ex| ex.emit(DelaxEvent::OpenTab(2)));
-                    VStack::new(cx, |cx| {
-                        PeakMeter::new(
-                            cx,
-                            Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)),
-                            meter::MeterDirection::Right,
-                        )
-                        .height(Pixels(5.))
-                        .width(Stretch(1.));
-                        PeakMeter::new(
-                            cx,
-                            Data::input_data.map(|d| d.in_r.load(Ordering::Relaxed)),
-                            meter::MeterDirection::Right,
-                        )
-                        .height(Pixels(5.))
-                        .width(Stretch(1.));
-                    })
-                    .width(Pixels(100.))
-                    .alignment(Alignment::Center)
-                    .gap(Pixels(5.));
-                    ParamKnob::new(
-                        cx,
-                        Data::params,
-                        |inter_params| &inter_params.wetness,
-                        internal_params.wetness.default_normalized_value(),
-                        None,
-                        Data::params.map(|p| true),
-                    );
-                })
-                .height(Pixels(30.))
-                .width(Stretch(1.))
-                .gap(Stretch(1.));
+                nav_bar(cx, internal_params.clone());
+                
 
                 HStack::new(cx, |cx| {
                     Binding::new(cx, Data::ui_page, move |cx, lens| {
@@ -160,6 +104,63 @@ pub(crate) fn create(
     )
 }
 
+fn nav_bar(cx: &mut Context, params: Arc<DelaxParams>) {
+    HStack::new(cx, |cx| {
+        VStack::new(cx, |cx| {
+            PeakMeter::new(
+                cx,
+                Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)),
+                meter::MeterDirection::Right,
+            )
+            .class("nav-bar-meter");
+            PeakMeter::new(
+                cx,
+                Data::input_data.map(|d| d.in_r.load(Ordering::Relaxed)),
+                meter::MeterDirection::Right,
+            )
+            .class("nav-bar-meter");
+        })
+        .class("nav-bar-meter-stack");
+        HStack::new(cx, |cx| {
+
+            Button::new(cx, |cx| Label::new(cx, "Delay"))
+                .on_press(|ex| ex.emit(DelaxEvent::OpenTab(0)));
+            Element::new(cx).class("vr");
+            Button::new(cx, |cx| Label::new(cx, "Filters"))
+            .on_press(|ex| ex.emit(DelaxEvent::OpenTab(1)));
+            Element::new(cx).class("vr");
+            Button::new(cx, |cx| Label::new(cx, "Banks"))
+                .on_press(|ex| ex.emit(DelaxEvent::OpenTab(2)));
+        }).class("nav-button-hstack");
+        
+        VStack::new(cx, |cx| {
+            PeakMeter::new(
+                cx,
+                Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)),
+                meter::MeterDirection::Right,
+            )
+            .class("nav-bar-meter");
+            PeakMeter::new(
+                cx,
+                Data::input_data.map(|d| d.in_r.load(Ordering::Relaxed)),
+                meter::MeterDirection::Right,
+            )
+            .class("nav-bar-meter");
+        })
+        .class("nav-bar-meter-stack");
+
+        ParamKnob::new(
+            cx,
+            Data::params,
+            |inter_params| &inter_params.wetness,
+            params.wetness.default_normalized_value(),
+            None,
+            Data::params.map(|p| true),
+        );
+    })
+    .class("nav-bar");
+}
+
 fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
     HStack::new(cx, |cx| {
         // Box for the input meters
@@ -176,8 +177,7 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                 );
                 Label::new(cx, "Stereo").right(Stretch(1.));
             })
-            .horizontal_gap(Pixels(20.))
-            .alignment(Alignment::Center);
+            .class("switch-block");
 
             // All the delay knobs
             HStack::new(cx, |cx| {
@@ -223,6 +223,7 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
         .class("main-box")
         .alignment(Alignment::Center);
     })
+    .class("main-page")
     .width(Stretch(1.));
 }
 
@@ -239,8 +240,7 @@ fn filter_page(cx: &mut Context, params: Arc<DelaxParams>) {
             );
             Label::new(cx, "Stereo").right(Stretch(1.));
         })
-        .horizontal_gap(Pixels(20.))
-        .alignment(Alignment::Center);
+        .class("switch-block");
 
         // All the filter knobs
         HStack::new(cx, |cx| {
@@ -299,8 +299,14 @@ fn filter_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     .map(|p| p.filter_params.svf_stereo_mode.value() == SVFStereoMode::Stereo),
             );
         })
-        .horizontal_gap(Stretch(1.));
-    });
+        .class("parameter-list");
+    }).class("filter-page");
 }
 
-fn banks_page(cx: &mut Context, params: Arc<DelaxParams>) {}
+fn banks_page(cx: &mut Context, params: Arc<DelaxParams>) {
+    VStack::new(cx, |cx| {
+        Element::new(cx).class("banks-block");
+        Element::new(cx).class("banks-block");
+        Element::new(cx).class("banks-block");
+    }).class("banks-page");
+}
