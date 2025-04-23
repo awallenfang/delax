@@ -9,7 +9,7 @@
 }
 
 #main-hstack {
-    horizontal-gap: 1s;
+    gap: 1s;
 }
 
 param-knob {
@@ -65,4 +65,46 @@ peak-meter-bar {
     selection-color: #f8b262;
     /* Peak color */
     caret-color: #f86262
+}
+
+.switch-block {
+    gap: 20p;
+    alignment: center;
+}
+
+.parameter-list {
+    gap: 1s;
+}
+
+.nav-bar-meter {
+    height: 5px;
+    width: 1s;
+}
+
+.nav-bar-meter-stack {
+    width: 100px;
+    alignment: center;
+    gap: 5px;
+}
+
+.nav-button-hstack {
+    gap: 5px;
+    alignment: center;
+}
+
+.nav-bar {
+    height: 50px;
+    width: 1s;
+    alignment: center;
+    gap: 20px;
+}
+
+.vr {
+    height: 20px;
+    width: 2px;
+    background-color: #004b6e;
+}
+
+button {
+    
 }
