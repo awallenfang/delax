@@ -1,4 +1,4 @@
-use nih_plug::params::Param;
+use nih_plug::{nih_dbg, params::Param};
 use vizia_plug::{
     vizia::{
         prelude::*,
@@ -8,6 +8,18 @@ use vizia_plug::{
 };
 
 const SHADER: &'static str = include_str!("shaders/test.sksl");
+
+fn make_shader(sksl: &str) -> Result<RuntimeEffect, String> {
+    struct NoneOpts;
+
+    impl<'a, 'b> Into<Option<&'a Options<'b>>> for NoneOpts {
+        fn into(self) -> Option<&'a Options<'b>> {
+            None
+        }
+    }
+
+    RuntimeEffect::make_for_shader(sksl, NoneOpts)
+}
 
 /// A switch to control a boolean nih-plug parameter
 pub struct ShaderSwitch {
@@ -118,49 +130,22 @@ impl View for ShaderSwitchVisual {
             );
         path.add_rect(rect, None);
         let mut paint = Paint::default();
-        let effect = RuntimeEffect::make_for_shader(SHADER, None);
+        paint.set_style(PaintStyle::Fill);
+
+        let effect = make_shader(SHADER);
+        nih_dbg!(&effect);
         if let Ok(runtime) = effect {
             let builder = RuntimeShaderBuilder::new(runtime);
-            let shader = builder.make_shader(&Matrix::new_identity());
+            let mut shader_to_device = Matrix::translate((x, y));
+            shader_to_device = *shader_to_device.pre_scale((w, h), None);
+
+            let local_matrix = shader_to_device;
+            let shader = builder.make_shader(&local_matrix);
             paint.set_shader(shader);
         }
-        // // bg_col.into()
-        // paint.set_color(bg_col);
-        // paint.set_stroke_width(h);
-        // paint.set_stroke_cap(PaintCap::Round);
-        // paint.set_style(PaintStyle::Stroke);
-        // paint.set_anti_alias(true);
 
-        // path.move_to((x + h / 2., y + h / 2.));
-        // path.line_to((x + w - h / 2., y + h / 2.));
+        canvas.draw_path(&path, &paint);
 
-        // canvas.draw_path(&path, &paint);
-
-        // // Place the circle based on the value
-        // let mut paint = Paint::default();
-        // paint.set_color(border_col);
-        // paint.set_style(PaintStyle::Fill);
-        // paint.set_anti_alias(true);
-
-        // path = Path::new();
-
-        // let center_x = if !self.val {
-        //     x + h / 2.
-        // } else {
-        //     x + w - h / 2.
-        // };
-        // path.add_circle((center_x, y + h / 2.), h / 2., None);
-
-        // canvas.draw_path(&path, &paint);
-
-        // let mut paint = Paint::default();
-        // paint.set_color(inside_col);
-        // paint.set_anti_alias(true);
-
-        // path = Path::new();
-        // path.add_circle((center_x, y + h / 2.), h / 2. - cx.border_width(), None);
-
-        // canvas.draw_path(&path, &paint);
     }
 
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
