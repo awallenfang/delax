@@ -23,10 +23,7 @@ knob-visual {
     caret-color: #F1F8F9;
 }
 
-button {
-    background-color: #01415f;
-    color: #9AD1D4;
-}
+
 
 param-switch {
     width: 40px;
@@ -34,6 +31,17 @@ param-switch {
 }
 
 switch-visual {
+    background-color: #86AAAC;
+    border-color: #9AD1D4;
+    caret-color: #F1F8F9;
+    border-width: 2px;
+}
+shader-switch {
+    width: 40px;
+    height: 20px;
+}
+
+shader-switch-visual {
     background-color: #86AAAC;
     border-color: #9AD1D4;
     caret-color: #F1F8F9;
@@ -106,5 +114,13 @@ peak-meter-bar {
 }
 
 button {
-    
+    background-color: #01415f;
+    color: #9AD1D4;
+    border-color: #01415f;
+    transition: background-color 100ms;
+}
+
+button:hover {
+    background-color: #004b6e;
+    transition: background-color 100ms;
 }

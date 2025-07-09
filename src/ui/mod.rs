@@ -5,6 +5,7 @@ use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
 use switch::ParamSwitch;
+use shader_test::ShaderSwitch;
 use vizia_plug::{
     create_vizia_editor,
     vizia::{prelude::*, vg::font_style::Width},
@@ -18,6 +19,7 @@ mod decay_visualizer;
 mod knob;
 mod meter;
 mod switch;
+mod shader_test;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -176,6 +178,12 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     false,
                 );
                 Label::new(cx, "Stereo").right(Stretch(1.));
+                ShaderSwitch::new(
+                    cx,
+                    Data::params,
+                    |params| &params.delay_params.stereo_delay,
+                    false,
+                );
             })
             .class("switch-block");
 

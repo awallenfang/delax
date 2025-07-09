@@ -1,7 +1,7 @@
 [package]
 name = "delax"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Ava Wallenfang <ava@wallenfang.de>"]
 license = "MIT"
 homepage = "https://ritzin.dev"
@@ -17,7 +17,7 @@ crate-type = ["cdylib", "lib"]
 atomic_float = "1.0.0"
 # Remove the `assert_process_allocs` feature to allow allocations on the audio
 # thread in debug builds.
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default_features = false,  features = ["assert_process_allocs", "standalone"] }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false,  features = ["assert_process_allocs", "standalone"] }
 vizia_plug = { git = "https://github.com/vizia/vizia-plug" }
 # Uncomment the below line to disable the on-by-default VST3 feature to remove
 # the GPL compatibility requirement
@@ -31,3 +31,4 @@ strip = "symbols"
 inherits = "release"
 debug = true
 strip = "none"
+

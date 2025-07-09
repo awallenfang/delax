@@ -182,7 +182,7 @@ impl View for ParamKnob {
             }
             WindowEvent::MouseScroll(_x, y) => {
                 if self.active {
-                    let delta = *y as f32 / 25.;
+                    let delta = -*y as f32 / 25.;
                     self.param_base.begin_set_parameter(cx);
                     self.param_base.set_normalized_value(
                         cx,
