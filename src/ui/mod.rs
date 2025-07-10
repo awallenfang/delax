@@ -1,11 +1,10 @@
 use std::sync::{atomic::Ordering, Arc};
 
-use crate::{delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams};
+use crate::{delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams, ui::background::Background};
 use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
 use switch::ParamSwitch;
-use shader_test::ShaderSwitch;
 use vizia_plug::{
     create_vizia_editor,
     vizia::{prelude::*, vg::font_style::Width},
@@ -19,7 +18,8 @@ mod decay_visualizer;
 mod knob;
 mod meter;
 mod switch;
-mod shader_test;
+mod shader_utils;
+mod background;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -84,24 +84,27 @@ pub(crate) fn create(
             }
             .build(cx);
             let internal_params = params.clone();
-            VStack::new(cx, |cx| {
-                // Top bar
-                nav_bar(cx, internal_params.clone());
-                
-
-                HStack::new(cx, |cx| {
-                    Binding::new(cx, Data::ui_page, move |cx, lens| {
-                        let page = lens.get(cx);
-                        match page {
-                            0 => main_page(cx, internal_params.clone()),
-                            1 => filter_page(cx, internal_params.clone()),
-                            2 => banks_page(cx, internal_params.clone()),
-                            _ => unimplemented!(),
-                        }
+            ZStack::new(cx, |cx| {
+                Background::new(cx).width(Stretch(1.)).height(Stretch(1.));
+                VStack::new(cx, |cx| {
+                    // Top bar
+                    nav_bar(cx, internal_params.clone());
+                    
+    
+                    HStack::new(cx, |cx| {
+                        Binding::new(cx, Data::ui_page, move |cx, lens| {
+                            let page = lens.get(cx);
+                            match page {
+                                0 => main_page(cx, internal_params.clone()),
+                                1 => filter_page(cx, internal_params.clone()),
+                                2 => banks_page(cx, internal_params.clone()),
+                                _ => unimplemented!(),
+                            }
+                        });
                     });
-                });
-            })
-            .id("main");
+                })
+                .id("main");
+            });
         },
     )
 }
@@ -178,12 +181,6 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     false,
                 );
                 Label::new(cx, "Stereo").right(Stretch(1.));
-                ShaderSwitch::new(
-                    cx,
-                    Data::params,
-                    |params| &params.delay_params.stereo_delay,
-                    false,
-                );
             })
             .class("switch-block");
 

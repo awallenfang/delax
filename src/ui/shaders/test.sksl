@@ -1,4 +1,6 @@
-half4 main(float2 coord) {
-    coord = clamp(coord, 0.0, 1.0);
-    return half4(coord.x, coord.y, 0.0, 1.0);
+
+half4 main(float2 uv) {
+    
+
+    return half4(uv.x, uv.y, 0., 1.0);
 }

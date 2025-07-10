@@ -1,0 +1,14 @@
+float PI = 3.141593;
+
+float hash(float x)
+{
+    return fract(float((1345677*x*x*x)));
+}
+
+half4 main(float2 uv) {
+    half2 p = vec2(0.5, 1);
+    vec3 c = vec3(0., 0.29, 0.43) * 0.2;
+    float strength = sin(distance(p, uv) * 20. * PI ) 
+    + max(0.,(distance(p, uv) - 0.2) * 5. * hash(uv.x + sqrt(2.) * uv.y));
+    return half4(c * strength, 1.0);
+}
