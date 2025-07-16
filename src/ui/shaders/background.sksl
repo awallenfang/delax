@@ -1,14 +1,16 @@
 float PI = 3.141593;
 uniform float time;
-float hash(float x)
-{
-    return fract(float((1345677*x*x*x)));
+
+float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
 }
 
 half4 main(float2 uv) {
     half2 p = vec2(0.5, 1);
     vec3 c = vec3(0., 0.29, 0.43) * 0.2;
-    float strength = sin(distance(p, uv) * 20. * PI + time * 5. ) 
-    + max(0.,(distance(p, uv) - 0.2) * 5. * hash(uv.x + sqrt(2.) * uv.y));
+    float strength = sin(distance(p, uv) * 20. * PI - time * 1.5 ) 
+    + max(0.,(distance(p, uv) - 0.2) * 5. * hash(uv * 10.));
     return half4(c * strength, 1.0);
 }

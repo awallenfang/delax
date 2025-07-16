@@ -89,7 +89,9 @@ pub(crate) fn create(
             .build(cx);
             let internal_params = params.clone();
             ZStack::new(cx, |cx| {
-                Background::new(cx).width(Stretch(1.)).height(Stretch(1.));
+                Background::new(cx)
+                    .width(Stretch(1.))
+                    .height(Stretch(1.));
                 VStack::new(cx, |cx| {
                     // Top bar
                     nav_bar(cx, internal_params.clone());
