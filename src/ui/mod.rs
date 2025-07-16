@@ -1,10 +1,8 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use crate::{
-    delay_engine::params::DelayMode,
-    filters::params::SVFStereoMode,
-    params::DelaxParams,
-    ui::background::{Background},
+    delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams,
+    ui::background::Background,
 };
 use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
@@ -22,7 +20,7 @@ mod background;
 mod decay_visualizer;
 mod knob;
 mod meter;
-mod shader_utils;
+mod shaders;
 mod switch;
 
 pub struct InputData {
@@ -55,15 +53,14 @@ impl Model for Data {
         event.map(|delax_event, _| match delax_event {
             DelaxEvent::OpenTab(n) => {
                 self.ui_page = *n;
-            },
-            _ => ()
+            }
+            _ => (),
         });
     }
 }
 
 enum DelaxEvent {
     OpenTab(u8),
-    ShaderTick(Duration)
 }
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
@@ -75,39 +72,24 @@ pub(crate) fn create(
     editor_state: Arc<ViziaState>,
     input_data: Arc<InputData>,
 ) -> Option<Box<dyn Editor>> {
+    shaders::spawn_time_thread();
     create_vizia_editor(
         editor_state,
         vizia_plug::ViziaTheming::Custom,
         move |cx, _ui_cx| {
-            let timer = cx.add_timer(Duration::from_secs(1), None, |cx, reason| {
-                match reason {
-                    TimerAction::Tick(delta) => {
-                        nih_dbg!("Tick sent");
-                        cx.emit_custom(Event::new(DelaxEvent::ShaderTick(delta)).propagate(Propagation::Subtree));
-                    },
-                    TimerAction::Start => {nih_dbg!("Timer started");},
-                    TimerAction::Stop => ()
-                }
-                nih_dbg!("Callback");
-            });
-            cx.start_timer(timer);
-
             // assets::register_noto_sans_light(cx);
             // assets::register_noto_sans_thin(cx);
             let _ = cx.add_stylesheet(include_style!("src/ui/style.css"));
-            
+
             Data {
                 params: params.clone(),
                 input_data: input_data.clone(),
                 ui_page: 0,
             }
             .build(cx);
-        let internal_params = params.clone();
-        ZStack::new(cx, |cx| {
-
-                Background::new(cx)
-                    .width(Stretch(1.))
-                    .height(Stretch(1.));
+            let internal_params = params.clone();
+            ZStack::new(cx, |cx| {
+                Background::new(cx).width(Stretch(1.)).height(Stretch(1.));
                 VStack::new(cx, |cx| {
                     // Top bar
                     nav_bar(cx, internal_params.clone());
