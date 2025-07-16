@@ -1,25 +1,29 @@
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
-use crate::{delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams, ui::background::Background};
+use crate::{
+    delay_engine::params::DelayMode,
+    filters::params::SVFStereoMode,
+    params::DelaxParams,
+    ui::background::{Background},
+};
 use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
 use switch::ParamSwitch;
 use vizia_plug::{
-    create_vizia_editor,
+    ViziaState, create_vizia_editor,
     vizia::{prelude::*, vg::font_style::Width},
     widgets::ParamButton,
-    ViziaState,
 };
 
 use self::knob::ParamKnob;
 
+mod background;
 mod decay_visualizer;
 mod knob;
 mod meter;
-mod switch;
 mod shader_utils;
-mod background;
+mod switch;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -51,13 +55,15 @@ impl Model for Data {
         event.map(|delax_event, _| match delax_event {
             DelaxEvent::OpenTab(n) => {
                 self.ui_page = *n;
-            }
+            },
+            _ => ()
         });
     }
 }
 
 enum DelaxEvent {
     OpenTab(u8),
+    ShaderTick(Duration)
 }
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
@@ -72,25 +78,40 @@ pub(crate) fn create(
     create_vizia_editor(
         editor_state,
         vizia_plug::ViziaTheming::Custom,
-        move |cx, _| {
+        move |cx, _ui_cx| {
+            let timer = cx.add_timer(Duration::from_secs(1), None, |cx, reason| {
+                match reason {
+                    TimerAction::Tick(delta) => {
+                        nih_dbg!("Tick sent");
+                        cx.emit_custom(Event::new(DelaxEvent::ShaderTick(delta)).propagate(Propagation::Subtree));
+                    },
+                    TimerAction::Start => {nih_dbg!("Timer started");},
+                    TimerAction::Stop => ()
+                }
+                nih_dbg!("Callback");
+            });
+            cx.start_timer(timer);
+
             // assets::register_noto_sans_light(cx);
             // assets::register_noto_sans_thin(cx);
             let _ = cx.add_stylesheet(include_style!("src/ui/style.css"));
-
+            
             Data {
                 params: params.clone(),
                 input_data: input_data.clone(),
                 ui_page: 0,
             }
             .build(cx);
-            let internal_params = params.clone();
-            ZStack::new(cx, |cx| {
-                Background::new(cx).width(Stretch(1.)).height(Stretch(1.));
+        let internal_params = params.clone();
+        ZStack::new(cx, |cx| {
+
+                Background::new(cx)
+                    .width(Stretch(1.))
+                    .height(Stretch(1.));
                 VStack::new(cx, |cx| {
                     // Top bar
                     nav_bar(cx, internal_params.clone());
-                    
-    
+
                     HStack::new(cx, |cx| {
                         Binding::new(cx, Data::ui_page, move |cx, lens| {
                             let page = lens.get(cx);
@@ -127,27 +148,27 @@ fn nav_bar(cx: &mut Context, params: Arc<DelaxParams>) {
         })
         .class("nav-bar-meter-stack");
         HStack::new(cx, |cx| {
-
             Button::new(cx, |cx| Label::new(cx, "Delay"))
                 .on_press(|ex| ex.emit(DelaxEvent::OpenTab(0)));
             Element::new(cx).class("vr");
             Button::new(cx, |cx| Label::new(cx, "Filters"))
-            .on_press(|ex| ex.emit(DelaxEvent::OpenTab(1)));
+                .on_press(|ex| ex.emit(DelaxEvent::OpenTab(1)));
             Element::new(cx).class("vr");
             Button::new(cx, |cx| Label::new(cx, "Banks"))
                 .on_press(|ex| ex.emit(DelaxEvent::OpenTab(2)));
-        }).class("nav-button-hstack");
-        
+        })
+        .class("nav-button-hstack");
+
         VStack::new(cx, |cx| {
             PeakMeter::new(
                 cx,
-                Data::input_data.map(|d| d.in_l.load(Ordering::Relaxed)),
+                Data::input_data.map(|d| d.out_l.load(Ordering::Relaxed)),
                 meter::MeterDirection::Right,
             )
             .class("nav-bar-meter");
             PeakMeter::new(
                 cx,
-                Data::input_data.map(|d| d.in_r.load(Ordering::Relaxed)),
+                Data::input_data.map(|d| d.out_r.load(Ordering::Relaxed)),
                 meter::MeterDirection::Right,
             )
             .class("nav-bar-meter");
@@ -305,7 +326,8 @@ fn filter_page(cx: &mut Context, params: Arc<DelaxParams>) {
             );
         })
         .class("parameter-list");
-    }).class("filter-page");
+    })
+    .class("filter-page");
 }
 
 fn banks_page(cx: &mut Context, params: Arc<DelaxParams>) {
@@ -313,5 +335,6 @@ fn banks_page(cx: &mut Context, params: Arc<DelaxParams>) {
         Element::new(cx).class("banks-block");
         Element::new(cx).class("banks-block");
         Element::new(cx).class("banks-block");
-    }).class("banks-page");
+    })
+    .class("banks-page");
 }
