@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use super::{params::SVFFilterMode, Filter};
+use super::{Filter, params::SVFFilterMode};
 
 /// A SVF filter implemented using the paper by Andrew Simper from Cytomic
 /// https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf

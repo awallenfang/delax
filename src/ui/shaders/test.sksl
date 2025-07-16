@@ -2,5 +2,5 @@
 half4 main(float2 uv) {
     
 
-    return half4(uv.x, uv.y, 0., 1.0);
+    return half4(1., 0., 0., 1.0);
 }

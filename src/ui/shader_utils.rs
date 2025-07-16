@@ -1,4 +1,4 @@
-use vizia_plug::vizia::vg::{runtime_effect::Options, RuntimeEffect};
+use vizia_plug::vizia::vg::{RuntimeEffect, runtime_effect::Options};
 
 pub fn make_shader(sksl: &str) -> Result<RuntimeEffect, String> {
     struct NoneOpts;
