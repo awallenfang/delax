@@ -2,7 +2,7 @@ use nih_plug::params::Param;
 use vizia_plug::{
     vizia::{
         prelude::*,
-        vg::{Canvas, Paint, PaintCap, PaintStyle, Path, Point},
+        vg::{Canvas, Paint, PaintCap, PaintStyle, Path},
     },
     widgets::param_base::ParamWidgetBase,
 };

@@ -10,8 +10,7 @@ use nih_plug::{editor::Editor, params::Param, prelude::*};
 use switch::ParamSwitch;
 use vizia_plug::{
     ViziaState, create_vizia_editor,
-    vizia::{prelude::*, vg::font_style::Width},
-    widgets::ParamButton,
+    vizia::prelude::*,
 };
 
 use self::knob::ParamKnob;

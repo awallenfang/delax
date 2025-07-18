@@ -10,8 +10,7 @@ use vizia_plug::{
     vizia::{
         prelude::*,
         vg::{
-            Canvas, Matrix, Paint, PaintCap, PaintStyle, Path, Point, RCHandle, Rect,
-            RuntimeEffect, Shader, runtime_effect::RuntimeShaderBuilder, wrapper::PointerWrapper,
+            Canvas, Matrix, Paint, PaintStyle, Path, Rect, Shader, runtime_effect::RuntimeShaderBuilder,
         },
     },
     widgets::param_base::ParamWidgetBase,
