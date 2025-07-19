@@ -12,6 +12,10 @@ pub struct EngineParams {
     pub delay_len_l: FloatParam,
     #[id = "delay_r"]
     pub delay_len_r: FloatParam,
+    #[id = "delay_l_16th"]
+    pub delay_len_l_16th: FloatParam,
+    #[id = "delay_r_16th"]
+    pub delay_len_r_16th: FloatParam,
     #[id = "feedback_l"]
     pub feedback_l: FloatParam,
     #[id = "feedback_r"]
@@ -51,6 +55,25 @@ impl Default for EngineParams {
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" ms")
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+
+            delay_len_l_16th: FloatParam::new(
+                "Delay BPM bound",
+                4.,
+                FloatRange::Linear { min: 0., max: 16. },
+            )
+            .with_smoother(SmoothingStyle::Linear(50.0))
+            .with_unit(" 16th")
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+
+            delay_len_r_16th: FloatParam::new(
+                "Delay Channel 2 BPM bound",
+                4.,
+                FloatRange::Linear { min: 0., max: 16. },
+
+            )
+            .with_smoother(SmoothingStyle::Linear(50.0))
+            .with_unit(" 16th")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
 
             feedback_l: FloatParam::new("Feedback", 0.5, FloatRange::Linear { min: 0., max: 1. })

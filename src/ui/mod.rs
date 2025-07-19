@@ -187,7 +187,20 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                 Label::new(cx, "Stereo").right(Stretch(1.));
             })
             .class("switch-block");
-
+        HStack::new(cx, |cx| {
+            ParamSwitch::new(
+                    cx,
+                    Data::params,
+                    |params| &params.delay_params.bpm_bound_l,
+                    false,
+                );
+            ParamSwitch::new(
+                    cx,
+                    Data::params,
+                    |params| &params.delay_params.bpm_bound_r,
+                    false,
+                );
+        });
             // All the delay knobs
             HStack::new(cx, |cx| {
                 // The mono knobs
@@ -197,7 +210,15 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     |params| &params.delay_params.delay_len_l,
                     params.delay_params.delay_len_l.default_normalized_value(),
                     None,
-                    Data::params.map(|p| true),
+                    Data::params.map(|p| !p.delay_params.bpm_bound_l.value()),
+                );
+                ParamKnob::new(
+                    cx,
+                    Data::params,
+                    |params| &params.delay_params.delay_len_l_16th,
+                    params.delay_params.delay_len_l_16th.default_normalized_value(),
+                    None,
+                    Data::params.map(|p| p.delay_params.bpm_bound_l.value()),
                 );
                 ParamKnob::new(
                     cx,
@@ -216,7 +237,15 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     |params| &params.delay_params.delay_len_r,
                     params.delay_params.delay_len_r.default_normalized_value(),
                     Some("Delay".to_string()),
-                    Data::params.map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo),
+                    Data::params.map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo && !p.delay_params.bpm_bound_r.value()),
+                );
+                ParamKnob::new(
+                    cx,
+                    Data::params,
+                    |params| &params.delay_params.delay_len_r_16th,
+                    params.delay_params.delay_len_r_16th.default_normalized_value(),
+                    Some("Delay BPM bound".to_string()),
+                    Data::params.map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo && p.delay_params.bpm_bound_r.value()),
                 );
                 ParamKnob::new(
                     cx,

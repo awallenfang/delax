@@ -9,6 +9,8 @@ use params::DelaxParams;
 use std::sync::{Arc, Mutex};
 use ui::InputData;
 
+use crate::delay_engine::delay_time_from_bpm_and_16th;
+
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
@@ -169,8 +171,7 @@ impl Plugin for Delax {
     ) -> ProcessStatus {
         for channel_samples in buffer.iter_samples() {
             // Update all the elements to the current params
-            self.update_params();
-
+            self.update_params(_context.transport());
             // ########## Input ###########
             // Read the values sample by sample for now
             let mut channel_iter = channel_samples.into_iter();
@@ -254,17 +255,39 @@ impl Plugin for Delax {
 }
 
 impl Delax {
-    fn update_params(&mut self) {
+    fn update_params(&mut self, transport: &Transport) {
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
-                let delay_amt = self.params.delay_params.delay_len_l.smoothed.next();
+                let mut delay_amt = self.params.delay_params.delay_len_l.smoothed.next();
+                let bpm_bound = self.params.delay_params.bpm_bound_l.value();
+                let mut bpm = 120.;
+                if let Some(t) = transport.tempo {
+                    bpm = t;
+                }
 
+                if bpm_bound {
+                    delay_amt = delay_time_from_bpm_and_16th(delay_amt, bpm as f32);
+                }
                 self.left_delay_engine.set_delay_amount(delay_amt);
                 self.right_delay_engine.set_delay_amount(delay_amt);
             }
             DelayMode::Stereo => {
-                let delay_amt_l = self.params.delay_params.delay_len_l.smoothed.next();
-                let delay_amt_r = self.params.delay_params.delay_len_r.smoothed.next();
+                let mut delay_amt_l = self.params.delay_params.delay_len_l.smoothed.next();
+                let mut delay_amt_r = self.params.delay_params.delay_len_r.smoothed.next();
+                let bpm_bound_l = self.params.delay_params.bpm_bound_l.value();
+                let bpm_bound_r = self.params.delay_params.bpm_bound_r.value();
+                let mut bpm = 120.;
+                if let Some(t) = transport.tempo {
+                    bpm = t;
+                }
+
+                if bpm_bound_l {
+                    delay_amt_l = delay_time_from_bpm_and_16th(delay_amt_l, bpm as f32);
+                }
+                if bpm_bound_r {
+                    delay_amt_r = delay_time_from_bpm_and_16th(delay_amt_r, bpm as f32);
+                }
+
                 self.left_delay_engine.set_delay_amount(delay_amt_l);
                 self.right_delay_engine.set_delay_amount(delay_amt_r);
             }
