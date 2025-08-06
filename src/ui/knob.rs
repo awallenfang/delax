@@ -176,7 +176,7 @@ impl View for ParamKnob {
                     let delta_y = *y - drag_status.start_y;
 
                     self.param_base
-                        .set_normalized_value(cx, drag_status.start_val - delta_y / 1000.);
+                        .set_normalized_value(cx, drag_status.start_val - delta_y / 300.);
                     event_meta.consume();
                 }
             }

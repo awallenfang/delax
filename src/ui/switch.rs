@@ -10,35 +10,48 @@ use vizia_plug::{
 /// A switch to control a boolean nih-plug parameter
 pub struct ParamSwitch {
     param_base: ParamWidgetBase,
+    active: bool
 }
 
+pub enum ParamSwitchEvent {
+    SetActive(bool),
+}
 impl ParamSwitch {
-    pub fn new<L, Params, P, FMap>(
+    pub fn new<L, Params, P, FMap, La>(
         cx: &mut Context,
         params: L,
         params_to_param: FMap,
         default_val: bool,
+        active_lens: La
     ) -> Handle<Self>
     where
         L: Lens<Target = Params> + Clone,
+        La: Lens<Target = bool> + Clone,
         Params: 'static,
         P: Param + 'static,
         FMap: Fn(&Params) -> &P + Copy + 'static,
     {
         Self {
             param_base: ParamWidgetBase::new(cx, params, params_to_param),
+            active: true
         }
         .build(
             cx,
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
                 let param_lens = param_data.make_lens(|param| param.unmodulated_normalized_value());
-
+                // Make a binding to the active_lens
+                let entity = cx.current();
+                Binding::new(cx, active_lens, move |cx, val| {
+                    let value = val.get(cx);
+                    cx.emit_to(entity, ParamSwitchEvent::SetActive(value));
+                });
                 // Simply create a visual instance on the lens
                 ParamSwitchVisual::new(cx, default_val)
                     .value(param_lens)
                     .class("switch-visual")
                     .height(Stretch(1.))
-                    .width(Stretch(1.));
+                    .width(Stretch(1.))
+                    .active(active_lens);
             }),
         )
     }
@@ -61,9 +74,17 @@ impl View for ParamSwitch {
     }
 
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+        event.map(|param_knob_event, _| match param_knob_event {
+            ParamSwitchEvent::SetActive(active) => {
+                self.active = *active;
+                cx.needs_redraw();
+            }
+        });
         event.map(|input_event, _| match input_event {
             WindowEvent::MouseDown(MouseButton::Left) => {
-                self.toggle(cx);
+                if self.active {
+                    self.toggle(cx);
+                }
             }
             _ => (),
         })
@@ -72,14 +93,16 @@ impl View for ParamSwitch {
 
 pub enum ParamSwitchVisualEvent {
     SetValue(f32),
+    SetActive(bool)
 }
 struct ParamSwitchVisual {
     val: bool,
+    active: bool,
 }
 
 impl ParamSwitchVisual {
     pub fn new(cx: &mut Context, default_val: bool) -> Handle<Self> {
-        Self { val: default_val }.build(cx, |_| {})
+        Self { val: default_val, active: true }.build(cx, |_| {})
     }
 }
 
@@ -103,10 +126,17 @@ impl View for ParamSwitchVisual {
             h = w;
         }
         let opacity = cx.opacity();
-        let bg_col = cx.background_color();
-        let border_col = cx.border_color();
-        let inside_col = cx.caret_color();
+        let mut bg_col = cx.background_color();
+        let mut border_col = cx.border_color();
+        let mut inside_col = cx.caret_color();
+        
+        if !self.active {
+            bg_col = Color::rgba(bg_col.r(), bg_col.g(), bg_col.b(), 100);
+            border_col = Color::rgba(border_col.r(), border_col.g(), border_col.b(), 100);
+            inside_col = Color::rgba(inside_col.r(), inside_col.g(), inside_col.b(), 80);
+        }
 
+       
         let mut path = Path::new();
         // bg_col.into()
         let mut paint = Paint::default();
@@ -159,12 +189,17 @@ impl View for ParamSwitchVisual {
                     cx.needs_redraw();
                 }
             }
+            ParamSwitchVisualEvent::SetActive(active) => {
+                self.active = *active;
+                cx.needs_redraw();
+            }
         })
     }
 }
 
 pub trait SwitchVisualExt {
     fn value<L: Lens<Target = f32>>(self, lens: L) -> Self;
+    fn active<L: Lens<Target = bool>>(self, lens: L) -> Self;
 }
 
 impl SwitchVisualExt for Handle<'_, ParamSwitchVisual> {
@@ -173,6 +208,16 @@ impl SwitchVisualExt for Handle<'_, ParamSwitchVisual> {
         Binding::new(self.context(), lens, move |cx, val| {
             let value = val.get(cx);
             cx.emit_to(entity, ParamSwitchVisualEvent::SetValue(value));
+        });
+
+        self
+    }
+
+    fn active<L: Lens<Target = bool>>(mut self, lens: L) -> Self {
+        let entity = self.entity();
+        Binding::new(self.context(), lens, move |cx, val| {
+            let value = val.get(cx);
+            cx.emit_to(entity, ParamSwitchVisualEvent::SetActive(value));
         });
 
         self
