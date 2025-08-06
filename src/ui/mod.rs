@@ -164,7 +164,7 @@ fn nav_bar(cx: &mut Context, params: Arc<DelaxParams>) {
             |inter_params| &inter_params.wetness,
             params.wetness.default_normalized_value(),
             None,
-            Data::params.map(|p| true),
+            &true,
         );
     })
     .class("nav-bar");
@@ -183,24 +183,34 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     Data::params,
                     |params| &params.delay_params.stereo_delay,
                     false,
+                    &true
                 );
                 Label::new(cx, "Stereo").right(Stretch(1.));
             })
             .class("switch-block");
-        HStack::new(cx, |cx| {
-            ParamSwitch::new(
-                    cx,
-                    Data::params,
-                    |params| &params.delay_params.bpm_bound_l,
-                    false,
-                );
-            ParamSwitch::new(
-                    cx,
-                    Data::params,
-                    |params| &params.delay_params.bpm_bound_r,
-                    false,
-                );
-        });
+            HStack::new(cx, |cx| {
+                VStack::new(cx, |cx| {
+                    Label::new(cx, "BPM bound L");
+                    ParamSwitch::new(
+                        cx,
+                        Data::params,
+                        |params| &params.delay_params.bpm_bound_l,
+                        false,
+                        &true
+                    );
+
+                }).alignment(Alignment::Center);
+                VStack::new(cx, |cx| {
+                    Label::new(cx, "BPM bound R");
+                    ParamSwitch::new(
+                            cx,
+                            Data::params,
+                            |params| &params.delay_params.bpm_bound_r,
+                            false,
+                            Data::params.map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo)
+                        );
+                }).alignment(Alignment::Center);
+            }).alignment(Alignment::Center);
             // All the delay knobs
             HStack::new(cx, |cx| {
                 // The mono knobs
@@ -226,7 +236,7 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     |params| &params.delay_params.feedback_l,
                     params.delay_params.feedback_l.default_normalized_value(),
                     None,
-                    Data::params.map(|p| true),
+                    &true,
                 );
 
                 // Only show the stereo delay knobs if the whole delay is stereo
@@ -275,6 +285,7 @@ fn filter_page(cx: &mut Context, params: Arc<DelaxParams>) {
                 Data::params,
                 |params| &params.filter_params.svf_stereo_mode,
                 false,
+                &true
             );
             Label::new(cx, "Stereo").right(Stretch(1.));
         })
