@@ -10,7 +10,8 @@ use vizia_plug::{
     vizia::{
         prelude::*,
         vg::{
-            runtime_effect::RuntimeShaderBuilder, Canvas, Matrix, Paint, PaintStyle, Path, Rect, RuntimeEffect, Shader
+            Canvas, Matrix, Paint, PaintStyle, Path, Rect, RuntimeEffect, Shader,
+            runtime_effect::RuntimeShaderBuilder,
         },
     },
     widgets::param_base::ParamWidgetBase,
@@ -61,7 +62,7 @@ impl View for Background {
             let mut builder = RuntimeShaderBuilder::new(effect.clone());
             let _ = builder
                 .set_uniform_float("time", &[TIME.load(std::sync::atomic::Ordering::Relaxed)]);
-            
+
             let shader = builder.make_shader(&local_matrix);
             if let Some(s) = shader {
                 paint.set_shader(s);

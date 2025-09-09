@@ -70,7 +70,6 @@ impl Default for EngineParams {
                 "Delay Channel 2 BPM bound",
                 4.,
                 FloatRange::Linear { min: 0., max: 16. },
-
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" 16th")
