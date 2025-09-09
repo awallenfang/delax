@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::Ordering};
 
 use crate::{
     delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams,
-    ui::background::Background,
+    ui::{background::Background, delay_time_control::DelayTimeControl},
 };
 use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
@@ -21,6 +21,7 @@ mod knob;
 mod meter;
 mod shaders;
 mod switch;
+mod delay_time_control;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -214,6 +215,10 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
             // All the delay knobs
             HStack::new(cx, |cx| {
                 // The mono knobs
+                DelayTimeControl::new(cx, Data::params, |params| &params.delay_params.delay_len_l, params.delay_params.delay_len_l.default_normalized_value(),
+                    None,
+                    Data::params.map(|p| true),
+                 Data::params.map(|p: &Arc<DelaxParams>| p.delay_params.bpm_bound_l.value()));
                 ParamKnob::new(
                     cx,
                     Data::params,
