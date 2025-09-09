@@ -1,27 +1,26 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use crate::{
-    delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams,
+    delay_engine::params::DelayMode,
+    filters::params::SVFStereoMode,
+    params::DelaxParams,
     ui::{background::Background, delay_time_control::DelayTimeControl},
 };
 use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
 use nih_plug::{editor::Editor, params::Param, prelude::*};
 use switch::ParamSwitch;
-use vizia_plug::{
-    ViziaState, create_vizia_editor,
-    vizia::prelude::*,
-};
+use vizia_plug::{ViziaState, create_vizia_editor, vizia::prelude::*};
 
 use self::knob::ParamKnob;
 
 mod background;
 mod decay_visualizer;
+mod delay_time_control;
 mod knob;
 mod meter;
 mod shaders;
 mod switch;
-mod delay_time_control;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -89,9 +88,7 @@ pub(crate) fn create(
             .build(cx);
             let internal_params = params.clone();
             ZStack::new(cx, |cx| {
-                Background::new(cx)
-                    .width(Stretch(1.))
-                    .height(Stretch(1.));
+                Background::new(cx).width(Stretch(1.)).height(Stretch(1.));
                 VStack::new(cx, |cx| {
                     // Top bar
                     nav_bar(cx, internal_params.clone());
@@ -184,7 +181,7 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     Data::params,
                     |params| &params.delay_params.stereo_delay,
                     false,
-                    &true
+                    &true,
                 );
                 Label::new(cx, "Stereo").right(Stretch(1.));
             })
@@ -197,28 +194,36 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                         Data::params,
                         |params| &params.delay_params.bpm_bound_l,
                         false,
-                        &true
+                        &true,
                     );
-
-                }).alignment(Alignment::Center);
+                })
+                .alignment(Alignment::Center);
                 VStack::new(cx, |cx| {
                     Label::new(cx, "BPM bound R");
                     ParamSwitch::new(
-                            cx,
-                            Data::params,
-                            |params| &params.delay_params.bpm_bound_r,
-                            false,
-                            Data::params.map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo)
-                        );
-                }).alignment(Alignment::Center);
-            }).alignment(Alignment::Center);
+                        cx,
+                        Data::params,
+                        |params| &params.delay_params.bpm_bound_r,
+                        false,
+                        Data::params
+                            .map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo),
+                    );
+                })
+                .alignment(Alignment::Center);
+            })
+            .alignment(Alignment::Center);
             // All the delay knobs
             HStack::new(cx, |cx| {
                 // The mono knobs
-                DelayTimeControl::new(cx, Data::params, |params| &params.delay_params.delay_len_l, params.delay_params.delay_len_l.default_normalized_value(),
+                DelayTimeControl::new(
+                    cx,
+                    Data::params,
+                    |params| &params.delay_params.delay_len_l,
+                    params.delay_params.delay_len_l.default_normalized_value(),
                     None,
                     Data::params.map(|p| true),
-                 Data::params.map(|p: &Arc<DelaxParams>| p.delay_params.bpm_bound_l.value()));
+                    Data::params.map(|p: &Arc<DelaxParams>| p.delay_params.bpm_bound_l.value()),
+                );
                 ParamKnob::new(
                     cx,
                     Data::params,
@@ -231,7 +236,10 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     cx,
                     Data::params,
                     |params| &params.delay_params.delay_len_l_16th,
-                    params.delay_params.delay_len_l_16th.default_normalized_value(),
+                    params
+                        .delay_params
+                        .delay_len_l_16th
+                        .default_normalized_value(),
                     None,
                     Data::params.map(|p| p.delay_params.bpm_bound_l.value()),
                 );
@@ -252,15 +260,24 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                     |params| &params.delay_params.delay_len_r,
                     params.delay_params.delay_len_r.default_normalized_value(),
                     Some("Delay".to_string()),
-                    Data::params.map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo && !p.delay_params.bpm_bound_r.value()),
+                    Data::params.map(|p| {
+                        p.delay_params.stereo_delay.value() == DelayMode::Stereo
+                            && !p.delay_params.bpm_bound_r.value()
+                    }),
                 );
                 ParamKnob::new(
                     cx,
                     Data::params,
                     |params| &params.delay_params.delay_len_r_16th,
-                    params.delay_params.delay_len_r_16th.default_normalized_value(),
+                    params
+                        .delay_params
+                        .delay_len_r_16th
+                        .default_normalized_value(),
                     Some("Delay BPM bound".to_string()),
-                    Data::params.map(|p| p.delay_params.stereo_delay.value() == DelayMode::Stereo && p.delay_params.bpm_bound_r.value()),
+                    Data::params.map(|p| {
+                        p.delay_params.stereo_delay.value() == DelayMode::Stereo
+                            && p.delay_params.bpm_bound_r.value()
+                    }),
                 );
                 ParamKnob::new(
                     cx,
@@ -290,7 +307,7 @@ fn filter_page(cx: &mut Context, params: Arc<DelaxParams>) {
                 Data::params,
                 |params| &params.filter_params.svf_stereo_mode,
                 false,
-                &true
+                &true,
             );
             Label::new(cx, "Stereo").right(Stretch(1.));
         })

@@ -64,7 +64,7 @@ impl DelayTimeControl {
             default_val,
             drag_status: None,
             active: true,
-            bpm_bound: true
+            bpm_bound: true,
         }
         .build(
             cx,

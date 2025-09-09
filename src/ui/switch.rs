@@ -10,7 +10,7 @@ use vizia_plug::{
 /// A switch to control a boolean nih-plug parameter
 pub struct ParamSwitch {
     param_base: ParamWidgetBase,
-    active: bool
+    active: bool,
 }
 
 pub enum ParamSwitchEvent {
@@ -22,7 +22,7 @@ impl ParamSwitch {
         params: L,
         params_to_param: FMap,
         default_val: bool,
-        active_lens: La
+        active_lens: La,
     ) -> Handle<Self>
     where
         L: Lens<Target = Params> + Clone,
@@ -33,7 +33,7 @@ impl ParamSwitch {
     {
         Self {
             param_base: ParamWidgetBase::new(cx, params, params_to_param),
-            active: true
+            active: true,
         }
         .build(
             cx,
@@ -93,7 +93,7 @@ impl View for ParamSwitch {
 
 pub enum ParamSwitchVisualEvent {
     SetValue(f32),
-    SetActive(bool)
+    SetActive(bool),
 }
 struct ParamSwitchVisual {
     val: bool,
@@ -102,7 +102,11 @@ struct ParamSwitchVisual {
 
 impl ParamSwitchVisual {
     pub fn new(cx: &mut Context, default_val: bool) -> Handle<Self> {
-        Self { val: default_val, active: true }.build(cx, |_| {})
+        Self {
+            val: default_val,
+            active: true,
+        }
+        .build(cx, |_| {})
     }
 }
 
@@ -129,14 +133,13 @@ impl View for ParamSwitchVisual {
         let mut bg_col = cx.background_color();
         let mut border_col = cx.border_color();
         let mut inside_col = cx.caret_color();
-        
+
         if !self.active {
             bg_col = Color::rgba(bg_col.r(), bg_col.g(), bg_col.b(), 100);
             border_col = Color::rgba(border_col.r(), border_col.g(), border_col.b(), 100);
             inside_col = Color::rgba(inside_col.r(), inside_col.g(), inside_col.b(), 80);
         }
 
-       
         let mut path = Path::new();
         // bg_col.into()
         let mut paint = Paint::default();
