@@ -4,10 +4,12 @@ use nih_plug::prelude::Param;
 use vizia_plug::{
     vizia::{
         prelude::*,
-        vg::{self, Paint, PaintCap, Path},
+        vg::{self, Paint, PaintCap, Path, PathDirection, Rect},
     },
     widgets::param_base::ParamWidgetBase,
 };
+
+use crate::{params::DelaxParams, ui::knob::ParamKnob};
 
 #[allow(dead_code)]
 pub struct DragState {
@@ -24,12 +26,10 @@ pub struct DelayTimeControl {
     default_val: f32,
     drag_status: Option<DragState>,
     active: bool,
-    bpm_bound: bool,
 }
 
 pub enum DelayTimeControlEvent {
     SetActive(bool),
-    SetBPMBound(bool),
 }
 
 impl DelayTimeControl {
@@ -49,7 +49,6 @@ impl DelayTimeControl {
         default_val: f32,
         custom_label: Option<String>,
         active_lens: La,
-        mode_lens: La,
     ) -> Handle<Self>
     where
         L: Lens<Target = Params> + Clone,
@@ -64,7 +63,6 @@ impl DelayTimeControl {
             default_val,
             drag_status: None,
             active: true,
-            bpm_bound: true,
         }
         .build(
             cx,
@@ -78,49 +76,44 @@ impl DelayTimeControl {
                     let value = val.get(cx);
                     cx.emit_to(entity, DelayTimeControlEvent::SetActive(value));
                 });
-                Binding::new(cx, mode_lens, move |cx, val| {
-                    let value = val.get(cx);
-                    cx.emit_to(entity, DelayTimeControlEvent::SetBPMBound(value));
-                });
 
-                Binding::new(cx, Self::bpm_bound, |cx, val| {
-                    let bound = val.get(cx);
-                    if bound {
-                        Label::new(cx, "Bound");
-                    } else {
-                        Label::new(cx, "Open");
-                    }
-                });
-                // // Stack the knob and a label vertically
-                // VStack::new(cx, move |cx| {
-                //     DelayTimeControlVisual::new(cx, default_val)
-                //         .value(param_lens)
-                //         .class("delay-time-visual")
-                //         .tooltip(move |cx| {
-                //             Tooltip::new(cx, |cx| {
-                //                 Binding::new(cx, param_lens, move |cx, val| {
-                //                     Label::new(
-                //                         cx,
-                //                         &format!(
-                //                             "{}",
-                //                             param_data
-                //                                 .param()
-                //                                 .normalized_value_to_string(val.get(cx), true)
-                //                         ),
-                //                     )
-                //                     .class("delay-time-tooltip");
-                //                 })
-                //             })
-                //         })
-                //         .active(active_lens);
+                // Stack the knob and a label vertically
+                VStack::new(cx, move |cx| {
+                    HStack::new(cx, |cx| {
+                        Button::new(cx, |cx| Label::new(cx, "16th"));
+                        Button::new(cx, |cx| Label::new(cx, "8th"));
+                        Button::new(cx, |cx| Label::new(cx, "4th"));
+                    });
+                    DelayTimeControlVisual::new(cx, default_val)
+                        .value(param_lens)
+                        .class("delay-time-visual")
+                        .tooltip(move |cx| {
+                            Tooltip::new(cx, |cx| {
+                                Binding::new(cx, param_lens, move |cx, val| {
+                                    Label::new(
+                                        cx,
+                                        &format!(
+                                            "{}",
+                                            param_data
+                                                .param()
+                                                .normalized_value_to_string(val.get(cx), true)
+                                        ),
+                                    )
+                                    .class("delay-time-tooltip");
+                                })
+                            })
+                        })
+                        .width(Stretch(1.))
+                        .height(Pixels(25.))
+                        .active(active_lens);
 
-                //     if let Some(text) = custom_label {
-                //         Label::new(cx, &text).class("delay-time-label");
-                //     } else {
-                //         Label::new(cx, *(&param_data.param().name())).class("delay-time-label");
-                //     }
-                // })
-                // .alignment(Alignment::Center);
+                    // if let Some(text) = custom_label {
+                    //     Label::new(cx, &text).class("delay-time-label");
+                    // } else {
+                    //     Label::new(cx, *(&param_data.param().name())).class("delay-time-label");
+                    // }
+                })
+                .alignment(Alignment::TopCenter);
             }),
         )
     }
@@ -136,10 +129,6 @@ impl View for DelayTimeControl {
         event.map(|param_knob_event, _| match param_knob_event {
             DelayTimeControlEvent::SetActive(active) => {
                 self.active = *active;
-                cx.needs_redraw();
-            }
-            DelayTimeControlEvent::SetBPMBound(bpm_bound) => {
-                self.bpm_bound = *bpm_bound;
                 cx.needs_redraw();
             }
         });
@@ -259,85 +248,145 @@ impl View for DelayTimeControlVisual {
         // Grab all the bounds
         let bounds = cx.bounds();
 
-        let center_x = bounds.x + bounds.w / 2.;
-        let center_y = bounds.y + bounds.h / 2.;
-
-        let mut radius = bounds.w.min(bounds.h) / 2.;
+        let mut radius = bounds.h / 2.;
 
         let girthiness = 0.1 * radius;
         radius -= girthiness;
 
         // Grab all the colors
-        let mut arc_color = cx.border_color();
+        let mut bar_color = Color::white();
 
         if !self.active {
-            arc_color = Color::rgba(arc_color.r(), arc_color.g(), arc_color.b(), 100);
+            bar_color = Color::rgba(bar_color.r(), bar_color.g(), bar_color.b(), 100);
         }
 
-        let mut body_color = cx.background_color();
+        let mut active_color = Color::red();
         if !self.active {
-            body_color = Color::rgba(body_color.r(), body_color.g(), body_color.b(), 100);
+            active_color = Color::rgba(active_color.r(), active_color.g(), active_color.b(), 100);
         }
 
-        let mut line_color = cx.caret_color();
+        let mut line_color = Color::green();
 
         if !self.active {
             line_color = Color::rgba(line_color.r(), line_color.g(), line_color.b(), 100);
         }
 
-        // Arc path
+        // Horizontal bar
         let mut path = Path::new();
-        let start = 135.;
-        let range = 270.;
-
-        let arc_oval = vg::Rect::new(
-            center_x - radius,
-            center_y - radius,
-            center_x + radius,
-            center_y + radius,
+        let rect = path.add_round_rect(
+            vg::Rect::new(
+                bounds.x,
+                bounds.y,
+                bounds.x + bounds.w,
+                bounds.y + bounds.h / 2.,
+            ),
+            (5., 5.),
+            PathDirection::CW,
         );
 
-        path.arc_to(arc_oval, start, self.val * range, true);
-        // path.arc_to(arc_oval, 0., PI);
+        let mut bar_paint = Paint::default();
+        bar_paint.set_color(bar_color);
+        bar_paint.set_stroke_width(girthiness);
+        bar_paint.set_stroke_cap(PaintCap::Round);
+        bar_paint.set_style(vg::PaintStyle::Fill);
+        bar_paint.set_anti_alias(true);
 
-        let mut arc_paint = Paint::default();
-        arc_paint.set_color(arc_color);
-        arc_paint.set_stroke_width(girthiness);
-        arc_paint.set_stroke_cap(PaintCap::Round);
-        arc_paint.set_style(vg::PaintStyle::Stroke);
-        arc_paint.set_anti_alias(true);
+        canvas.draw_path(&path, &bar_paint);
+        
+        let line_width = 5.;
+        let mut line_path = Path::new();
+        let rect = line_path.add_round_rect(
+            vg::Rect::new(
+                bounds.x + bounds.w / 2. - line_width / 2.,
+                bounds.y + bounds.h / 2.,
+                bounds.x + bounds.w / 2. + line_width / 2.,
+                bounds.y + bounds.h,
+            ),
+            (5., 5.),
+            PathDirection::CW,
+        );
+        let rect = line_path.add_round_rect(
+            vg::Rect::new(
+                bounds.x + bounds.w / 3. - line_width / 2.,
+                bounds.y + bounds.h / 2.,
+                bounds.x + bounds.w / 3. + line_width / 2.,
+                bounds.y + bounds.h,
+            ),
+            (5., 5.),
+            PathDirection::CW,
+        );
+        let rect = line_path.add_round_rect(
+            vg::Rect::new(
+                bounds.x + bounds.w - line_width,
+                bounds.y + bounds.h / 2.,
+                bounds.x + bounds.w,
+                bounds.y + bounds.h,
+            ),
+            (5., 5.),
+            PathDirection::CW,
+        );
 
-        canvas.draw_path(&path, &arc_paint);
-
-        // Body path
-        let mut body_paint = Paint::default();
-        body_paint.set_color(body_color);
-        body_paint.set_style(vg::PaintStyle::Fill);
-        body_paint.set_anti_alias(true);
-
-        path = Path::new();
-        path.add_circle((center_x, center_y), radius - girthiness * 2., None);
-        canvas.draw_path(&path, &body_paint);
-
-        let arc_pos_x =
-            center_x + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).cos();
-        let arc_pos_y =
-            center_y + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).sin();
-
-        // Line path
         let mut line_paint = Paint::default();
         line_paint.set_color(line_color);
-        line_paint.set_stroke_width(girthiness);
         line_paint.set_stroke_cap(PaintCap::Round);
         line_paint.set_style(vg::PaintStyle::Fill);
         line_paint.set_anti_alias(true);
 
-        path = Path::new();
+        canvas.draw_path(&line_path, &line_paint);
 
-        path.move_to((center_x, center_y));
-        path.line_to((arc_pos_x, arc_pos_y));
+        // // Arc path
+        // let mut path = Path::new();
+        // let start = 135.;
+        // let range = 270.;
 
-        canvas.draw_path(&path, &line_paint);
+        // let arc_oval = vg::Rect::new(
+        //     center_x - radius,
+        //     center_y - radius,
+        //     center_x + radius,
+        //     center_y + radius,
+        // );
+
+        // path.arc_to(arc_oval, start, self.val * range, true);
+        // // path.arc_to(arc_oval, 0., PI);
+
+        // let mut arc_paint = Paint::default();
+        // arc_paint.set_color(arc_color);
+        // arc_paint.set_stroke_width(girthiness);
+        // arc_paint.set_stroke_cap(PaintCap::Round);
+        // arc_paint.set_style(vg::PaintStyle::Stroke);
+        // arc_paint.set_anti_alias(true);
+
+        // canvas.draw_path(&path, &arc_paint);
+
+        // // Body path
+        // let mut body_paint = Paint::default();
+        // body_paint.set_color(body_color);
+        // body_paint.set_style(vg::PaintStyle::Fill);
+        // body_paint.set_anti_alias(true);
+
+        // path = Path::new();
+        // path.add_circle((center_x, center_y), radius - girthiness * 2., None);
+        // canvas.draw_path(&path, &body_paint);
+
+        // let arc_pos_x =
+        //     center_x + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).cos();
+        // let arc_pos_y =
+        //     center_y + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).sin();
+
+        // // Line path
+        // let mut line_paint = Paint::default();
+        // line_paint.set_color(line_color);
+        // line_paint.set_stroke_width(girthiness);
+        // line_paint.set_stroke_cap(PaintCap::Round);
+        // line_paint.set_style(vg::PaintStyle::Fill);
+        // line_paint.set_anti_alias(true);
+
+        // path = Path::new();
+
+        // path.move_to((center_x, center_y));
+        // path.line_to((arc_pos_x, arc_pos_y));
+
+        // canvas.draw_path(&path, &line_paint);
     }
 }
 
