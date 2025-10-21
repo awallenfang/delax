@@ -215,34 +215,35 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
             // All the delay knobs
             HStack::new(cx, |cx| {
                 // The mono knobs
-                DelayTimeControl::new(
+                let internal_params = params.clone();
+                Binding::new(
                     cx,
-                    Data::params,
-                    |params| &params.delay_params.delay_len_l,
-                    params.delay_params.delay_len_l.default_normalized_value(),
-                    None,
-                    Data::params.map(|p| true),
-                    Data::params.map(|p: &Arc<DelaxParams>| p.delay_params.bpm_bound_l.value()),
+                    Data::params.map(|p| p.delay_params.bpm_bound_l.value() == true),
+                    move |cx, val| {
+                        let delay_len_l_ref = &internal_params.delay_params.delay_len_l;
+
+                        if val.get(cx) {
+                            DelayTimeControl::new(
+                                cx,
+                                Data::params,
+                                |params| &params.delay_params.delay_len_l,
+                                delay_len_l_ref.default_normalized_value(),
+                                None,
+                                Data::params.map(|p| true),
+                            );
+                        } else {
+                            ParamKnob::new(
+                                cx,
+                                Data::params,
+                                |params| &params.delay_params.delay_len_l,
+                                delay_len_l_ref.default_normalized_value(),
+                                None,
+                                Data::params.map(|p| !p.delay_params.bpm_bound_l.value()),
+                            );
+                        }
+                    },
                 );
-                ParamKnob::new(
-                    cx,
-                    Data::params,
-                    |params| &params.delay_params.delay_len_l,
-                    params.delay_params.delay_len_l.default_normalized_value(),
-                    None,
-                    Data::params.map(|p| !p.delay_params.bpm_bound_l.value()),
-                );
-                ParamKnob::new(
-                    cx,
-                    Data::params,
-                    |params| &params.delay_params.delay_len_l_16th,
-                    params
-                        .delay_params
-                        .delay_len_l_16th
-                        .default_normalized_value(),
-                    None,
-                    Data::params.map(|p| p.delay_params.bpm_bound_l.value()),
-                );
+
                 ParamKnob::new(
                     cx,
                     Data::params,
