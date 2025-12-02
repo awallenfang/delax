@@ -335,6 +335,7 @@ impl Delax {
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.
     fn run_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
+        nih_dbg!(self.input_sin_svf_l.cutoff);
         self.filter_pipeline.process_stereo(input_l, input_r)
     }
 

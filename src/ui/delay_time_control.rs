@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use nih_plug::prelude::Param;
+use nih_plug::{nih_dbg, prelude::Param};
 use vizia_plug::{
     vizia::{
         prelude::*,
@@ -26,10 +26,12 @@ pub struct DelayTimeControl {
     default_val: f32,
     drag_status: Option<DragState>,
     active: bool,
+    mult_16: u8 // Multiplier on the slider 1: 16th, 2: 8th, 4: 4th, 8: halves, 16: wholes
 }
 
 pub enum DelayTimeControlEvent {
     SetActive(bool),
+    SetMult(u8)
 }
 
 impl DelayTimeControl {
@@ -63,13 +65,14 @@ impl DelayTimeControl {
             default_val,
             drag_status: None,
             active: true,
+            mult_16: 1
         }
         .build(
             cx,
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
                 // Grab a lens to the bound value
                 let param_lens = param_data.make_lens(|param| param.unmodulated_normalized_value());
-
+                
                 // Make a binding to the active_lens
                 let entity = cx.current();
                 Binding::new(cx, active_lens, move |cx, val| {
@@ -80,9 +83,9 @@ impl DelayTimeControl {
                 // Stack the knob and a label vertically
                 VStack::new(cx, move |cx| {
                     HStack::new(cx, |cx| {
-                        Button::new(cx, |cx| Label::new(cx, "16th"));
-                        Button::new(cx, |cx| Label::new(cx, "8th"));
-                        Button::new(cx, |cx| Label::new(cx, "4th"));
+                        Button::new(cx, |cx| Label::new(cx, "16th")).on_press(|cx| cx.emit(DelayTimeControlEvent::SetMult(1)));
+                        Button::new(cx, |cx| Label::new(cx, "8th")).on_press(|cx| cx.emit(DelayTimeControlEvent::SetMult(2)));
+                        Button::new(cx, |cx| Label::new(cx, "4th")).on_press(|cx| cx.emit(DelayTimeControlEvent::SetMult(4)));
                     });
                     DelayTimeControlVisual::new(cx, default_val)
                         .value(param_lens)
@@ -96,7 +99,8 @@ impl DelayTimeControl {
                                             "{}",
                                             param_data
                                                 .param()
-                                                .normalized_value_to_string(val.get(cx), true)
+                                                .normalized_value_to_string(val.get(cx), true),
+                                                
                                         ),
                                     )
                                     .class("delay-time-tooltip");
@@ -129,6 +133,18 @@ impl View for DelayTimeControl {
         event.map(|param_knob_event, _| match param_knob_event {
             DelayTimeControlEvent::SetActive(active) => {
                 self.active = *active;
+                cx.needs_redraw();
+            }
+            DelayTimeControlEvent::SetMult(mult) => {
+                let old_mult = self.mult_16;
+                self.mult_16 = *mult;
+                let param_change_multiplier = *mult as f32 / old_mult as f32;
+
+                self.param_base.begin_set_parameter(cx);
+                let new_value: f32 = self.param_base.unmodulated_normalized_value() * param_change_multiplier;
+                self.param_base
+                    .set_normalized_value(cx, new_value);
+                self.param_base.end_set_parameter(cx);
                 cx.needs_redraw();
             }
         });
@@ -181,10 +197,10 @@ impl View for DelayTimeControl {
                         start_y: *y,
                     });
 
-                    let delta_y = *y - drag_status.start_y;
+                    let delta_x = *x - drag_status.start_x;
 
                     self.param_base
-                        .set_normalized_value(cx, drag_status.start_val - delta_y / 1000.);
+                        .set_normalized_value(cx, drag_status.start_val + delta_x / 100.);
                     event_meta.consume();
                 }
             }
@@ -209,11 +225,13 @@ impl View for DelayTimeControl {
 enum DelayTimeControlVisualEvent {
     SetValue(f32),
     SetActive(bool),
+    SetMult(u8),
 }
 
 struct DelayTimeControlVisual {
     val: f32,
     active: bool,
+    mult_16: u8
 }
 
 impl DelayTimeControlVisual {
@@ -221,6 +239,7 @@ impl DelayTimeControlVisual {
         Self {
             val: default_val,
             active: true,
+            mult_16: 1
         }
         .build(cx, |_| {})
     }
@@ -239,6 +258,10 @@ impl View for DelayTimeControlVisual {
             }
             DelayTimeControlVisualEvent::SetActive(active) => {
                 self.active = *active;
+                cx.needs_redraw();
+            }
+            DelayTimeControlVisualEvent::SetMult(mult) => {
+                self.mult_16 = *mult;
                 cx.needs_redraw();
             }
         });
@@ -280,7 +303,7 @@ impl View for DelayTimeControlVisual {
                 bounds.x + bounds.w,
                 bounds.y + bounds.h / 2.,
             ),
-            (5., 5.),
+            (2., 2.),
             PathDirection::CW,
         );
 
@@ -293,6 +316,38 @@ impl View for DelayTimeControlVisual {
 
         canvas.draw_path(&path, &bar_paint);
         
+        let mut caret_path = Path::new();
+        let val = self.val.get(cx);
+        // Set the relative position to be half the designated length at the left side and double at the right side
+        // Uses the multiplier to get the situation 
+        // mult=1 -> left 0.5, right 2
+        // mult=2 -> left 1, right 4
+        // mult=4 -> left 2, right 8
+        // mult=8 -> left 4, right 16
+        let left: f32 = 0.5 * self.mult_16 as f32;
+        let right = 2. * self.mult_16 as f32;
+        let mut relative_position = (val - left) / (right - left);
+        relative_position = relative_position.clamp(0., 1.);
+        let rect = caret_path.add_round_rect(
+            vg::Rect::new(
+                bounds.x + (relative_position) * bounds.w + 1.,
+                bounds.y,
+                bounds.x + (relative_position) * bounds.w - 1.,
+                bounds.y + bounds.h / 2.
+            ),
+            (5., 5.),
+            PathDirection::CW
+        );
+
+        let mut caret_paint = Paint::default();
+        caret_paint.set_color(active_color);
+        caret_paint.set_stroke_width(girthiness);
+        caret_paint.set_stroke_cap(PaintCap::Round);
+        caret_paint.set_style(vg::PaintStyle::Fill);
+        caret_paint.set_anti_alias(true);
+        
+        canvas.draw_path(&caret_path, &caret_paint);
+
         let line_width = 5.;
         let mut line_path = Path::new();
         let rect = line_path.add_round_rect(
@@ -334,59 +389,6 @@ impl View for DelayTimeControlVisual {
 
         canvas.draw_path(&line_path, &line_paint);
 
-        // // Arc path
-        // let mut path = Path::new();
-        // let start = 135.;
-        // let range = 270.;
-
-        // let arc_oval = vg::Rect::new(
-        //     center_x - radius,
-        //     center_y - radius,
-        //     center_x + radius,
-        //     center_y + radius,
-        // );
-
-        // path.arc_to(arc_oval, start, self.val * range, true);
-        // // path.arc_to(arc_oval, 0., PI);
-
-        // let mut arc_paint = Paint::default();
-        // arc_paint.set_color(arc_color);
-        // arc_paint.set_stroke_width(girthiness);
-        // arc_paint.set_stroke_cap(PaintCap::Round);
-        // arc_paint.set_style(vg::PaintStyle::Stroke);
-        // arc_paint.set_anti_alias(true);
-
-        // canvas.draw_path(&path, &arc_paint);
-
-        // // Body path
-        // let mut body_paint = Paint::default();
-        // body_paint.set_color(body_color);
-        // body_paint.set_style(vg::PaintStyle::Fill);
-        // body_paint.set_anti_alias(true);
-
-        // path = Path::new();
-        // path.add_circle((center_x, center_y), radius - girthiness * 2., None);
-        // canvas.draw_path(&path, &body_paint);
-
-        // let arc_pos_x =
-        //     center_x + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).cos();
-        // let arc_pos_y =
-        //     center_y + (radius - girthiness * 2.) * (0.75 * PI + self.val * range).sin();
-
-        // // Line path
-        // let mut line_paint = Paint::default();
-        // line_paint.set_color(line_color);
-        // line_paint.set_stroke_width(girthiness);
-        // line_paint.set_stroke_cap(PaintCap::Round);
-        // line_paint.set_style(vg::PaintStyle::Fill);
-        // line_paint.set_anti_alias(true);
-
-        // path = Path::new();
-
-        // path.move_to((center_x, center_y));
-        // path.line_to((arc_pos_x, arc_pos_y));
-
-        // canvas.draw_path(&path, &line_paint);
     }
 }
 
@@ -399,7 +401,8 @@ impl DelayTimeControlVisualExt for Handle<'_, DelayTimeControlVisual> {
     fn value<L: Lens<Target = f32>>(mut self, lens: L) -> Self {
         let entity = self.entity();
         Binding::new(self.context(), lens, move |cx, val| {
-            let value = val.get(cx);
+            let mut value = val.get(cx);
+            value *= 32.;
             cx.emit_to(entity, DelayTimeControlVisualEvent::SetValue(value));
         });
 
