@@ -79,7 +79,7 @@ pub(crate) fn create(
             // assets::register_noto_sans_light(cx);
             // assets::register_noto_sans_thin(cx);
             let _ = cx.add_stylesheet(include_style!("src/ui/style.css"));
-
+            
             Data {
                 params: params.clone(),
                 input_data: input_data.clone(),
@@ -226,7 +226,7 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                             DelayTimeControl::new(
                                 cx,
                                 Data::params,
-                                |params| &params.delay_params.delay_len_l,
+                                |params| &params.delay_params.delay_len_l_16th,
                                 delay_len_l_ref.default_normalized_value(),
                                 None,
                                 Data::params.map(|p| true),
