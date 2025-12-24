@@ -79,7 +79,7 @@ pub(crate) fn create(
             // assets::register_noto_sans_light(cx);
             // assets::register_noto_sans_thin(cx);
             let _ = cx.add_stylesheet(include_style!("src/ui/style.css"));
-            
+
             Data {
                 params: params.clone(),
                 input_data: input_data.clone(),
