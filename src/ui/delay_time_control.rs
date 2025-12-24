@@ -1,4 +1,3 @@
-
 use nih_plug::prelude::Param;
 use vizia_plug::{
     vizia::{
@@ -7,7 +6,6 @@ use vizia_plug::{
     },
     widgets::param_base::ParamWidgetBase,
 };
-
 
 #[allow(dead_code)]
 pub struct DragState {
@@ -49,7 +47,7 @@ impl DelayTimeControl {
         default_val: f32,
         custom_label: Option<String>,
         active_lens: La,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = Params> + Clone,
         La: Lens<Target = bool> + Clone,
@@ -97,8 +95,9 @@ impl DelayTimeControl {
                                     Label::new(
                                         cx,
                                         &param_data
-                                                .param()
-                                                .normalized_value_to_string(val.get(cx), true).to_string(),
+                                            .param()
+                                            .normalized_value_to_string(val.get(cx), true)
+                                            .to_string(),
                                     )
                                     .class("delay-time-tooltip");
                                 })
@@ -220,9 +219,9 @@ impl View for DelayTimeControl {
 }
 
 enum DelayTimeControlVisualEvent {
-    SetValue(f32),
-    SetActive(bool),
-    SetMult(u8),
+    Value(f32),
+    Active(bool),
+    Mult(u8),
 }
 
 struct DelayTimeControlVisual {
@@ -232,7 +231,7 @@ struct DelayTimeControlVisual {
 }
 
 impl DelayTimeControlVisual {
-    pub fn new(cx: &mut Context, default_val: f32) -> Handle<Self> {
+    pub fn new(cx: &mut Context, default_val: f32) -> Handle<'_, Self> {
         Self {
             val: default_val,
             active: true,
@@ -249,15 +248,15 @@ impl View for DelayTimeControlVisual {
 
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|visual_event, _| match visual_event {
-            DelayTimeControlVisualEvent::SetValue(val) => {
+            DelayTimeControlVisualEvent::Value(val) => {
                 self.val = *val;
                 cx.needs_redraw();
             }
-            DelayTimeControlVisualEvent::SetActive(active) => {
+            DelayTimeControlVisualEvent::Active(active) => {
                 self.active = *active;
                 cx.needs_redraw();
             }
-            DelayTimeControlVisualEvent::SetMult(mult) => {
+            DelayTimeControlVisualEvent::Mult(mult) => {
                 self.mult_16 = *mult;
                 cx.needs_redraw();
             }
@@ -399,7 +398,7 @@ impl DelayTimeControlVisualExt for Handle<'_, DelayTimeControlVisual> {
         Binding::new(self.context(), lens, move |cx, val| {
             let mut value = val.get(cx);
             value *= 32.;
-            cx.emit_to(entity, DelayTimeControlVisualEvent::SetValue(value));
+            cx.emit_to(entity, DelayTimeControlVisualEvent::Value(value));
         });
 
         self
@@ -409,7 +408,7 @@ impl DelayTimeControlVisualExt for Handle<'_, DelayTimeControlVisual> {
         let entity = self.entity();
         Binding::new(self.context(), lens, move |cx, val| {
             let value = val.get(cx);
-            cx.emit_to(entity, DelayTimeControlVisualEvent::SetActive(value));
+            cx.emit_to(entity, DelayTimeControlVisualEvent::Active(value));
         });
 
         self

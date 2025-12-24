@@ -49,8 +49,10 @@ struct Data {
 
 impl Model for Data {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
-        event.map(|delax_event, _| if let DelaxEvent::OpenTab(n) = delax_event {
-            self.ui_page = *n;
+        event.map(|delax_event, _| {
+            if let DelaxEvent::OpenTab(n) = delax_event {
+                self.ui_page = *n;
+            }
         });
     }
 }

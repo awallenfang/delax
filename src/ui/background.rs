@@ -1,14 +1,13 @@
-
 use crate::ui::shaders::{self, make_effect};
 use nih_plug::nih_dbg;
 use shaders::TIME;
 use vizia_plug::vizia::{
-        prelude::*,
-        vg::{
-            Canvas, Matrix, Paint, PaintStyle, Path, Rect, RuntimeEffect,
-            runtime_effect::RuntimeShaderBuilder,
-        },
-    };
+    prelude::*,
+    vg::{
+        Canvas, Matrix, Paint, PaintStyle, Path, Rect, RuntimeEffect,
+        runtime_effect::RuntimeShaderBuilder,
+    },
+};
 
 const SHADER: &str = include_str!("shaders/background.sksl");
 
@@ -18,7 +17,7 @@ pub struct Background {
 }
 
 impl Background {
-    pub fn new(cx: &mut Context) -> Handle<Self> {
+    pub fn new(cx: &mut Context) -> Handle<'_, Self> {
         // let mut shader = None;
         let result = make_effect(SHADER);
         let mut effect = None;

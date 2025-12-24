@@ -23,7 +23,7 @@ impl ParamSwitch {
         params_to_param: FMap,
         default_val: bool,
         active_lens: La,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = Params> + Clone,
         La: Lens<Target = bool> + Clone,
@@ -80,8 +80,10 @@ impl View for ParamSwitch {
                 cx.needs_redraw();
             }
         });
-        event.map(|input_event, _| if let WindowEvent::MouseDown(MouseButton::Left) = input_event {
-            if self.active {
+        event.map(|input_event, _| {
+            if let WindowEvent::MouseDown(MouseButton::Left) = input_event
+                && self.active
+            {
                 self.toggle(cx);
             }
         })
@@ -98,7 +100,7 @@ struct ParamSwitchVisual {
 }
 
 impl ParamSwitchVisual {
-    pub fn new(cx: &mut Context, default_val: bool) -> Handle<Self> {
+    pub fn new(cx: &mut Context, default_val: bool) -> Handle<'_, Self> {
         Self {
             val: default_val,
             active: true,

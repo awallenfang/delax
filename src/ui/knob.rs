@@ -48,7 +48,7 @@ impl ParamKnob {
         default_val: f32,
         custom_label: Option<String>,
         active_lens: La,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = Params> + Clone,
         La: Lens<Target = bool> + Clone,
@@ -87,8 +87,9 @@ impl ParamKnob {
                                     Label::new(
                                         cx,
                                         &param_data
-                                                .param()
-                                                .normalized_value_to_string(val.get(cx), true).to_string(),
+                                            .param()
+                                            .normalized_value_to_string(val.get(cx), true)
+                                            .to_string(),
                                     )
                                     .class("knob-tooltip");
                                 })
@@ -206,7 +207,7 @@ struct KnobVisual {
 }
 
 impl KnobVisual {
-    pub fn new(cx: &mut Context, default_val: f32) -> Handle<Self> {
+    pub fn new(cx: &mut Context, default_val: f32) -> Handle<'_, Self> {
         Self {
             val: default_val,
             active: true,
