@@ -5,6 +5,7 @@ use delay_engine::{
 use filter_pipeline::pipeline::FilterPipeline;
 use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
 use nih_plug::prelude::*;
+use nih_plug_iced::IcedState;
 use params::DelaxParams;
 use std::sync::{Arc, Mutex};
 use ui::InputData;
@@ -107,6 +108,11 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        // iced_ui::create(
+        //     self.params.clone(),
+        //     self.input_data.clone(),
+        //     iced_ui::default_state(),
+        // )
         ui::create(
             self.params.clone(),
             self.params.editor_state.clone(),
@@ -335,7 +341,6 @@ impl Delax {
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.
     fn run_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
-        nih_dbg!(self.input_sin_svf_l.cutoff);
         self.filter_pipeline.process_stereo(input_l, input_r)
     }
 

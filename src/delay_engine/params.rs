@@ -60,7 +60,7 @@ impl Default for EngineParams {
             delay_len_l_16th: FloatParam::new(
                 "Delay BPM bound",
                 2.,
-                FloatRange::Linear { min: 0., max:32. },
+                FloatRange::Linear { min: 0., max: 32. },
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" 16th")
