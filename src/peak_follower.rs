@@ -49,7 +49,7 @@ impl PeakSmoother {
             smoothed
         } else {
             self.prev = input;
-            return input;
+            input
         }
     }
 }

@@ -1,23 +1,16 @@
-use std::{sync::Arc, time};
 
-use crate::ui::{
-    DelaxEvent, InputData,
-    shaders::{self, make_effect},
-};
-use nih_plug::{nih_dbg, params::Param, prelude::*};
+use crate::ui::shaders::{self, make_effect};
+use nih_plug::nih_dbg;
 use shaders::TIME;
-use vizia_plug::{
-    vizia::{
+use vizia_plug::vizia::{
         prelude::*,
         vg::{
-            Canvas, Matrix, Paint, PaintStyle, Path, Rect, RuntimeEffect, Shader,
+            Canvas, Matrix, Paint, PaintStyle, Path, Rect, RuntimeEffect,
             runtime_effect::RuntimeShaderBuilder,
         },
-    },
-    widgets::param_base::ParamWidgetBase,
-};
+    };
 
-const SHADER: &'static str = include_str!("shaders/background.sksl");
+const SHADER: &str = include_str!("shaders/background.sksl");
 
 /// A switch to control a boolean nih-plug parameter
 pub struct Background {

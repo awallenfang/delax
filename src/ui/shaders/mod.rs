@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use nih_plug::{nih_dbg, prelude::AtomicF32};
+use nih_plug::prelude::AtomicF32;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 use vizia_plug::vizia::vg::{RuntimeEffect, runtime_effect::Options};
@@ -23,8 +23,8 @@ pub fn spawn_time_thread() {
 pub fn make_effect(sksl: &str) -> Result<RuntimeEffect, String> {
     struct NoneOpts;
 
-    impl<'a, 'b> Into<Option<&'a Options<'b>>> for NoneOpts {
-        fn into(self) -> Option<&'a Options<'b>> {
+    impl<'a, 'b> From<NoneOpts> for Option<&'a Options<'b>> {
+        fn from(val: NoneOpts) -> Self {
             None
         }
     }

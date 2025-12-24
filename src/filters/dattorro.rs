@@ -195,7 +195,7 @@ impl DelayLine {
     /// Create a new delay line with a maximum delay length
     fn new(max_delay: usize) -> Self {
         Self {
-            buffer: vec![0.0; (max_delay) as usize],
+            buffer: vec![0.0; (max_delay)],
             delay: max_delay,
             write_index: 0,
         }
@@ -255,14 +255,14 @@ impl InputDiffusor {
     fn new(delay: usize, gain: f32) -> Self {
         Self {
             delay_line: DelayLine::new(delay),
-            gain: gain,
+            gain,
         }
     }
 
     /// Process a sample through the input diffusor
     fn process(&mut self, input: f32) -> f32 {
         let delayed = self.delay_line.get();
-        let in_changed = input + delayed * self.gain * -1.;
+        let in_changed = input + -(delayed * self.gain);
 
         self.delay_line.insert(in_changed);
 
@@ -293,8 +293,8 @@ impl DecayDiffusor {
     fn new(sample_rate: f32, delay: usize, gain: f32) -> Self {
         Self {
             delay_line: DelayLine::new(delay + 16),
-            delay: delay,
-            gain: gain,
+            delay,
+            gain,
             excursion: 0.,
             excursion_tick: 0.,
             excursion_rate: 1.,
@@ -315,7 +315,7 @@ impl DecayDiffusor {
 
         self.delay_line.insert(in_changed);
 
-        delayed + in_changed * self.gain * -1.
+        delayed + -(in_changed * self.gain)
     }
 
     /// Modulates the excursion for each sample at a specific rate
