@@ -21,7 +21,7 @@ pub struct PeakMeter {
 }
 
 impl PeakMeter {
-    pub fn new<L>(cx: &mut Context, val: L, direction: MeterDirection) -> Handle<Self>
+    pub fn new<L>(cx: &mut Context, val: L, direction: MeterDirection) -> Handle<'_, Self>
     where
         L: Lens<Target = f32> + Clone,
     {
@@ -60,7 +60,7 @@ impl<L> PeakMeterBar<L>
 where
     L: Lens<Target = f32> + Clone,
 {
-    pub fn new(cx: &mut Context, val: L, direction: MeterDirection) -> Handle<Self> {
+    pub fn new(cx: &mut Context, val: L, direction: MeterDirection) -> Handle<'_, Self> {
         Self { val, direction }.build(cx, |cx| {})
     }
 }
