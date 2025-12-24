@@ -5,7 +5,6 @@ use delay_engine::{
 use filter_pipeline::pipeline::FilterPipeline;
 use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
 use nih_plug::prelude::*;
-use nih_plug_iced::IcedState;
 use params::DelaxParams;
 use std::sync::{Arc, Mutex};
 use ui::InputData;
