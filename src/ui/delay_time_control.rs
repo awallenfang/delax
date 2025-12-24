@@ -1,15 +1,13 @@
-use std::f32::consts::PI;
 
-use nih_plug::{nih_dbg, prelude::Param};
+use nih_plug::prelude::Param;
 use vizia_plug::{
     vizia::{
         prelude::*,
-        vg::{self, Paint, PaintCap, Path, PathDirection, Rect},
+        vg::{self, Paint, PaintCap, Path, PathDirection},
     },
     widgets::param_base::ParamWidgetBase,
 };
 
-use crate::{params::DelaxParams, ui::knob::ParamKnob};
 
 #[allow(dead_code)]
 pub struct DragState {
@@ -98,12 +96,9 @@ impl DelayTimeControl {
                                 Binding::new(cx, param_lens, move |cx, val| {
                                     Label::new(
                                         cx,
-                                        &format!(
-                                            "{}",
-                                            param_data
+                                        &param_data
                                                 .param()
-                                                .normalized_value_to_string(val.get(cx), true),
-                                        ),
+                                                .normalized_value_to_string(val.get(cx), true).to_string(),
                                     )
                                     .class("delay-time-tooltip");
                                 })
@@ -208,7 +203,7 @@ impl View for DelayTimeControl {
             }
             WindowEvent::MouseScroll(_x, y) => {
                 if self.active {
-                    let delta = -*y as f32 / 25.;
+                    let delta = -*y / 25.;
                     self.param_base.begin_set_parameter(cx);
                     self.param_base.set_normalized_value(
                         cx,

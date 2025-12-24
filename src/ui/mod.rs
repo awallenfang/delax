@@ -49,11 +49,8 @@ struct Data {
 
 impl Model for Data {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
-        event.map(|delax_event, _| match delax_event {
-            DelaxEvent::OpenTab(n) => {
-                self.ui_page = *n;
-            }
-            _ => (),
+        event.map(|delax_event, _| if let DelaxEvent::OpenTab(n) = delax_event {
+            self.ui_page = *n;
         });
     }
 }
@@ -218,7 +215,7 @@ fn main_page(cx: &mut Context, params: Arc<DelaxParams>) {
                 let internal_params = params.clone();
                 Binding::new(
                     cx,
-                    Data::params.map(|p| p.delay_params.bpm_bound_l.value() == true),
+                    Data::params.map(|p| p.delay_params.bpm_bound_l.value()),
                     move |cx, val| {
                         let delay_len_l_ref = &internal_params.delay_params.delay_len_l;
 

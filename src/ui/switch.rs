@@ -80,13 +80,10 @@ impl View for ParamSwitch {
                 cx.needs_redraw();
             }
         });
-        event.map(|input_event, _| match input_event {
-            WindowEvent::MouseDown(MouseButton::Left) => {
-                if self.active {
-                    self.toggle(cx);
-                }
+        event.map(|input_event, _| if let WindowEvent::MouseDown(MouseButton::Left) = input_event {
+            if self.active {
+                self.toggle(cx);
             }
-            _ => (),
         })
     }
 }

@@ -86,12 +86,9 @@ impl ParamKnob {
                                 Binding::new(cx, param_lens, move |cx, val| {
                                     Label::new(
                                         cx,
-                                        &format!(
-                                            "{}",
-                                            param_data
+                                        &param_data
                                                 .param()
-                                                .normalized_value_to_string(val.get(cx), true)
-                                        ),
+                                                .normalized_value_to_string(val.get(cx), true).to_string(),
                                     )
                                     .class("knob-tooltip");
                                 })
@@ -102,7 +99,7 @@ impl ParamKnob {
                     if let Some(text) = custom_label {
                         Label::new(cx, &text).class("knob-label");
                     } else {
-                        Label::new(cx, *(&param_data.param().name())).class("knob-label");
+                        Label::new(cx, param_data.param().name()).class("knob-label");
                     }
                 })
                 .alignment(Alignment::Center);
@@ -182,7 +179,7 @@ impl View for ParamKnob {
             }
             WindowEvent::MouseScroll(_x, y) => {
                 if self.active {
-                    let delta = -*y as f32 / 25.;
+                    let delta = -*y / 25.;
                     self.param_base.begin_set_parameter(cx);
                     self.param_base.set_normalized_value(
                         cx,
