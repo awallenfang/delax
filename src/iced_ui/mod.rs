@@ -1,86 +1,205 @@
-use std::sync::Arc;
+use std::{
+    any::Any,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering::Relaxed},
+    },
+};
 
-use nih_plug::editor::Editor;
-use nih_plug::prelude::{AtomicF32, GuiContext};
-use iced_baseview::*;
-use crate::iced_ui::widgets::param_knob::{self, ParamKnob};
-use crate::ui::InputData;
-use crate::{Delax, DelaxParams};
-mod widgets;
+use crossbeam::atomic::AtomicCell;
+use iced_baseview::{
+    Application, Font, IcedBaseviewSettings, Settings, Task, Theme,
+    alignment::Horizontal,
+    baseview::WindowOpenOptions,
+    futures::backend::default::Executor,
+    widget::{Column, Text},
+};
+use nih_plug::{
+    context,
+    prelude::{AtomicF32, Editor, GuiContext, ParamPtr, ParentWindowHandle},
+};
+use serde::{Deserialize, Serialize};
 
-fn create_iced_editor<E: IcedEditor>(
-    iced_state: Arc<IcedState>,
-    initialization_flags: E::InitializationFlags,
-) -> Option<Box<dyn Editor>> {
-    let (parameter_updates_sender, parameter_updates_receiver) = channel::bounded(1);
+use crate::params::DelaxParams;
+
+#[derive(Debug)]
+pub enum DelaxMessage {
+    BeginEditParameter(ParamPtr),
+    SetParameter(ParamPtr, f32),
+    EndEditParameter(ParamPtr),
 }
 
-pub(crate) fn default_state() -> Arc<IcedState> {
-    IcedState::from_size(200, 150)
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IcedState {
+    #[serde(with = "nih_plug::params::persist::serialize_atomic_cell")]
+    size: AtomicCell<(u32, u32)>,
+    #[serde(skip)]
+    open: AtomicBool,
 }
 
-pub(crate) fn create(
-    params: Arc<DelaxParams>,
-    input_data: Arc<InputData>,
-    editor_state: Arc<IcedState>,
-) -> Option<Box<dyn Editor>> {
-    create_iced_editor::<DelaxEditor>(editor_state, (params))
-}
-
-struct DelaxEditor {
-    params: Arc<DelaxParams>,
-    context: Arc<dyn GuiContext>,
-
-    wetness_state: param_knob::State,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Message {
-    /// Update a parameter's value.
-    ParamUpdate(nih_widgets::ParamMessage),
-}
-
-impl IcedEditor for DelaxEditor {
-    type Executor = executor::Default;
-    type Message = Message;
-    type InitializationFlags = (Arc<DelaxParams>);
-
-    fn new(
-        (params): Self::InitializationFlags,
-        context: Arc<dyn GuiContext>,
-    ) -> (Self, Command<Self::Message>) {
-        let editor = DelaxEditor {
-            params,
-            context,
-
-            wetness_state: Default::default(),
-        };
-
-        (editor, Command::none())
-    }
-
-    fn context(&self) -> &dyn GuiContext {
-        self.context.as_ref()
-    }
-
-    fn update(
-        &mut self,
-        _window: &mut WindowQueue,
-        message: Self::Message,
-    ) -> Command<Self::Message> {
-        match message {
-            Message::ParamUpdate(message) => self.handle_param_message(message),
+impl Default for IcedState {
+    fn default() -> Self {
+        Self {
+            size: AtomicCell::new((510, 350)),
+            open: AtomicBool::new(false),
         }
+    }
+}
 
-        Command::none()
+pub struct DelaxUI {
+    iced_state: Arc<IcedState>,
+    scale: AtomicF32,
+    params: Arc<DelaxParams>, // Input states
+}
+
+impl DelaxUI {
+    pub fn create(params: Arc<DelaxParams>) -> Self {
+        DelaxUI {
+            iced_state: Arc::new(IcedState::default()),
+            scale: AtomicF32::new(1.),
+            params,
+        }
+    }
+}
+
+impl Editor for DelaxUI {
+    fn spawn(
+        &self,
+        parent: ParentWindowHandle,
+        context: Arc<dyn GuiContext>,
+    ) -> Box<dyn Any + Send> {
+        let (w, h) = self.iced_state.size.load();
+        let window = iced_baseview::open_parented::<DelaxApplication, ParentWindowHandle>(
+            &parent,
+            (context, self.params.clone()),
+            Settings {
+                window: WindowOpenOptions {
+                    title: "Delax".into(),
+                    size: iced_baseview::baseview::Size {
+                        width: w as f64,
+                        height: h as f64,
+                    }
+                    .into(),
+                    scale: iced_baseview::baseview::WindowScalePolicy::SystemScaleFactor,
+                },
+                iced_baseview: IcedBaseviewSettings {
+                    ignore_non_modifier_keys: false,
+                    always_redraw: true,
+                },
+                graphics_settings: iced_baseview::GraphicsSettings {
+                    antialiasing: Some(iced_baseview::graphics::Antialiasing::MSAAx16),
+                    ..Default::default()
+                },
+                fonts: vec![],
+            },
+        );
+
+        self.iced_state.open.store(true, Relaxed);
+        Box::new(WindowHandle {
+            iced_state: self.iced_state.clone(),
+            window,
+        })
     }
 
-    fn view(&mut self) -> Element<'_, Self::Message> {
+    fn size(&self) -> (u32, u32) {
+        self.iced_state.size.load()
+    }
+
+    fn set_scale_factor(&self, factor: f32) -> bool {
+        if self.iced_state.open.load(Relaxed) {
+            return false;
+        }
+        self.scale.store(factor, Relaxed);
+        true
+    }
+
+    fn param_value_changed(&self, id: &str, normalized_value: f32) {
+        ()
+    }
+
+    fn param_modulation_changed(&self, id: &str, modulation_offset: f32) {
+        ()
+    }
+
+    fn param_values_changed(&self) {
+        ()
+    }
+}
+
+struct WindowHandle<Message: 'static + Send> {
+    iced_state: Arc<IcedState>,
+    window: iced_baseview::window::WindowHandle<Message>,
+}
+
+unsafe impl<Message: Send> Send for WindowHandle<Message> {}
+
+impl<Message: Send> Drop for WindowHandle<Message> {
+    fn drop(&mut self) {
+        self.iced_state.open.store(false, Relaxed);
+        self.window.close_window();
+    }
+}
+
+struct DelaxApplication {
+    iced_state: Arc<IcedState>,
+    gui_context: Arc<dyn GuiContext>,
+    scale: AtomicF32,
+
+    params: Arc<DelaxParams>,
+}
+
+impl Application for DelaxApplication {
+    type Message = DelaxMessage;
+
+    type Theme = Theme;
+
+    type Executor = Executor;
+
+    type Flags = (Arc<dyn GuiContext>, Arc<DelaxParams>);
+
+    fn new((gui_context, params): Self::Flags) -> (Self, iced_baseview::Task<Self::Message>) {
+        (
+            Self {
+                gui_context,
+                params,
+                scale: AtomicF32::new(1.),
+                iced_state: Arc::new(IcedState {
+                    size: AtomicCell::new((550, 310)),
+                    open: AtomicBool::new(false),
+                }),
+            },
+            // Task to run on startup
+            Task::none(),
+        )
+    }
+
+    fn update(&mut self, message: Self::Message) -> iced_baseview::Task<Self::Message> {
+        match message {
+            DelaxMessage::BeginEditParameter(param_ptr) => unsafe {
+                self.gui_context.raw_begin_set_parameter(param_ptr)
+            },
+            DelaxMessage::SetParameter(param_ptr, val) => unsafe {
+                self.gui_context
+                    .raw_set_parameter_normalized(param_ptr, val)
+            },
+            DelaxMessage::EndEditParameter(param_ptr) => unsafe {
+                self.gui_context.raw_end_set_parameter(param_ptr)
+            },
+        }
+        Task::none()
+    }
+
+    fn view(
+        &self,
+    ) -> iced_baseview::core::Element<'_, Self::Message, Self::Theme, iced_baseview::Renderer> {
+        // Iced view
         Column::new()
-            .push(
-                ParamKnob::new(&mut self.wetness_state, &self.params.wetness)
-                    .map(Message::ParamUpdate),
-            )
+            .align_x(Horizontal::Center)
+            .push(Text::new("Test"))
             .into()
+    }
+
+    fn theme(&self) -> Self::Theme {
+        Theme::Dark
     }
 }

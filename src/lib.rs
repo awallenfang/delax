@@ -4,19 +4,41 @@ use delay_engine::{
 };
 use filter_pipeline::pipeline::FilterPipeline;
 use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
+use iced_baseview::Application;
 use nih_plug::prelude::*;
 use params::DelaxParams;
 use std::sync::{Arc, Mutex};
-use ui::InputData;
 
-use crate::delay_engine::delay_time_from_bpm_and_16th;
+use crate::{
+    delay_engine::delay_time_from_bpm_and_16th,
+    iced_ui::{DelaxUI, IcedState},
+};
 
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
 mod peak_follower;
-mod ui;
+// mod ui;
+mod iced_ui;
+
+pub struct InputData {
+    pub in_l: AtomicF32,
+    pub in_r: AtomicF32,
+    pub out_l: AtomicF32,
+    pub out_r: AtomicF32,
+}
+
+impl Default for InputData {
+    fn default() -> Self {
+        Self {
+            in_l: AtomicF32::new(0.),
+            in_r: AtomicF32::new(0.),
+            out_l: AtomicF32::new(0.),
+            out_r: AtomicF32::new(0.),
+        }
+    }
+}
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -112,11 +134,12 @@ impl Plugin for Delax {
         //     self.input_data.clone(),
         //     iced_ui::default_state(),
         // )
-        ui::create(
-            self.params.clone(),
-            self.params.editor_state.clone(),
-            self.input_data.clone(),
-        )
+        // ui::create(
+        //     self.params.clone(),
+        //     self.params.editor_state.clone(),
+        //     self.input_data.clone(),
+        // )
+        Some(Box::new(DelaxUI::create(self.params.clone())))
     }
 
     fn initialize(
