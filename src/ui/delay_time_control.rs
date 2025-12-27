@@ -1,4 +1,4 @@
-use nih_plug::prelude::Param;
+use nih_plug::{nih_log, prelude::Param};
 use vizia_plug::{
     vizia::{
         prelude::*,
@@ -23,6 +23,14 @@ pub struct DelayTimeControl {
     drag_status: Option<DragState>,
     active: bool,
     mult_16: u8, // Multiplier on the slider 1: 16th, 2: 8th, 4: 4th, 8: halves, 16: wholes
+}
+
+enum TransferWindowEvent {
+    MouseDown(MouseButton),
+    MouseUp(MouseButton),
+    MouseDoubleClick(MouseButton),
+    MouseMove(f32, f32),
+    MouseScroll(f32, f32),
 }
 
 pub enum DelayTimeControlEvent {
@@ -66,6 +74,7 @@ impl DelayTimeControl {
         .build(
             cx,
             ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
+                let target = cx.current();
                 // Grab a lens to the bound value
                 let param_lens = param_data.make_lens(|param| param.unmodulated_normalized_value());
 
@@ -86,7 +95,7 @@ impl DelayTimeControl {
                         Button::new(cx, |cx| Label::new(cx, "4th"))
                             .on_press(|cx| cx.emit(DelayTimeControlEvent::SetMult(4)));
                     });
-                    DelayTimeControlVisual::new(cx, default_val)
+                    DelayTimeControlVisual::new(cx, default_val, target)
                         .value(param_lens)
                         .class("delay-time-visual")
                         .tooltip(move |cx| {
@@ -146,8 +155,9 @@ impl View for DelayTimeControl {
         });
 
         // External events
-        event.map(|window_event, event_meta| match window_event {
-            WindowEvent::MouseDown(MouseButton::Left) => {
+        event.map(|transfer_event, event_meta| match transfer_event {
+            TransferWindowEvent::MouseDown(MouseButton::Left) => {
+                nih_log!("Propagated");
                 if self.active {
                     // Start dragging
                     self.drag_active = true;
@@ -159,7 +169,7 @@ impl View for DelayTimeControl {
                     self.param_base.begin_set_parameter(cx);
                 }
             }
-            WindowEvent::MouseUp(MouseButton::Left) => {
+            TransferWindowEvent::MouseUp(MouseButton::Left) => {
                 // Stop dragging
                 if self.drag_active {
                     self.drag_active = false;
@@ -174,7 +184,7 @@ impl View for DelayTimeControl {
                     event_meta.consume();
                 }
             }
-            WindowEvent::MouseDoubleClick(_) => {
+            TransferWindowEvent::MouseDoubleClick(_) => {
                 if self.active {
                     // Reset to default
                     self.param_base.begin_set_parameter(cx);
@@ -185,7 +195,7 @@ impl View for DelayTimeControl {
                     event_meta.consume();
                 }
             }
-            WindowEvent::MouseMove(x, y) => {
+            TransferWindowEvent::MouseMove(x, y) => {
                 if self.drag_active {
                     let drag_status = self.drag_status.get_or_insert_with(|| DragState {
                         start_val: self.param_base.unmodulated_normalized_value(),
@@ -200,7 +210,7 @@ impl View for DelayTimeControl {
                     event_meta.consume();
                 }
             }
-            WindowEvent::MouseScroll(_x, y) => {
+            TransferWindowEvent::MouseScroll(_x, y) => {
                 if self.active {
                     let delta = -*y / 25.;
                     self.param_base.begin_set_parameter(cx);
@@ -228,14 +238,16 @@ struct DelayTimeControlVisual {
     val: f32,
     active: bool,
     mult_16: u8,
+    parent_target: Entity,
 }
 
 impl DelayTimeControlVisual {
-    pub fn new(cx: &mut Context, default_val: f32) -> Handle<'_, Self> {
+    pub fn new(cx: &mut Context, default_val: f32, parent_target: Entity) -> Handle<'_, Self> {
         Self {
             val: default_val,
             active: true,
             mult_16: 1,
+            parent_target,
         }
         .build(cx, |_| {})
     }
@@ -261,6 +273,34 @@ impl View for DelayTimeControlVisual {
                 cx.needs_redraw();
             }
         });
+
+        event.map(|window_event, event_meta| match window_event {
+            WindowEvent::MouseDown(MouseButton::Left) => {
+                cx.emit_to(
+                    self.parent_target,
+                    TransferWindowEvent::MouseDown(MouseButton::Left),
+                );
+            }
+            WindowEvent::MouseUp(MouseButton::Left) => {
+                cx.emit_to(
+                    self.parent_target,
+                    TransferWindowEvent::MouseUp(MouseButton::Left),
+                );
+            }
+            WindowEvent::MouseDoubleClick(_) => {
+                cx.emit_to(
+                    self.parent_target,
+                    TransferWindowEvent::MouseDoubleClick(MouseButton::Left),
+                );
+            }
+            WindowEvent::MouseMove(x, y) => {
+                cx.emit_to(self.parent_target, TransferWindowEvent::MouseMove(*x, *y));
+            }
+            WindowEvent::MouseScroll(x, y) => {
+                cx.emit_to(self.parent_target, TransferWindowEvent::MouseScroll(*x, *y));
+            }
+            _ => (),
+        })
     }
 
     fn draw(&self, cx: &mut DrawContext, canvas: &vg::Canvas) {
