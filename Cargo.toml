@@ -17,12 +17,17 @@ crate-type = ["cdylib", "lib"]
 atomic_refcell = "0.1.13"
 # Remove the `assert_process_allocs` feature to allow allocations on the audio
 # thread in debug builds.
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false,  features = ["assert_process_allocs", "standalone"] }
-vizia_plug = { git = "https://github.com/vizia/vizia-plug" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false,  features = ["assert_process_allocs"] }
+# vizia_plug = { git = "https://github.com/vizia/vizia-plug" }
 # Uncomment the below line to disable the on-by-default VST3 feature to remove
 # the GPL compatibility requirement
 # nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default_features = false, features = ["assert_process_allocs"] }
-# iced_baseview = {git = "https://github.com/BillyDM/iced_baseview.git"}
+
+iced_baseview = { git = "https://github.com/BillyDM/iced_baseview.git", default-features = false }
+crossbeam = "0.8.4"
+serde = "1.0.228"
+iced_native = "0.10.3"
+raw-window-handle = "0.6.2"
 
 [profile.release]
 lto = "thin"

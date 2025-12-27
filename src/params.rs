@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
-use vizia_plug::ViziaState;
+// use vizia_plug::ViziaState;
 
-use crate::{delay_engine::params::EngineParams, filters::params::FilterParams, ui};
+use crate::{delay_engine::params::EngineParams, filters::params::FilterParams};
 
 #[derive(Params)]
 pub struct DelaxParams {
@@ -13,9 +13,6 @@ pub struct DelaxParams {
     pub filter_params: FilterParams,
     #[id = "wetness"]
     pub wetness: FloatParam,
-
-    #[persist = "editor-state"]
-    pub editor_state: Arc<ViziaState>,
 }
 
 impl Default for DelaxParams {
@@ -25,7 +22,6 @@ impl Default for DelaxParams {
             filter_params: FilterParams::default(),
             wetness: FloatParam::new("Wetness", 0.5, FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.)),
-            editor_state: ui::default_state(),
         }
     }
 }
