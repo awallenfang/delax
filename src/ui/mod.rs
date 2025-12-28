@@ -1,10 +1,7 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use crate::{
-    delay_engine::params::DelayMode,
-    filters::params::SVFStereoMode,
-    params::DelaxParams,
-    ui::{background::Background, delay_time_control::DelayTimeControl},
+    InputData, delay_engine::params::DelayMode, filters::params::SVFStereoMode, params::DelaxParams, ui::{background::Background, delay_time_control::DelayTimeControl}
 };
 use meter::PeakMeter;
 // use decay_visualizer::DecayVisualizer;
@@ -21,24 +18,6 @@ mod knob;
 mod meter;
 mod shaders;
 mod switch;
-
-pub struct InputData {
-    pub in_l: AtomicF32,
-    pub in_r: AtomicF32,
-    pub out_l: AtomicF32,
-    pub out_r: AtomicF32,
-}
-
-impl Default for InputData {
-    fn default() -> Self {
-        Self {
-            in_l: AtomicF32::new(0.),
-            in_r: AtomicF32::new(0.),
-            out_l: AtomicF32::new(0.),
-            out_r: AtomicF32::new(0.),
-        }
-    }
-}
 
 #[derive(Lens)]
 struct Data {

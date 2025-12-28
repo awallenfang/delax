@@ -195,7 +195,7 @@ impl DelayLine {
     /// Create a new delay line with a maximum delay length
     fn new(max_delay: usize) -> Self {
         Self {
-            buffer: vec![0.0; (max_delay)],
+            buffer: vec![0.0; max_delay],
             delay: max_delay,
             write_index: 0,
         }

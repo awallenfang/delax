@@ -1,6 +1,6 @@
 use delax::Delax;
-use nih_plug::prelude::*;
+use nih_plug::nih_export_standalone;
 
 pub fn main() {
-    // nih_export_standalone::<Delax>();
+    nih_export_standalone::<Delax>();
 }

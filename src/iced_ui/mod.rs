@@ -7,15 +7,17 @@ use std::{
 };
 
 use crossbeam::atomic::AtomicCell;
+use iced_audio::{Knob, Normal, NormalParam, knob};
 use iced_baseview::{
-    Application, Font, IcedBaseviewSettings, Settings, Task, Theme,
+    Application, IcedBaseviewSettings, Settings, Task, Theme,
     alignment::Horizontal,
     baseview::WindowOpenOptions,
+    core::Element,
     futures::backend::default::Executor,
     widget::{Column, Text},
 };
 use nih_plug::{
-    context,
+    params::Param,
     prelude::{AtomicF32, Editor, GuiContext, ParamPtr, ParentWindowHandle},
 };
 use serde::{Deserialize, Serialize};
@@ -27,6 +29,7 @@ pub enum DelaxMessage {
     BeginEditParameter(ParamPtr),
     SetParameter(ParamPtr, f32),
     EndEditParameter(ParamPtr),
+    UpdateParameter(ParamPtr, f32),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,6 +53,8 @@ pub struct DelaxUI {
     iced_state: Arc<IcedState>,
     scale: AtomicF32,
     params: Arc<DelaxParams>, // Input states
+
+    wetness_state: NormalParam,
 }
 
 impl DelaxUI {
@@ -58,6 +63,10 @@ impl DelaxUI {
             iced_state: Arc::new(IcedState::default()),
             scale: AtomicF32::new(1.),
             params,
+            wetness_state: NormalParam {
+                value: Normal::from_clipped(0.5),
+                default: Normal::from_clipped(0.5),
+            },
         }
     }
 }
@@ -78,8 +87,7 @@ impl Editor for DelaxUI {
                     size: iced_baseview::baseview::Size {
                         width: w as f64,
                         height: h as f64,
-                    }
-                    .into(),
+                    },
                     scale: iced_baseview::baseview::WindowScalePolicy::SystemScaleFactor,
                 },
                 iced_baseview: IcedBaseviewSettings {
@@ -87,7 +95,7 @@ impl Editor for DelaxUI {
                     always_redraw: true,
                 },
                 graphics_settings: iced_baseview::GraphicsSettings {
-                    antialiasing: Some(iced_baseview::graphics::Antialiasing::MSAAx16),
+                    antialiasing: None,
                     ..Default::default()
                 },
                 fonts: vec![],
@@ -113,17 +121,11 @@ impl Editor for DelaxUI {
         true
     }
 
-    fn param_value_changed(&self, id: &str, normalized_value: f32) {
-        ()
-    }
+    fn param_value_changed(&self, id: &str, normalized_value: f32) {}
 
-    fn param_modulation_changed(&self, id: &str, modulation_offset: f32) {
-        ()
-    }
+    fn param_modulation_changed(&self, id: &str, modulation_offset: f32) {}
 
-    fn param_values_changed(&self) {
-        ()
-    }
+    fn param_values_changed(&self) {}
 }
 
 struct WindowHandle<Message: 'static + Send> {
@@ -185,18 +187,21 @@ impl Application for DelaxApplication {
             DelaxMessage::EndEditParameter(param_ptr) => unsafe {
                 self.gui_context.raw_end_set_parameter(param_ptr)
             },
+            DelaxMessage::UpdateParameter(param_ptr, val) => unsafe {
+                self.gui_context.raw_begin_set_parameter(param_ptr);
+                self.gui_context
+                    .raw_set_parameter_normalized(param_ptr, val);
+                self.gui_context.raw_end_set_parameter(param_ptr);
+            },
         }
         Task::none()
     }
 
-    fn view(
-        &self,
-    ) -> iced_baseview::core::Element<'_, Self::Message, Self::Theme, iced_baseview::Renderer> {
+    fn view(&self) -> Element<'_, Self::Message, Self::Theme, iced_baseview::Renderer> {
         // Iced view
-        Column::new()
-            .align_x(Horizontal::Center)
-            .push(Text::new("Test"))
-            .into()
+        Knob::new(self.wetness_state, |normal| {
+                DelaxMessage::UpdateParameter(self.params.wetness.as_ptr(), normal.as_f32())
+            }).into()
     }
 
     fn theme(&self) -> Self::Theme {
