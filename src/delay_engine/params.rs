@@ -1,4 +1,4 @@
-use nih_plug::prelude::*;
+use nice_plug::prelude::*;
 
 #[derive(Enum, PartialEq)]
 pub enum DelayMode {
