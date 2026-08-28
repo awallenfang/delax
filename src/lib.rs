@@ -2,21 +2,19 @@ use delay_engine::{
     engine::{DelayEngine, DelayInterpolationMode},
     params::DelayMode,
 };
-use filter_pipeline::pipeline::FilterPipeline;
-use filters::{dattorro::DattorroReverb, simper::SimperSinSVF};
-use nih_plug::prelude::*;
+use filters::dattorro::DattorroReverb;
+use filters::simper::SimperSinSVF;
+use nice_plug::prelude::*;
 use params::DelaxParams;
-use std::sync::{Arc, Mutex};
-
-use crate::{delay_engine::delay_time_from_bpm_and_16th};
+use std::sync::Arc;
+use crate::delay_engine::delay_time_from_bpm_and_16th;
 
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
 mod peak_follower;
-mod ui;
-// mod iced_ui;
+mod slint_ui;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -45,8 +43,6 @@ pub struct Delax {
     sin_svf_r: SimperSinSVF,
     input_sin_svf_l: SimperSinSVF,
     input_sin_svf_r: SimperSinSVF,
-    filter_pipeline: FilterPipeline,
-    initial_filter_pipeline: FilterPipeline,
     datorro: DattorroReverb,
     initial_dattorro: DattorroReverb,
     input_data: Arc<InputData>,
@@ -59,23 +55,15 @@ impl Default for Delax {
         let mut right_delay_engine = DelayEngine::new(44100, 44100.);
         right_delay_engine.set_delay_amount(0.);
 
-        let input_sin_svf_l = SimperSinSVF::new(44100.);
-        let input_sin_svf_r = SimperSinSVF::new(44100.);
-
-        let sin_svf_l = SimperSinSVF::new(44100.);
-        let sin_svf_r = SimperSinSVF::new(44100.);
-
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
             right_delay_engine,
             sample_rate: 44100.,
-            sin_svf_l,
-            sin_svf_r,
-            input_sin_svf_l,
-            input_sin_svf_r,
-            filter_pipeline: FilterPipeline::new(),
-            initial_filter_pipeline: FilterPipeline::new(),
+            sin_svf_l: SimperSinSVF::new(44100.),
+            sin_svf_r: SimperSinSVF::new(44100.),
+            input_sin_svf_l: SimperSinSVF::new(44100.),
+            input_sin_svf_r: SimperSinSVF::new(44100.),
             datorro: DattorroReverb::new(44100., 0.5),
             initial_dattorro: DattorroReverb::new(44100., 0.5),
             input_data: Arc::new(InputData::default()),
@@ -120,29 +108,47 @@ impl Plugin for Delax {
     // tasks.
     type BackgroundTask = ();
 
+    type Editor = slint_ui::editor::UIEditor<slint_ui::AppWindow, DelaxParams>;
+
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
     }
 
-    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        // iced_ui::create(
-        //     self.params.clone(),
-        //     self.input_data.clone(),
-        //     iced_ui::default_state(),
-        // )
-        // Some(Box::new(DelaxUI::create(self.params.clone())))
-        ui::create(
-            self.params.clone(),
-            self.params.editor_state.clone(),
-            self.input_data.clone(),
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
+        use slint_ui::param_component::ParamComponent;
+
+        Some(
+            slint_ui::editor::UIEditor::new(
+                self.params.editor_state.clone(),
+                Arc::new({
+                    let params = self.params.clone();
+                    move |event_tx| {
+                        let app = slint_ui::AppWindow::new()?;
+                        app.bind_param_changed(event_tx, params.clone());
+                        Ok(app)
+                    }
+                }),
+                self.params.clone(),
+            )
+            .on_frame({
+                let params = self.params.clone();
+                move |app| {
+                    for (p_id, param_ptr, _) in params.param_map().iter() {
+                        let val = unsafe { param_ptr.unmodulated_normalized_value() };
+                        <slint_ui::AppWindow as ParamComponent<DelaxParams>>::set_param_from_host(
+                            app, p_id, val,
+                        );
+                    }
+                }
+            }),
         )
     }
 
-    fn initialize(
+    fn activate(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
         buffer_config: &BufferConfig,
-        _context: &mut impl InitContext<Self>,
+        _context: &mut impl ActivateContext<Self>,
     ) -> bool {
         // Resize buffers and perform other potentially expensive initialization operations here.
         // The `reset()` function is always called right after this function. You can remove this
@@ -164,15 +170,6 @@ impl Plugin for Delax {
 
         self.datorro.set_sample_rate(self.sample_rate);
         self.initial_dattorro.set_sample_rate(self.sample_rate);
-
-        self.filter_pipeline.register_stereo_pair(
-            Arc::new(Mutex::new(self.sin_svf_l.clone())),
-            Arc::new(Mutex::new(self.sin_svf_r.clone())),
-        );
-        self.initial_filter_pipeline.register_stereo_pair(
-            Arc::new(Mutex::new(self.input_sin_svf_l.clone())),
-            Arc::new(Mutex::new(self.input_sin_svf_r.clone())),
-        );
 
         // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
         // self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
@@ -317,55 +314,63 @@ impl Delax {
             }
         }
 
-        // Update the filter params
+        // Plugin owns SVFs directly – no pipeline indirection.
         match self.params.filter_params.svf_stereo_mode.value() {
-            // For mono params it's important to just call the params function once. Otherwise the smoothing is out of sync
             filters::params::SVFStereoMode::Mono => {
+                // `smoothed.next()` once for mono – keeps L/R smoothers in sync.
                 let res = self.params.filter_params.svf_res_l.smoothed.next();
+                let cutoff = self.params.filter_params.svf_cutoff_l.smoothed.next();
+                let mode = self.params.filter_params.svf_filter_mode_l.value();
                 self.sin_svf_l.set_res(res);
                 self.sin_svf_r.set_res(res);
                 self.input_sin_svf_l.set_res(res);
                 self.input_sin_svf_r.set_res(res);
-
-                let cutoff = self.params.filter_params.svf_cutoff_l.smoothed.next();
                 self.sin_svf_l.set_cutoff(cutoff);
                 self.sin_svf_r.set_cutoff(cutoff);
                 self.input_sin_svf_l.set_cutoff(cutoff);
                 self.input_sin_svf_r.set_cutoff(cutoff);
-
-                let mode = self.params.filter_params.svf_filter_mode_l.value();
                 self.sin_svf_l.set_mode(mode);
                 self.sin_svf_r.set_mode(mode);
+                self.input_sin_svf_l.set_mode(mode);
+                self.input_sin_svf_r.set_mode(mode);
             }
             filters::params::SVFStereoMode::Stereo => {
                 let res_l = self.params.filter_params.svf_res_l.smoothed.next();
                 let res_r = self.params.filter_params.svf_res_r.smoothed.next();
-
                 self.sin_svf_l.set_res(res_l);
                 self.sin_svf_r.set_res(res_r);
-
+                self.input_sin_svf_l.set_res(res_l);
+                self.input_sin_svf_r.set_res(res_r);
                 let cutoff_l = self.params.filter_params.svf_cutoff_l.smoothed.next();
                 let cutoff_r = self.params.filter_params.svf_cutoff_r.smoothed.next();
                 self.sin_svf_l.set_cutoff(cutoff_l);
                 self.sin_svf_r.set_cutoff(cutoff_r);
-
+                self.input_sin_svf_l.set_cutoff(cutoff_l);
+                self.input_sin_svf_r.set_cutoff(cutoff_r);
                 let mode_l = self.params.filter_params.svf_filter_mode_l.value();
                 let mode_r = self.params.filter_params.svf_filter_mode_r.value();
                 self.sin_svf_l.set_mode(mode_l);
                 self.sin_svf_r.set_mode(mode_r);
+                self.input_sin_svf_l.set_mode(mode_l);
+                self.input_sin_svf_r.set_mode(mode_r);
             }
         }
     }
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.
     fn run_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
-        self.filter_pipeline.process_stereo(input_l, input_r)
+        use filters::Filter;
+        let l = self.sin_svf_l.process(input_l);
+        let r = self.sin_svf_r.process(input_r);
+        (l, r)
     }
 
     /// Run the filter chain on the input signal. This can probably be refactored out down the line. But for now it doesn't work correctly without
     fn run_input_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
-        self.initial_filter_pipeline
-            .process_stereo(input_l, input_r)
+        use filters::Filter;
+        let l = self.input_sin_svf_l.process(input_l);
+        let r = self.input_sin_svf_r.process(input_r);
+        (l, r)
     }
 
     fn input_ui_send(&mut self, l: f32, r: f32) {
@@ -425,5 +430,5 @@ impl ClapPlugin for Delax {
 //     ];
 // }
 
-nih_export_clap!(Delax);
+nice_export_clap!(Delax);
 // nih_export_vst3!(Delax);

@@ -1,0 +1,15 @@
+import { Switch } from "std-widgets.slint";
+import { ParamBus } from "../events.slint";
+
+struct Click { x: length, y: length}
+export component ParamSwitch {
+    in property <string> param_name: "switch";
+    in-out property <bool> checked;
+    Switch {
+        checked <=> root.checked;
+        text: "";
+        toggled => {
+            ParamBus.param_changed(root.param_name, self.checked ? 1.0 : 0.0);
+        }
+    }
+}

@@ -1,4 +1,4 @@
-use nih_plug::prelude::*;
+use nice_plug::prelude::*;
 
 #[derive(Debug, Enum, PartialEq, Clone, Copy)]
 pub enum SVFFilterMode {
