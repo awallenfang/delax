@@ -1,0 +1,141 @@
+import {
+    Slider,
+    VerticalBox,
+    AboutSlint,
+    CheckBox,
+    Switch, Spinner,
+} from "std-widgets.slint";
+import { ParamKnob } from "components/param_knob.slint";
+import { ParamBus } from "events.slint";
+import { ParamSwitch } from "components/param_switch.slint";
+import { Palette } from "./components/global.slint";
+
+export { ParamBus }
+
+
+
+export component AppWindow inherits Window {
+    in-out property <float> wetness_val: 0.7;
+    in-out property <bool> is_stereo: false;
+    in-out property <bool> is_filter_stereo: false;
+    background: Palette.background;
+    width: 550px;
+    height: 310px;
+    title: "Delax";
+    VerticalBox {
+        padding: 20px;
+        alignment: LayoutAlignment.start;
+
+        VerticalLayout {
+            HorizontalLayout {
+                accessible-role: AccessibleRole.none;
+                alignment: LayoutAlignment.center;
+                spacing: 10px;
+                Text {
+                    text: "Mono";
+                    color: Palette.text;
+                }
+
+                ParamSwitch {
+                    param_name: "stereo";
+                    checked <=> root.is_stereo;
+                }
+
+                Text {
+                    text: "Stereo";
+                    color: Palette.text;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: LayoutAlignment.space-between;
+                height: 50px;
+                ParamKnob {
+                    param_name: "delay_l";
+                    val: ParamBus.read_val("delay_l");
+                }
+
+                ParamKnob {
+                    param_name: "feedback_l";
+                    val: ParamBus.read_val("feedback_l");
+                }
+
+                ParamKnob {
+                    param_name: "delay_r";
+                    val: ParamBus.read_val("delay_r");
+                    enabled: root.is_stereo;
+                }
+
+                ParamKnob {
+                    param_name: "feedback_r";
+                    val: ParamBus.read_val("feedback_r");
+                    enabled: root.is_stereo;
+                }
+            }
+
+            Text {
+                horizontal-alignment: TextHorizontalAlignment.center;
+                text: "Filter";
+                color: Palette.text;
+                vertical-alignment: TextVerticalAlignment.center;
+            }
+            HorizontalLayout {
+                accessible-role: AccessibleRole.none;
+                alignment: LayoutAlignment.center;
+                spacing: 10px;
+                Text {
+                    text: "Mono";
+                    color: Palette.text;
+                }
+
+                ParamSwitch {
+                    param_name: "svf_stereo_mode";
+                    checked <=> root.is_filter_stereo;
+                }
+
+                Text {
+                    text: "Stereo";
+                    color: Palette.text;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: LayoutAlignment.space-between;
+                height: 50px;
+                ParamKnob {
+                    param_name: "svf_cutoff_l";
+                    val: ParamBus.read_val("svf_cutoff_l");
+                }
+
+                ParamKnob {
+                    param_name: "svf_res_l";
+                    val: ParamBus.read_val("svf_res_l");
+                }
+
+                ParamKnob {
+                    param_name: "svf_mix_l";
+                    val: ParamBus.read_val("svf_mix_l");
+                }
+
+                ParamKnob {
+                    param_name: "svf_cutoff_r";
+                    val: ParamBus.read_val("svf_cutoff_r");
+                    enabled: root.is_filter_stereo;
+                }
+
+                ParamKnob {
+                    param_name: "svf_res_r";
+                    val: ParamBus.read_val("svf_res_r");
+                    enabled: root.is_filter_stereo;
+                }
+
+                ParamKnob {
+                    param_name: "svf_mix_r";
+                    val: ParamBus.read_val("svf_mix_r");
+                    enabled: root.is_filter_stereo;
+                }
+            }
+        }
+
+    }
+}

@@ -74,8 +74,8 @@ impl DelayEngine {
             DelayInterpolationMode::Linear => {
                 let upper_index =
                     ((self.write_head - ms_to_samples(self.delay_time, self.sample_rate)) as i32)
-                        .rem_euclid(self.buffer.len() as i32) as i32;
-                let lower_index = (upper_index - 1).rem_euclid(self.buffer.len() as i32) as i32;
+                        .rem_euclid(self.buffer.len() as i32);
+                let lower_index = (upper_index - 1).rem_euclid(self.buffer.len() as i32);
 
                 let lower_sample = self.buffer[lower_index as usize];
                 let upper_sample = self.buffer[upper_index as usize];
