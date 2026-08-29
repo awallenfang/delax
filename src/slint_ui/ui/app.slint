@@ -3,7 +3,7 @@ import {
     VerticalBox,
     AboutSlint,
     CheckBox,
-    Switch, Spinner, HorizontalBox,
+    Switch, Spinner, HorizontalBox
 } from "std-widgets.slint";
 import { ParamKnob } from "components/param_knob.slint";
 import { ParamBus } from "events.slint";
@@ -11,6 +11,7 @@ import { ParamSwitch } from "components/param_switch.slint";
 import { Palette } from "./components/global.slint";
 import { PeakMeter } from "components/peak_meter.slint";
 import { SpectrumAnalyzer } from "components/spectrum_analyzer.slint";
+import { Button } from "components/button.slint";
 
 export { ParamBus }
 
@@ -28,16 +29,22 @@ export component AppWindow inherits Window {
     in-out property <float> out_level_r: 0.0;
     in-out property <[float]> out_spectrum;
 
+    private property <int> tab: 0;
+
     background: Palette.background-light;
     width: 500px;
-    height: 400px;
+    height: 350px;
     title: "Delax";
     VerticalLayout {
-        padding: 5px;
-        alignment: LayoutAlignment.start;
+        padding: 0px;
+        padding-left: 5px;
+        padding-right: 5px;
+        padding-top: 5px;
+        alignment: LayoutAlignment.space-between;
         HorizontalLayout {
             alignment: LayoutAlignment.space-between;
             height: 30px;
+            padding: 0px;
             Image {
                 source: @image-url("assets/logo.svg");
                 width: 60px;
@@ -45,6 +52,31 @@ export component AppWindow inherits Window {
                 horizontal-alignment: ImageHorizontalAlignment.left;
                 image-fit: ImageFit.contain;
             }
+            HorizontalLayout {
+                spacing: 5px;
+                Button {
+                    checked: tab == 0;
+                    text: "Delay";
+                    clicked => {
+                        tab = 0;
+                    }
+                }
+                Button {
+                    checked: tab == 1;
+                    text: "Filter";
+                    clicked => {
+                        tab = 1;
+                    }
+                }
+                Button {
+                    checked: tab == 2;
+                    text: "Editor";
+                    clicked => {
+                        tab = 2;
+                    }
+                }
+            }
+
             HorizontalLayout {
                 spacing: 5px;
                 VerticalLayout {
@@ -77,6 +109,7 @@ export component AppWindow inherits Window {
 
         }
 
+        if tab == 0:
         VerticalLayout {
             HorizontalLayout {
                 accessible-role: AccessibleRole.none;
@@ -164,7 +197,10 @@ export component AppWindow inherits Window {
                 }
                 Rectangle { width: 60px; height: 80px; }
             }
+        }
 
+        if tab == 1:
+        VerticalLayout {
             Text {
                 horizontal-alignment: TextHorizontalAlignment.center;
                 text: "Filter";
@@ -232,6 +268,30 @@ export component AppWindow inherits Window {
                     val: ParamBus.read_val("svf_mix_r");
                     enabled: root.is_filter_stereo;
                 }
+            }
+        }
+
+        if tab == 2:
+        VerticalLayout {
+        }
+        HorizontalLayout {
+            alignment: LayoutAlignment.space-between;
+            TouchArea {
+                Text  {
+                    text: "About";
+                    font-size: 10pt;
+                    color: Palette.text-muted;
+                }
+                clicked => {
+                    tab = 4;
+                }
+                mouse-cursor: pointer;
+            }
+            Image {
+                source: @image-url("assets/handle.svg");
+                height: 20px;
+                horizontal-alignment: ImageHorizontalAlignment.right;
+                image-fit: ImageFit.contain;
             }
         }
 

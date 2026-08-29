@@ -31,6 +31,7 @@ export component ParamKnob inherits VerticalLayout {
         property <length> arc_space: arc_width + arc_margin;
 
         ta := TouchArea {
+            mouse-cursor: self.pressed ? grabbing : grab;
             enabled: root.enabled;
             property <float> last_val;
             property <Click> start_click;
