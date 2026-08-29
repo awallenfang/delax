@@ -9,8 +9,7 @@ use params::DelaxParams;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use rustfft::{Fft, FftPlanner};
-use rustfft::num_complex::{Complex32, ComplexFloat};
-use rustfft::num_traits::Zero;
+use rustfft::num_complex::Complex32;
 use crate::delay_engine::delay_time_from_bpm_and_16th;
 use crate::peak_follower::PeakFollower;
 
@@ -58,9 +57,8 @@ pub struct Delax {
     peak_out_l: PeakFollower,
     peak_out_r: PeakFollower,
     out_fft: Arc<dyn Fft<f32>>,
-    out_buffer: [Complex32; 64],
-    out_history: [f32; 64],
-    fft_counter: usize,
+    spectrum_producer: Option<rtrb::Producer<f32>>,
+    spectrum_consumer: Arc<std::sync::Mutex<Option<rtrb::Consumer<f32>>>>,
 }
 
 impl Default for Delax {
@@ -72,6 +70,7 @@ impl Default for Delax {
 
         let mut fft_planner = FftPlanner::new();
         let fft_plan = fft_planner.plan_fft_forward(64);
+        let (prod, cons) = rtrb::RingBuffer::new(4096);
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
@@ -89,9 +88,8 @@ impl Default for Delax {
             peak_out_l: PeakFollower::new(0.0008, 0., 0.2),
             peak_out_r: PeakFollower::new(0.0008, 0., 0.2),
             out_fft: fft_plan,
-            out_buffer: [Complex32{re: 0.0, im: 0.0}; 64],
-            out_history: [0.0; 64],
-            fft_counter: 0,
+            spectrum_producer: Some(prod),
+            spectrum_consumer: Arc::new(std::sync::Mutex::new(Some(cons))),
         }
     }
 }
@@ -158,6 +156,16 @@ impl Plugin for Delax {
             .on_frame({
                 let params = self.params.clone();
                 let input = self.input_data.clone();
+                let spectrum_consumer = self.spectrum_consumer.clone();
+                let fft = self.out_fft.clone();
+                let fft_scratch = std::sync::Arc::new(std::sync::Mutex::new(vec![
+                    Complex32::new(0.0, 0.0);
+                    fft.get_inplace_scratch_len()
+                ]));
+                let hann_window: Vec<f32> = (0..64)
+                    .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / 63.0).cos()))
+                    .collect();
+                let hann_window = std::sync::Arc::new(hann_window);
                 move |app| {
                     for (p_id, param_ptr, _) in params.param_map().iter() {
                         let val = unsafe { param_ptr.unmodulated_normalized_value() };
@@ -169,12 +177,50 @@ impl Plugin for Delax {
                     app.set_in_level_r(input.in_r.load(Relaxed));
                     app.set_out_level_l(input.out_l.load(Relaxed));
                     app.set_out_level_r(input.out_r.load(Relaxed));
-                    let spectrum: Vec<f32> = input
-                        .out_spectrum
-                        .iter()
-                        .map(|a| a.load(Relaxed))
-                        .collect();
-                    app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum)));
+
+                    let mut samples = Vec::with_capacity(64);
+                    if let Ok(mut guard) = spectrum_consumer.try_lock() {
+                        if let Some(cons) = guard.as_mut() {
+                            while samples.len() < 64 {
+                                match cons.pop() {
+                                    Ok(v) => samples.push(v),
+                                    Err(_) => break,
+                                }
+                            }
+                            if samples.len() == 64 {
+                                for (s, w) in samples.iter_mut().zip(hann_window.iter()) {
+                                    *s *= *w;
+                                }
+                                let mut buf: Vec<Complex32> =
+                                    samples.into_iter().map(|s| Complex32::new(s, 0.0)).collect();
+                                if let Ok(mut scratch) = fft_scratch.try_lock() {
+                                    if scratch.len() == fft.get_inplace_scratch_len() {
+                                        fft.process_with_scratch(&mut buf, &mut scratch);
+                                    } else {
+                                        fft.process(&mut buf);
+                                    }
+                                } else {
+                                    fft.process(&mut buf);
+                                }
+                                let spectrum: Vec<f32> = buf[0..32]
+                                    .iter()
+                                    .map(|c| {
+                                        let mag = c.norm();
+                                        let db =
+                                            (1.0 + util::gain_to_db_fast(mag.max(1e-5)) / 100.0)
+                                                .clamp(0.0, 1.0);
+                                        db
+                                    })
+                                    .collect();
+                                app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(
+                                    spectrum,
+                                )));
+                            } else if !samples.is_empty() {
+                                // Not enough samples yet — push back? rtrb has no push_front, so just drop and wait for next frame
+                                // Optionally store partial for next frame, but simpler to wait for full window
+                            }
+                        }
+                    }
                 }
             }),
         )
@@ -230,14 +276,14 @@ impl Plugin for Delax {
         self.input_data.in_r.store(0., Relaxed);
         self.input_data.out_l.store(0., Relaxed);
         self.input_data.out_r.store(0., Relaxed);
-        for i in 0..64 {
-            if i < 32 {
-                self.input_data.out_spectrum[i].store(0., Relaxed);
-            }
-            self.out_buffer[i] = Complex32::zero();
-            self.out_history[i] = 0.;
+        for i in 0..32 {
+            self.input_data.out_spectrum[i].store(0., Relaxed);
         }
-        self.fft_counter = 0;
+        if let Ok(mut guard) = self.spectrum_consumer.try_lock() {
+            if let Some(cons) = guard.as_mut() {
+                while cons.pop().is_ok() {}
+            }
+        }
     }
 
     fn process(
@@ -325,21 +371,9 @@ impl Plugin for Delax {
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
 
-            // --- Spectrum: maintain separate time-domain ring, copy to FFT workspace ---
-            // Previously `out_buffer` was reused for both time and freq (rotate + FFT in-place) which corrupted history
-            // and ran ~44k FFT/s (heavy, caused dropouts). Now we keep `out_history` as time domain and FFT every 32 samples.
-            self.out_history.rotate_left(1);
-            self.out_history[self.out_history.len() - 1] =
-                (*left_sample + *right_sample) * 0.5;
-            self.fft_counter = self.fft_counter.wrapping_add(1);
-            if self.fft_counter % 32 == 0 {
-                for (i, &s) in self.out_history.iter().enumerate() {
-                    self.out_buffer[i] = Complex32::new(s, 0.0);
-                }
-                self.out_fft.process(&mut self.out_buffer);
-                // Debug: use nice_log! (info level, always visible with NICE_LOG) instead of nice_dbg! (debug level)
-                // nice_dbg! only shows with `NICE_LOG=debug` or debug build + tracing debug filter; release profile filters it.
-                // Example: nice_log!("fft mag[0]={}", self.out_buffer[0].abs());
+            if let Some(prod) = self.spectrum_producer.as_mut() {
+                let mono = (*left_sample + *right_sample) * 0.5;
+                let _ = prod.push(mono); // drop if full — UI is slower (~60Hz vs 44.1kHz), backpressure is expected
             }
 
             self.output_ui_send(*left_sample, *right_sample);
@@ -478,16 +512,8 @@ impl Delax {
         let l = self.peak_out_l.process(l_db).clamp(0., 1.5);
         let r = self.peak_out_r.process(r_db).clamp(0., 1.5);
 
-        self.input_data
-            .out_l
-            .store(l, Relaxed);
-        self.input_data
-            .out_r
-            .store(r, Relaxed);
-        for i in 0..self.input_data.out_spectrum.len() {
-            let db = (1. + util::gain_to_db_fast(self.out_buffer[i].abs()) / 100.).clamp(0., 1.0);
-            self.input_data.out_spectrum[i].store(db, Relaxed)
-        }
+        self.input_data.out_l.store(l, Relaxed);
+        self.input_data.out_r.store(r, Relaxed);
     }
 }
 

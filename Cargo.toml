@@ -21,6 +21,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 slint = { version="1.16.1" }
 baseview = { version = "0.3.1", features = ["opengl"] }
 rustfft = "6.4.1"
+rtrb = "0.4.0"
 
 [build-dependencies]
 slint-build = "1.16.1"

@@ -8,5 +8,6 @@ pub fn delay_time_from_bpm_and_16th(note_val: f32, bpm: f32) -> f32 {
 }
 pub fn notes_from_bpm_and_delay_time(delay_time: f32, bpm: f32) -> f32 {
     // delay_time is in ms – convert to 16th-note count.
+    let bpm = bpm.clamp(0.1, 10000.);
     delay_time / (60. / bpm / 4. * 1000.)
 }
