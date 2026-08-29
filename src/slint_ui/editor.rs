@@ -13,7 +13,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 pub const DEFAULT_WIDTH: u32 = 500;
-pub const DEFAULT_HEIGHT: u32 = 400;
+pub const DEFAULT_HEIGHT: u32 = 350;
 
 pub enum UiEvent {
     ParamChanged { id: String, value: f32 },
