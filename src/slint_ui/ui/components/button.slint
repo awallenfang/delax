@@ -1,0 +1,29 @@
+import { Palette } from "./global.slint";
+export component Button inherits Rectangle {
+    in property <string> text: "Button";
+    in property <bool> checked: false;
+    callback clicked();
+
+    // Style properties
+    width: 60px;
+    height: 30px;
+    border-radius: 6px;
+
+
+    // Dynamic styling based on interaction state
+    background: checked ? Palette.primary-muted : Palette.secondary-muted;
+    border-width: 1px;
+    border-color: touch.pressed ? #002d8a : #0041c2;
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.text;
+        color: checked ? Palette.text-dark : Palette.text;
+        font-size: 14px;
+        horizontal-alignment: center;
+    }
+}
