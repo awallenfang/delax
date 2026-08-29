@@ -15,19 +15,40 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 struct SlintPlatform {
-    window_adapter: Rc<dyn WindowAdapter>,
+    current: RefCell<Option<Rc<dyn WindowAdapter>>>,
 }
 
 impl SlintPlatform {
-    fn new(window_adapter: Rc<dyn WindowAdapter>) -> Self {
-        Self { window_adapter }
+    fn new() -> Self {
+        Self {
+            current: RefCell::new(None),
+        }
+    }
+
+    fn set_current(&self, adapter: Rc<dyn WindowAdapter>) {
+        *self.current.borrow_mut() = Some(adapter);
     }
 }
 
 impl platform::Platform for SlintPlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
-        Ok(self.window_adapter.clone())
+        self.current
+            .borrow()
+            .clone()
+            .ok_or_else(|| PlatformError::Other("no current adapter set".into()))
     }
+}
+
+struct ArcPlatformWrapper(Arc<SlintPlatform>);
+
+impl platform::Platform for ArcPlatformWrapper {
+    fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
+        self.0.create_window_adapter()
+    }
+}
+
+thread_local! {
+    static GLOBAL_PLATFORM: RefCell<Option<Arc<SlintPlatform>>> = RefCell::new(None);
 }
 
 #[derive(Clone)]
@@ -157,13 +178,23 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
             unsafe { gl_ctx.make_current().unwrap() };
         }
 
+        let platform = GLOBAL_PLATFORM.with(|cell| {
+            if cell.borrow().is_none() {
+                let p = Arc::new(SlintPlatform::new());
+                let wrapper = ArcPlatformWrapper(p.clone());
+                let _ = platform::set_platform(Box::new(wrapper));
+                *cell.borrow_mut() = Some(p.clone());
+                p
+            } else {
+                cell.borrow().as_ref().unwrap().clone()
+            }
+        });
+
         let adapter = SlintAdapter::new(init_width, init_height);
         if let Some(gl_ctx) = window_context.gl_context() {
             adapter.init_gl_context(&gl_ctx);
         }
-
-        let platform = SlintPlatform::new(adapter.clone());
-        let _ = platform::set_platform(Box::new(platform));
+        platform.set_current(adapter.clone());
 
         let root = builder().unwrap_or_else(|e| panic!("Failed to build: {}", e));
         root.show().expect("Failed to show the root component");
