@@ -7,7 +7,6 @@ use filters::simper::SimperSinSVF;
 use nice_plug::prelude::*;
 use params::DelaxParams;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::sync::atomic::Ordering::Relaxed;
 use rustfft::{Fft, FftPlanner};
 use rustfft::num_complex::{Complex32, ComplexFloat};
@@ -125,16 +124,16 @@ impl Plugin for Delax {
 
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
+    type Editor = slint_ui::editor::UIEditor<slint_ui::AppWindow, DelaxParams>;
     // If the plugin can send or receive SysEx messages, it can define a type to wrap around those
     // messages here. The type implements the `SysExMessage` trait, which allows conversion to and
     // from plain byte buffers.
     type SysExMessage = ();
+
     // More advanced plugins can use this to run expensive background tasks. See the field's
     // documentation for more information. `()` means that the plugin does not have any background
     // tasks.
     type BackgroundTask = ();
-
-    type Editor = slint_ui::editor::UIEditor<slint_ui::AppWindow, DelaxParams>;
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -166,14 +165,14 @@ impl Plugin for Delax {
                             app, p_id, val,
                         );
                     }
-                    app.set_in_level_l(input.in_l.load(Ordering::Relaxed));
-                    app.set_in_level_r(input.in_r.load(Ordering::Relaxed));
-                    app.set_out_level_l(input.out_l.load(Ordering::Relaxed));
-                    app.set_out_level_r(input.out_r.load(Ordering::Relaxed));
+                    app.set_in_level_l(input.in_l.load(Relaxed));
+                    app.set_in_level_r(input.in_r.load(Relaxed));
+                    app.set_out_level_l(input.out_l.load(Relaxed));
+                    app.set_out_level_r(input.out_r.load(Relaxed));
                     let spectrum: Vec<f32> = input
                         .out_spectrum
                         .iter()
-                        .map(|a| a.load(Ordering::Relaxed))
+                        .map(|a| a.load(Relaxed))
                         .collect();
                     app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum)));
                 }
@@ -227,12 +226,12 @@ impl Plugin for Delax {
         self.peak_in_r.hold_counter = 0.;
         self.peak_out_l.hold_counter = 0.;
         self.peak_out_r.hold_counter = 0.;
-        self.input_data.in_l.store(0., Ordering::Relaxed);
-        self.input_data.in_r.store(0., Ordering::Relaxed);
-        self.input_data.out_l.store(0., Ordering::Relaxed);
-        self.input_data.out_r.store(0., Ordering::Relaxed);
+        self.input_data.in_l.store(0., Relaxed);
+        self.input_data.in_r.store(0., Relaxed);
+        self.input_data.out_l.store(0., Relaxed);
+        self.input_data.out_r.store(0., Relaxed);
         for i in 0..32 {
-            self.input_data.out_spectrum[i].store(0., Ordering::Relaxed);
+            self.input_data.out_spectrum[i].store(0., Relaxed);
             self.out_buffer[i] = Complex32::zero();
             self.out_history[i] = 0.;
         }
