@@ -53,7 +53,7 @@ thread_local! {
 
 #[derive(Clone)]
 struct OpenGLInterface {
-    get_adr: Arc<dyn Fn(&str) -> *const c_void + Send + Sync>,
+    ctx: baseview::gl::GlContext,
 }
 
 impl Debug for OpenGLInterface {
@@ -62,14 +62,8 @@ impl Debug for OpenGLInterface {
     }
 }
 impl OpenGLInterface {
-    fn new(ctx: &baseview::gl::GlContext) -> Self {
-        let context_adr = ctx as *const baseview::gl::GlContext as usize;
-        Self {
-            get_adr: Arc::new(move |name: &str| {
-                let context = context_adr as *const baseview::gl::GlContext;
-                unsafe { &*context }.get_proc_address_from_str(name)
-            }),
-        }
+    fn new(ctx: baseview::gl::GlContext) -> Self {
+        Self { ctx }
     }
 }
 
@@ -91,7 +85,7 @@ unsafe impl platform::femtovg_renderer::OpenGLInterface for OpenGLInterface {
     }
 
     fn get_proc_address(&self, name: &CStr) -> *const c_void {
-        (self.get_adr)(name.to_str().unwrap_or(""))
+        self.ctx.get_proc_address(name)
     }
 }
 
@@ -116,7 +110,7 @@ impl SlintAdapter {
     }
     pub fn init_gl_context(&self, ctx: &baseview::gl::GlContext) {
         self.gl
-            .set(OpenGLInterface::new(ctx))
+            .set(OpenGLInterface::new(ctx.clone()))
             .expect("Failed initiating the GL context");
     }
 
