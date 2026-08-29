@@ -6,7 +6,7 @@ use nice_plug::params::Params;
 use slint::platform::femtovg_renderer::FemtoVGRenderer;
 use slint::platform::{Renderer, WindowAdapter};
 use slint::{LogicalPosition, PhysicalSize, PlatformError, Window, platform};
-use std::cell::{Cell, OnceCell, RefCell};
+use std::cell::{OnceCell, RefCell};
 use std::error::Error;
 use std::ffi::{CStr, c_void};
 use std::fmt::{Debug, Formatter};
@@ -63,8 +63,8 @@ unsafe impl platform::femtovg_renderer::OpenGLInterface for OpenGLInterface {
 
     fn resize(
         &self,
-        width: NonZeroU32,
-        height: NonZeroU32,
+        _width: NonZeroU32,
+        _height: NonZeroU32,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
@@ -189,7 +189,7 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
 impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for WindowState<T, P> {
     fn on_frame(&self) -> Result<(), HandlerError> {
         if let Some(gl_ctx) = self.window_context.gl_context() {
-            unsafe { gl_ctx.make_current().unwrap() };
+            unsafe { gl_ctx.make_current()? };
         }
 
         while let Ok(event) = self.event_rx.try_recv() {
@@ -282,7 +282,7 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
                             button: slint_button,
                         })
                     }
-                    MouseEvent::WheelScrolled { delta, .. } => return EventStatus::Ignored,
+                    MouseEvent::WheelScrolled {  .. } => return EventStatus::Ignored,
                     _ => None,
                 };
                 if let Some(se) = slint_event {

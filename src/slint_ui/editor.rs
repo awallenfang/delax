@@ -131,16 +131,16 @@ impl EditorHandle for UIEditorHandle {
         Ok(())
     }
 
-    fn host_main_thread_callback(&self, window: &Self::Window) {
-        window.host_main_thread_callback();
-    }
-
     fn set_size(
         &self,
         new_size: PhysicalSize<u32>,
         window: &Self::Window,
     ) -> Result<(), Self::Error> {
         window.resize(new_size)
+    }
+
+    fn host_main_thread_callback(&self, window: &Self::Window) {
+        window.host_main_thread_callback();
     }
 
     fn param_value_changed(&self, _id: &str, _normalized_value: f32) {}
