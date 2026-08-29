@@ -80,7 +80,7 @@ impl DelayEngine {
                 let lower_sample = self.buffer[lower_index as usize];
                 let upper_sample = self.buffer[upper_index as usize];
 
-                let interpolation_factor = (self.delay_time * self.sample_rate) % 1.;
+                let interpolation_factor = ((self.delay_time/1000.)*self.sample_rate).fract();
 
                 lower_sample * (1. - interpolation_factor) + upper_sample * interpolation_factor
             }
@@ -120,7 +120,7 @@ impl DelayEngine {
     /// Values larger than the bank size will simply result in a duration of `samples % bank_size``
     pub fn set_delay_amount(&mut self, delay_time: f32) {
         let delay_samples = ms_to_samples(delay_time, self.sample_rate);
-        self.read_head = (self.write_head + delay_samples) % self.buffer.len();
+        self.read_head = (self.write_head - delay_samples) % self.buffer.len();
         self.delay_time = delay_time;
     }
 

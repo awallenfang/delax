@@ -82,7 +82,7 @@ impl SimperTanSVF {
         self.k = 2. - 2. * self.res;
 
         self.a1 = 1. / (1. + self.g * (self.g * self.k));
-        self.a2 *= self.g;
+        self.a2 = self.g;
     }
 
     /// Run the filter on a sample.

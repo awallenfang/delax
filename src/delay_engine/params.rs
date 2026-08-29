@@ -86,8 +86,8 @@ impl Default for EngineParams {
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_value_to_string(formatters::v2s_f32_rounded(2)),
             stereo_delay: EnumParam::new("Seperate Delay", DelayMode::Mono),
-            bpm_bound_l: BoolParam::new("BPM Bound", true),
-            bpm_bound_r: BoolParam::new("BPM Bound Channel 2", true),
+            bpm_bound_l: BoolParam::new("BPM Bound", false),
+            bpm_bound_r: BoolParam::new("BPM Bound Channel 2", false),
         }
     }
 }
