@@ -100,9 +100,9 @@ impl DelayEngine {
 
         if let Some(jump) = self.check_jumps(self.write_head, &self.write_jumps) {
             self.write_head = jump.1;
+        } else {
+            self.write_head += 1;
         }
-
-        self.write_head += 1;
     }
 
     /// Returns the state of the internal buffer banks as an immutable pointer.
@@ -120,7 +120,8 @@ impl DelayEngine {
     /// Values larger than the bank size will simply result in a duration of `samples % bank_size``
     pub fn set_delay_amount(&mut self, delay_time: f32) {
         let delay_samples = ms_to_samples(delay_time, self.sample_rate);
-        self.read_head = (self.write_head - delay_samples) % self.buffer.len();
+        self.read_head = ((self.write_head as i32 - delay_samples as i32)
+            .rem_euclid(self.buffer.len() as i32)) as usize;
         self.delay_time = delay_time;
     }
 
