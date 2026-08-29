@@ -85,6 +85,16 @@ where
             if self.get_is_filter_stereo() != b {
                 self.set_is_filter_stereo(b);
             }
+        } else if param_id == "bpm_bound_l" {
+            let b = value > 0.5;
+            if self.get_is_bpm_bound_l() != b {
+                self.set_is_bpm_bound_l(b);
+            }
+        } else if param_id == "bpm_bound_r" {
+            let b = value > 0.5;
+            if self.get_is_bpm_bound_r() != b {
+                self.set_is_bpm_bound_r(b);
+            }
         }
 
         if changed {

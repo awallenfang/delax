@@ -7,7 +7,13 @@ use filters::simper::SimperSinSVF;
 use nice_plug::prelude::*;
 use params::DelaxParams;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::atomic::Ordering::Relaxed;
+use rustfft::{Fft, FftPlanner};
+use rustfft::num_complex::{Complex32, ComplexFloat};
+use rustfft::num_traits::Zero;
 use crate::delay_engine::delay_time_from_bpm_and_16th;
+use crate::peak_follower::PeakFollower;
 
 mod delay_engine;
 mod filter_pipeline;
@@ -21,6 +27,7 @@ pub struct InputData {
     pub in_r: AtomicF32,
     pub out_l: AtomicF32,
     pub out_r: AtomicF32,
+    pub out_spectrum: [AtomicF32; 32],
 }
 
 impl Default for InputData {
@@ -30,6 +37,7 @@ impl Default for InputData {
             in_r: AtomicF32::new(0.),
             out_l: AtomicF32::new(0.),
             out_r: AtomicF32::new(0.),
+            out_spectrum: [const { AtomicF32::new(0.)}; 32],
         }
     }
 }
@@ -46,6 +54,14 @@ pub struct Delax {
     datorro: DattorroReverb,
     initial_dattorro: DattorroReverb,
     input_data: Arc<InputData>,
+    peak_in_l: PeakFollower,
+    peak_in_r: PeakFollower,
+    peak_out_l: PeakFollower,
+    peak_out_r: PeakFollower,
+    out_fft: Arc<dyn Fft<f32>>,
+    out_buffer: [Complex32; 64],
+    out_history: [f32; 64],
+    fft_counter: usize,
 }
 
 impl Default for Delax {
@@ -55,6 +71,8 @@ impl Default for Delax {
         let mut right_delay_engine = DelayEngine::new(44100, 44100.);
         right_delay_engine.set_delay_amount(0.);
 
+        let mut fft_planner = FftPlanner::new();
+        let fft_plan = fft_planner.plan_fft_forward(64);
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
@@ -67,6 +85,14 @@ impl Default for Delax {
             datorro: DattorroReverb::new(44100., 0.5),
             initial_dattorro: DattorroReverb::new(44100., 0.5),
             input_data: Arc::new(InputData::default()),
+            peak_in_l: PeakFollower::new(0.0008, 0., 0.2),
+            peak_in_r: PeakFollower::new(0.0008, 0., 0.2),
+            peak_out_l: PeakFollower::new(0.0008, 0., 0.2),
+            peak_out_r: PeakFollower::new(0.0008, 0., 0.2),
+            out_fft: fft_plan,
+            out_buffer: [Complex32{re: 0.0, im: 0.0}; 64],
+            out_history: [0.0; 64],
+            fft_counter: 0,
         }
     }
 }
@@ -132,6 +158,7 @@ impl Plugin for Delax {
             )
             .on_frame({
                 let params = self.params.clone();
+                let input = self.input_data.clone();
                 move |app| {
                     for (p_id, param_ptr, _) in params.param_map().iter() {
                         let val = unsafe { param_ptr.unmodulated_normalized_value() };
@@ -139,6 +166,16 @@ impl Plugin for Delax {
                             app, p_id, val,
                         );
                     }
+                    app.set_in_level_l(input.in_l.load(Ordering::Relaxed));
+                    app.set_in_level_r(input.in_r.load(Ordering::Relaxed));
+                    app.set_out_level_l(input.out_l.load(Ordering::Relaxed));
+                    app.set_out_level_r(input.out_r.load(Ordering::Relaxed));
+                    let spectrum: Vec<f32> = input
+                        .out_spectrum
+                        .iter()
+                        .map(|a| a.load(Ordering::Relaxed))
+                        .collect();
+                    app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum)));
                 }
             }),
         )
@@ -182,6 +219,24 @@ impl Plugin for Delax {
         // allocate. You can remove this function if you do not need it.
         self.left_delay_engine.reset();
         self.right_delay_engine.reset();
+        self.peak_in_l.peak = 0.;
+        self.peak_in_r.peak = 0.;
+        self.peak_out_l.peak = 0.;
+        self.peak_out_r.peak = 0.;
+        self.peak_in_l.hold_counter = 0.;
+        self.peak_in_r.hold_counter = 0.;
+        self.peak_out_l.hold_counter = 0.;
+        self.peak_out_r.hold_counter = 0.;
+        self.input_data.in_l.store(0., Ordering::Relaxed);
+        self.input_data.in_r.store(0., Ordering::Relaxed);
+        self.input_data.out_l.store(0., Ordering::Relaxed);
+        self.input_data.out_r.store(0., Ordering::Relaxed);
+        for i in 0..32 {
+            self.input_data.out_spectrum[i].store(0., Ordering::Relaxed);
+            self.out_buffer[i] = Complex32::zero();
+            self.out_history[i] = 0.;
+        }
+        self.fft_counter = 0;
     }
 
     fn process(
@@ -262,11 +317,29 @@ impl Plugin for Delax {
                 input_right + (feedbacked_right * (1. - mix_right) + filtered_output_r * mix_right),
             );
 
+
             // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
 
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
+
+            // --- Spectrum: maintain separate time-domain ring, copy to FFT workspace ---
+            // Previously `out_buffer` was reused for both time and freq (rotate + FFT in-place) which corrupted history
+            // and ran ~44k FFT/s (heavy, caused dropouts). Now we keep `out_history` as time domain and FFT every 32 samples.
+            self.out_history.rotate_left(1);
+            self.out_history[self.out_history.len() - 1] =
+                (*left_sample + *right_sample) * 0.5;
+            self.fft_counter = self.fft_counter.wrapping_add(1);
+            if self.fft_counter % 32 == 0 {
+                for (i, &s) in self.out_history.iter().enumerate() {
+                    self.out_buffer[i] = Complex32::new(s, 0.0);
+                }
+                self.out_fft.process(&mut self.out_buffer);
+                // Debug: use nice_log! (info level, always visible with NICE_LOG) instead of nice_dbg! (debug level)
+                // nice_dbg! only shows with `NICE_LOG=debug` or debug build + tracing debug filter; release profile filters it.
+                // Example: nice_log!("fft mag[0]={}", self.out_buffer[0].abs());
+            }
 
             self.output_ui_send(*left_sample, *right_sample);
         }
@@ -279,36 +352,46 @@ impl Delax {
     fn update_params(&mut self, transport: &Transport) {
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
-                let mut delay_amt = self.params.delay_params.delay_len_l.smoothed.next();
+                // Advance all smoothers so they stay in sync when switching modes.
+                let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
+                let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
+                let note_l = self.params.delay_params.delay_note_l.smoothed.next();
+                let _note_r = self.params.delay_params.delay_note_r.smoothed.next();
+                let _ = (ms_r, _note_r);
                 let bpm_bound = self.params.delay_params.bpm_bound_l.value();
                 let mut bpm = 120.;
                 if let Some(t) = transport.tempo {
                     bpm = t;
                 }
-
-                if bpm_bound {
-                    delay_amt = delay_time_from_bpm_and_16th(delay_amt, bpm as f32);
-                }
+                let delay_amt = if bpm_bound {
+                    delay_time_from_bpm_and_16th(note_l, bpm as f32)
+                } else {
+                    ms_l
+                };
                 self.left_delay_engine.set_delay_amount(delay_amt);
                 self.right_delay_engine.set_delay_amount(delay_amt);
             }
             DelayMode::Stereo => {
-                let mut delay_amt_l = self.params.delay_params.delay_len_l.smoothed.next();
-                let mut delay_amt_r = self.params.delay_params.delay_len_r.smoothed.next();
+                let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
+                let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
+                let note_l = self.params.delay_params.delay_note_l.smoothed.next();
+                let note_r = self.params.delay_params.delay_note_r.smoothed.next();
                 let bpm_bound_l = self.params.delay_params.bpm_bound_l.value();
                 let bpm_bound_r = self.params.delay_params.bpm_bound_r.value();
                 let mut bpm = 120.;
                 if let Some(t) = transport.tempo {
                     bpm = t;
                 }
-
-                if bpm_bound_l {
-                    delay_amt_l = delay_time_from_bpm_and_16th(delay_amt_l, bpm as f32);
-                }
-                if bpm_bound_r {
-                    delay_amt_r = delay_time_from_bpm_and_16th(delay_amt_r, bpm as f32);
-                }
-
+                let delay_amt_l = if bpm_bound_l {
+                    delay_time_from_bpm_and_16th(note_l, bpm as f32)
+                } else {
+                    ms_l
+                };
+                let delay_amt_r = if bpm_bound_r {
+                    delay_time_from_bpm_and_16th(note_r, bpm as f32)
+                } else {
+                    ms_r
+                };
                 self.left_delay_engine.set_delay_amount(delay_amt_l);
                 self.right_delay_engine.set_delay_amount(delay_amt_r);
             }
@@ -374,39 +457,42 @@ impl Delax {
     }
 
     fn input_ui_send(&mut self, l: f32, r: f32) {
-        let l = 1. + util::gain_to_db(l) / 100.;
-        let r = 1. + util::gain_to_db(r) / 100.;
-
-        // let l = self.peak_follower_in_l.process(l);
-        // let r = self.peak_follower_in_r.process(r);
+        // Convert to 0..1 dB range, then smooth with peak follower for stable UI meter
+        let l_db = (1. + util::gain_to_db(l.abs()) / 100.).clamp(0., 1.5);
+        let r_db = (1. + util::gain_to_db(r.abs()) / 100.).clamp(0., 1.5);
+        let l = self.peak_in_l.process(l_db).clamp(0., 1.5);
+        let r = self.peak_in_r.process(r_db).clamp(0., 1.5);
 
         self.input_data
             .in_l
-            .store(l, std::sync::atomic::Ordering::Relaxed);
+            .store(l, Relaxed);
         self.input_data
             .in_r
-            .store(r, std::sync::atomic::Ordering::Relaxed);
+            .store(r, Relaxed);
     }
 
     fn output_ui_send(&mut self, l: f32, r: f32) {
-        let l = 1. + util::gain_to_db_fast(l) / 100.;
-        let r = 1. + util::gain_to_db_fast(r) / 100.;
-
-        // let l = self.peak_follower_out_l.process(l);
-        // let r = self.peak_follower_out_r.process(r);
+        let l_db = (1. + util::gain_to_db_fast(l.abs()) / 100.).clamp(0., 1.5);
+        let r_db = (1. + util::gain_to_db_fast(r.abs()) / 100.).clamp(0., 1.5);
+        let l = self.peak_out_l.process(l_db).clamp(0., 1.5);
+        let r = self.peak_out_r.process(r_db).clamp(0., 1.5);
 
         self.input_data
             .out_l
-            .store(l, std::sync::atomic::Ordering::Relaxed);
+            .store(l, Relaxed);
         self.input_data
             .out_r
-            .store(r, std::sync::atomic::Ordering::Relaxed);
+            .store(r, Relaxed);
+        for i in 0..self.input_data.out_spectrum.len() {
+            let db = (1. + util::gain_to_db_fast(self.out_buffer[i].abs()) / 100.).clamp(0., 1.0);
+            self.input_data.out_spectrum[i].store(db, Relaxed)
+        }
     }
 }
 
 impl ClapPlugin for Delax {
     const CLAP_ID: &'static str = "com.ritzin-dev.delax";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("A short description of your plugin");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("A for now simple delay plugin");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
 

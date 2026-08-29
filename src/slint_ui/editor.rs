@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::sync::Arc;
 
-pub const DEFAULT_WIDTH: u32 = 550;
-pub const DEFAULT_HEIGHT: u32 = 310;
+pub const DEFAULT_WIDTH: u32 = 500;
+pub const DEFAULT_HEIGHT: u32 = 400;
 
 pub enum UiEvent {
     ParamChanged { id: String, value: f32 },
