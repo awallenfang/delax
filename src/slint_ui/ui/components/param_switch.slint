@@ -1,15 +1,50 @@
-import { Switch } from "std-widgets.slint";
 import { ParamBus } from "../events.slint";
+import { Palette } from "./global.slint";
 
-struct Click { x: length, y: length}
 export component ParamSwitch {
     in property <string> param_name: "switch";
     in-out property <bool> checked;
-    Switch {
-        checked <=> root.checked;
-        text: "";
-        toggled => {
-            ParamBus.param_changed(root.param_name, self.checked ? 1.0 : 0.0);
+    in property <bool> enabled: true;
+
+    property <brush> checked-bg: Palette.checked-color;
+    property <brush> unchecked-bg: Palette.unchecked-color;
+    property <brush> bg: Palette.secondary-muted;
+
+    accessible-role: checkbox;
+    accessible-label: root.param_name;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+
+    width: 40px;
+    height: 22px;
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: self.height / 2;
+        background: root.bg;
+        opacity: root.enabled ? 1.0 : 0.5;
+        animate background { duration: 150ms; }
+
+        TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                root.checked = !root.checked;
+                ParamBus.param_changed(root.param_name, root.checked ? 1.0 : 0.0);
+            }
+        }
+
+        Rectangle {
+            width: 18px;
+            height: 18px;
+            x: root.checked ? parent.width - self.width - 2px : 2px;
+            y: 2px;
+            border-radius: self.width / 2;
+            background: root.checked ? root.checked-bg : root.unchecked-bg;
+            drop-shadow-blur: 4px;
+            drop-shadow-color: #00000040;
+            animate x { duration: 150ms; easing: ease-in-out; }
         }
     }
 }

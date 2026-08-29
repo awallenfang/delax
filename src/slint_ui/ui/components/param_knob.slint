@@ -3,8 +3,9 @@ import { ParamBus } from "../events.slint";
 import {Palette} from "./global.slint";
 
 struct Click { x: length, y: length}
-export component ParamKnob inherits Rectangle {
+export component ParamKnob inherits VerticalLayout {
     in property <string> param_name: "knob";
+    in property <string> label: "Knob";
     in-out property <float> val: 0.5;
 
     in property <float> minimum: 0.0;
@@ -13,90 +14,116 @@ export component ParamKnob inherits Rectangle {
 
     in property <bool> enabled: true;
 
-    width: 60px;
-    height: 60px;
-    property <length> arc_width: 3px;
-    property <length> arc_margin: 10px - arc_width;
-    property <length> arc_space: arc_width+arc_margin;
+    width: 50px;
+    height: 70px;
+    spacing: 4px;
+    alignment: center;
 
-    ta := TouchArea {
-        enabled: root.enabled;
-        property <float> last_val;
-        property <Click> start_click;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-value: root.val;
 
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
-                self.start_click = { x:self.mouse-x, y:self.mouse-y };
-                self.last_val = root.val;
+    knob_rect := Rectangle {
+        width: 50px;
+        height: 50px;
+        property <length> arc_width: 3px;
+        property <length> arc_margin: 10px - arc_width;
+        property <length> arc_space: arc_width + arc_margin;
+
+        ta := TouchArea {
+            enabled: root.enabled;
+            property <float> last_val;
+            property <Click> start_click;
+
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                    self.start_click = { x:self.mouse-x, y:self.mouse-y };
+                    self.last_val = root.val;
+                }
+            }
+
+            moved => {
+                if (self.enabled && self.pressed) {
+                    let delta_y = self.start_click.y - self.mouse-y;
+                    let delta_val = (delta_y / root.drag_sense) * (root.maximum - root.minimum);
+                    let new_val = clamp(self.last_val + delta_val, root.minimum, root.maximum);
+                    ParamBus.param_changed(root.param_name, new_val);
+                    root.val = new_val;
+                }
             }
         }
+       Path {
+           viewbox-width: 1;
+           viewbox-height: 1;
+           width: parent.width;
+           height: parent.height;
+           stroke-width: knob_rect.arc_width;
+           stroke: root.enabled ? Palette.secondary : Palette.secondary-muted;
 
-        moved => {
-            if (self.enabled && self.pressed) {
-                let delta_y = self.start_click.y - self.mouse-y;
-                let delta_val = (delta_y / drag_sense) * (root.maximum - root.minimum);
-                let new_val = clamp(self.last_val + delta_val, root.minimum, root.maximum);
-                ParamBus.param_changed(root.param_name, new_val);
-                val = new_val;
+           property <angle> progress_angle: (root.val - root.minimum) / (root.maximum - root.minimum) * 270deg;
+
+           property <angle> start_angle: 135deg;
+           property <angle> current_angle: start_angle + progress_angle;
+
+          property <float> w_num: parent.width / 1px;
+          property <float> h_num: parent.height / 1px;
+          property <float> r_num: ((parent.width) / 2) / 1px;
+
+          property <float> cx_norm: 0.5;
+          property <float> cy_norm: 0.5;
+          property <float> r_norm: self.r_num / self.w_num;
+
+           MoveTo {
+              x: parent.cx_norm + cos(parent.start_angle) * parent.r_norm;
+              y: parent.cy_norm + sin(parent.start_angle) * parent.r_norm;
+          }
+          ArcTo {
+              x: parent.cx_norm + cos(parent.current_angle) * parent.r_norm;
+              y: parent.cy_norm + sin(parent.current_angle) * parent.r_norm;
+              radius-x: parent.r_norm;
+              radius-y: parent.r_norm;
+              sweep: true;
+              large-arc: parent.progress_angle > 180deg;
+          }
+       }
+        Rectangle {
+            width: parent.width - (knob_rect.arc_space + 2px);
+            height: parent.height - (knob_rect.arc_space + 2px);
+            background: !root.enabled ? Palette.background : (ta.pressed ? Palette.background-light : Palette.background-light.darker(-20%));
+            border-radius: parent.width / 2;
+            border-width: 2px;
+            clip: true;
+            border-color: !root.enabled ? Palette.primary.darker(20%) : (ta.has-hover ? Palette.primary : Palette.primary-muted);
+            opacity: root.enabled ? 1.0 : 0.4;
+
+                Rectangle {
+                width: 6px;
+                height: 6px;
+                background: (ta.has-hover ? Palette.primary.darker(-20%) : Palette.primary-muted.darker(-20%));
+                border-radius: 3px;
+
+                property <length> knob_radius: (knob_rect.width - knob_rect.arc_space) / 2;
+                property <length> dot_radius: self.width / 2;
+
+                property <angle> current_angle: ((root.val - root.minimum) / (root.maximum - root.minimum) * 270deg - 135deg) + 270deg;
+
+                x: knob_radius + cos(current_angle) * (knob_radius - 8px) - dot_radius;
+                y: knob_radius + sin(current_angle) * (knob_radius - 8px) - dot_radius;
             }
         }
     }
-   Path {
-       viewbox-width: 1;
-       viewbox-height: 1;
-       width: parent.width;
-       height: parent.height;
-       stroke-width: root.arc_width;
-       stroke: root.enabled ? Palette.secondary : Palette.secondary-muted;
 
-       property <angle> progress_angle: (root.val - root.minimum) / (root.maximum - root.minimum) * 270deg;
-
-       property <angle> start_angle: 135deg;
-       property <angle> current_angle: start_angle + progress_angle;
-
-      property <float> w_num: parent.width / 1px;
-      property <float> h_num: parent.height / 1px;
-      property <float> r_num: ((parent.width) / 2) / 1px;
-
-      property <float> cx_norm: 0.5;
-      property <float> cy_norm: 0.5;
-      property <float> r_norm: self.r_num / self.w_num;
-
-       MoveTo {
-          x: parent.cx_norm + cos(parent.start_angle) * parent.r_norm;
-          y: parent.cy_norm + sin(parent.start_angle) * parent.r_norm;
-      }
-      ArcTo {
-          x: parent.cx_norm + cos(parent.current_angle) * parent.r_norm;
-          y: parent.cy_norm + sin(parent.current_angle) * parent.r_norm;
-          radius-x: parent.r_norm;
-          radius-y: parent.r_norm;
-          sweep: true;
-          large-arc: parent.progress_angle > 180deg;
-      }
-   }
-    Rectangle {
-        width: parent.width - (arc_space + 2px);
-        height: parent.height - (parent.arc_space + 2px);
-        background: !root.enabled ? Palette.background : (ta.pressed ? Palette.background-light : Palette.background-light.darker(-20%));
-        border-radius: parent.width / 2;
-        border-width: 2px;
-        border-color: !root.enabled ? Palette.primary.darker(20%) : (ta.has-hover ? Palette.primary : Palette.primary-muted);
-        opacity: root.enabled ? 1.0 : 0.4;
-
-            Rectangle {
-            width: 6px;
-            height: 6px;
-            background: (ta.has-hover ? Palette.primary.darker(-20%) : Palette.primary-muted.darker(-20%));
-            border-radius: 3px;
-
-            property <length> knob_radius: (root.width - root.arc_space) / 2;
-            property <length> dot_radius: self.width / 2;
-
-            property <angle> current_angle: ((root.val - root.minimum) / (root.maximum - root.minimum) * 270deg - 135deg) + 270deg;
-
-            x: knob_radius + cos(current_angle) * (knob_radius - 8px) - dot_radius;
-            y: knob_radius + sin(current_angle) * (knob_radius - 8px) - dot_radius;
-        }
+    Text {
+        text: root.label;
+        color: root.enabled ? Palette.text : Palette.text-muted;
+        font-size: 10px;
+        horizontal-alignment: TextHorizontalAlignment.center;
+        vertical-alignment: TextVerticalAlignment.center;
+        opacity: root.enabled ? 1.0 : 0.5;
+        accessible-role: none;
+        wrap: TextWrap.no-wrap;
+        overflow: TextOverflow.elide;
+        width: 60px;
+        height: 14px;
     }
 }

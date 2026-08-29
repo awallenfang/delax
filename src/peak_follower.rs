@@ -19,10 +19,13 @@ impl PeakFollower {
 
     pub fn process(&mut self, input: f32) -> f32 {
         let input = self.peak_smoother.process(input.abs());
-        if input.abs() > self.peak {
+        if input > self.peak {
             self.peak = input;
+            self.hold_counter = self.hold;
+        } else if self.hold_counter > 0. {
+            self.hold_counter -= 1.;
         } else {
-            self.peak -= self.release;
+            self.peak = (self.peak - self.release).max(0.);
         }
 
         self.peak

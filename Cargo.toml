@@ -14,17 +14,13 @@ members = ["xtask"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-# Remove the `assert_process_allocs` feature to allow allocations on the audio
-# thread in debug builds.
 nice-plug = { git = "https://codeberg.org/RustAudio/nice-plug.git", default-features = false, features = ["standalone", "editor"] }
-# Uncomment the below line to disable the on-by-default VST3 feature to remove
-# the GPL compatibility requirement
-# nice_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default_features = false, features = ["assert_process_allocs"] }
 
 crossbeam = "0.8.4"
 serde = { version = "1.0.228", features = ["derive"] }
 slint = { version="1.16.1" }
 baseview = { version = "0.3.1", features = ["opengl"] }
+rustfft = "6.4.1"
 
 [build-dependencies]
 slint-build = "1.16.1"
