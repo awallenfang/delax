@@ -3,28 +3,79 @@ import {
     VerticalBox,
     AboutSlint,
     CheckBox,
-    Switch, Spinner,
+    Switch, Spinner, HorizontalBox,
 } from "std-widgets.slint";
 import { ParamKnob } from "components/param_knob.slint";
 import { ParamBus } from "events.slint";
 import { ParamSwitch } from "components/param_switch.slint";
 import { Palette } from "./components/global.slint";
+import { PeakMeter } from "components/peak_meter.slint";
+import { SpectrumAnalyzer } from "components/spectrum_analyzer.slint";
 
 export { ParamBus }
 
 
 
 export component AppWindow inherits Window {
-    in-out property <float> wetness_val: 0.7;
     in-out property <bool> is_stereo: false;
     in-out property <bool> is_filter_stereo: false;
-    background: Palette.background;
-    width: 550px;
-    height: 310px;
+    in-out property <bool> is_bpm_bound_l: true;
+    in-out property <bool> is_bpm_bound_r: true;
+
+    in-out property <float> in_level_l: 0.0;
+    in-out property <float> in_level_r: 0.0;
+    in-out property <float> out_level_l: 0.0;
+    in-out property <float> out_level_r: 0.0;
+    in-out property <[float]> out_spectrum;
+
+    background: Palette.background-light;
+    width: 500px;
+    height: 400px;
     title: "Delax";
-    VerticalBox {
-        padding: 20px;
+    VerticalLayout {
+        padding: 5px;
         alignment: LayoutAlignment.start;
+        HorizontalLayout {
+            alignment: LayoutAlignment.space-between;
+            height: 30px;
+            Image {
+                source: @image-url("assets/logo.svg");
+                width: 60px;
+                height: 30px;
+                horizontal-alignment: ImageHorizontalAlignment.left;
+                image-fit: ImageFit.contain;
+            }
+            HorizontalLayout {
+                spacing: 5px;
+                VerticalLayout {
+                    VerticalLayout {
+                        PeakMeter {
+                            val <=> in_level_l;
+                        }
+                        PeakMeter {
+                            val <=> in_level_r;
+                        }
+                        spacing: 2px;
+                    }
+                    VerticalLayout {
+                        PeakMeter {
+                            val <=> out_level_l;
+                        }
+                        PeakMeter {
+                            val <=> out_level_r;
+                        }
+                        spacing: 2px;
+                    }
+                    alignment: space-between;
+                }
+                SpectrumAnalyzer {
+                    bins <=> root.out_spectrum;
+                    width: 100px;
+                }
+            }
+
+
+        }
 
         VerticalLayout {
             HorizontalLayout {
@@ -49,28 +100,69 @@ export component AppWindow inherits Window {
 
             HorizontalLayout {
                 alignment: LayoutAlignment.space-between;
-                height: 50px;
+                height: 82px;
                 ParamKnob {
                     param_name: "delay_l";
+                    label: "Time";
                     val: ParamBus.read_val("delay_l");
+                    enabled: !root.is_bpm_bound_l;
                 }
 
                 ParamKnob {
                     param_name: "feedback_l";
+                    label: "Feedback";
                     val: ParamBus.read_val("feedback_l");
                 }
 
                 ParamKnob {
                     param_name: "delay_r";
+                    label: "Time";
                     val: ParamBus.read_val("delay_r");
-                    enabled: root.is_stereo;
+                    enabled: root.is_stereo && !root.is_bpm_bound_r;
                 }
 
                 ParamKnob {
                     param_name: "feedback_r";
+                    label: "Feedback";
                     val: ParamBus.read_val("feedback_r");
                     enabled: root.is_stereo;
                 }
+            }
+
+            HorizontalLayout {
+                accessible-role: AccessibleRole.none;
+                alignment: LayoutAlignment.center;
+                spacing: 10px;
+                Text { text: "BPM L"; color: Palette.text; }
+                ParamSwitch {
+                    param_name: "bpm_bound_l";
+                    checked <=> root.is_bpm_bound_l;
+                }
+                Text { text: "BPM R"; color: Palette.text; }
+                ParamSwitch {
+                    param_name: "bpm_bound_r";
+                    checked <=> root.is_bpm_bound_r;
+                    enabled: root.is_stereo;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: LayoutAlignment.space-between;
+                height: 82px;
+                ParamKnob {
+                    param_name: "delay_note_l";
+                    label: "16ths";
+                    val: ParamBus.read_val("delay_note_l");
+                    enabled: root.is_bpm_bound_l;
+                }
+                Rectangle { width: 60px; height: 80px; } // spacer to keep layout when mono – aligns with feedback
+                ParamKnob {
+                    param_name: "delay_note_r";
+                    label: "16ths";
+                    val: ParamBus.read_val("delay_note_r");
+                    enabled: root.is_stereo && root.is_bpm_bound_r;
+                }
+                Rectangle { width: 60px; height: 80px; }
             }
 
             Text {
@@ -101,36 +193,42 @@ export component AppWindow inherits Window {
 
             HorizontalLayout {
                 alignment: LayoutAlignment.space-between;
-                height: 50px;
+                height: 82px;
                 ParamKnob {
                     param_name: "svf_cutoff_l";
+                    label: "Cutoff";
                     val: ParamBus.read_val("svf_cutoff_l");
                 }
 
                 ParamKnob {
                     param_name: "svf_res_l";
+                    label: "Res";
                     val: ParamBus.read_val("svf_res_l");
                 }
 
                 ParamKnob {
                     param_name: "svf_mix_l";
+                    label: "Mix";
                     val: ParamBus.read_val("svf_mix_l");
                 }
 
                 ParamKnob {
                     param_name: "svf_cutoff_r";
+                    label: "Cutoff";
                     val: ParamBus.read_val("svf_cutoff_r");
                     enabled: root.is_filter_stereo;
                 }
 
                 ParamKnob {
                     param_name: "svf_res_r";
+                    label: "Res";
                     val: ParamBus.read_val("svf_res_r");
                     enabled: root.is_filter_stereo;
                 }
 
                 ParamKnob {
                     param_name: "svf_mix_r";
+                    label: "Mix";
                     val: ParamBus.read_val("svf_mix_r");
                     enabled: root.is_filter_stereo;
                 }

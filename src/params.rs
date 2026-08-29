@@ -24,7 +24,7 @@ impl Default for DelaxParams {
             filter_params: FilterParams::default(),
             wetness: FloatParam::new("Wetness", 0.5, FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.)),
-            editor_state: Arc::new(EditorState::new(400, 300)),
+            editor_state: Arc::new(EditorState::new(500, 400)),
 
         }
     }
