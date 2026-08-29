@@ -230,8 +230,10 @@ impl Plugin for Delax {
         self.input_data.in_r.store(0., Relaxed);
         self.input_data.out_l.store(0., Relaxed);
         self.input_data.out_r.store(0., Relaxed);
-        for i in 0..32 {
-            self.input_data.out_spectrum[i].store(0., Relaxed);
+        for i in 0..64 {
+            if i < 32 {
+                self.input_data.out_spectrum[i].store(0., Relaxed);
+            }
             self.out_buffer[i] = Complex32::zero();
             self.out_history[i] = 0.;
         }
