@@ -1,0 +1,107 @@
+import {
+    Slider,
+    VerticalBox,
+    AboutSlint,
+    CheckBox,
+    Switch, Spinner, HorizontalBox
+} from "std-widgets.slint";
+import { ParamKnob } from "../components/param_knob.slint";
+import { ParamBus } from "../events.slint";
+import { ParamSwitch } from "../components/param_switch.slint";
+import { Palette } from "../components/global.slint";
+import { PeakMeter } from "../components/peak_meter.slint";
+import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
+import { Button } from "../components/button.slint";
+
+export component DelayPage inherits VerticalLayout {
+    in-out property <bool> is_stereo: false;
+    in-out property <bool> is_bpm_bound_l: false;
+    in-out property <bool> is_bpm_bound_r: false;
+
+    HorizontalLayout {
+        accessible-role: AccessibleRole.none;
+        alignment: LayoutAlignment.center;
+        spacing: 10px;
+        Text {
+            text: "Mono";
+            color: Palette.text;
+        }
+
+        ParamSwitch {
+            param_name: "stereo";
+            checked <=> root.is_stereo;
+        }
+
+        Text {
+            text: "Stereo";
+            color: Palette.text;
+        }
+    }
+
+    HorizontalLayout {
+        alignment: LayoutAlignment.space-between;
+        height: 82px;
+        ParamKnob {
+            param_name: "delay_l";
+            label: "Time";
+            val: ParamBus.read_val("delay_l");
+            enabled: !root.is_bpm_bound_l;
+        }
+
+        ParamKnob {
+            param_name: "feedback_l";
+            label: "Feedback";
+            val: ParamBus.read_val("feedback_l");
+        }
+
+        ParamKnob {
+            param_name: "delay_r";
+            label: "Time";
+            val: ParamBus.read_val("delay_r");
+            enabled: root.is_stereo && !root.is_bpm_bound_r;
+        }
+
+        ParamKnob {
+            param_name: "feedback_r";
+            label: "Feedback";
+            val: ParamBus.read_val("feedback_r");
+            enabled: root.is_stereo;
+        }
+    }
+
+    HorizontalLayout {
+        accessible-role: AccessibleRole.none;
+        alignment: LayoutAlignment.center;
+        spacing: 10px;
+        Text { text: "BPM L"; color: Palette.text; }
+        ParamSwitch {
+            param_name: "bpm_bound_l";
+            checked <=> root.is_bpm_bound_l;
+        }
+        Text { text: "BPM R"; color: Palette.text; }
+        ParamSwitch {
+            param_name: "bpm_bound_r";
+            checked <=> root.is_bpm_bound_r;
+            enabled: root.is_stereo;
+        }
+    }
+
+    HorizontalLayout {
+        alignment: LayoutAlignment.space-between;
+        height: 82px;
+        ParamKnob {
+            param_name: "delay_note_l";
+            label: "16ths";
+            val: ParamBus.read_val("delay_note_l");
+            enabled: root.is_bpm_bound_l;
+        }
+        Rectangle { width: 60px; height: 80px; } // spacer to keep layout when mono – aligns with feedback
+        ParamKnob {
+            param_name: "delay_note_r";
+            label: "16ths";
+            val: ParamBus.read_val("delay_note_r");
+            enabled: root.is_stereo && root.is_bpm_bound_r;
+        }
+        Rectangle { width: 60px; height: 80px; }
+    }
+}

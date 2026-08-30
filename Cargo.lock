@@ -2715,9 +2715,9 @@ checksum = "6e44b0a4eaa4c82f441d50a963f2d5f05a787240aeee097597033e72accfd22f"
 
 [[package]]
 name = "indexmap"
-version = "2.14.0"
+version = "2.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
+checksum = "07aa2048142242915a31d35844fb311e0e53fcca590c3a0a40dcf1b841fa09eb"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
@@ -3343,7 +3343,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 [[package]]
 name = "nice-log"
 version = "0.3.1"
-source = "git+https://codeberg.org/RustAudio/nice-plug.git#0129769adc451387a3614ad8c2b33c9341346d64"
+source = "git+https://codeberg.org/RustAudio/nice-plug.git#7906999602139c71539859695a55da765e1532b4"
 dependencies = [
  "tracing-appender",
  "windows 0.62.2",
@@ -3352,7 +3352,7 @@ dependencies = [
 [[package]]
 name = "nice-plug"
 version = "0.3.0"
-source = "git+https://codeberg.org/RustAudio/nice-plug.git#0129769adc451387a3614ad8c2b33c9341346d64"
+source = "git+https://codeberg.org/RustAudio/nice-plug.git#7906999602139c71539859695a55da765e1532b4"
 dependencies = [
  "anyhow",
  "anymap3",
@@ -3387,7 +3387,7 @@ dependencies = [
 [[package]]
 name = "nice-plug-core"
 version = "0.3.0"
-source = "git+https://codeberg.org/RustAudio/nice-plug.git#0129769adc451387a3614ad8c2b33c9341346d64"
+source = "git+https://codeberg.org/RustAudio/nice-plug.git#7906999602139c71539859695a55da765e1532b4"
 dependencies = [
  "atomic_float",
  "atomic_refcell",
@@ -3406,7 +3406,7 @@ dependencies = [
 [[package]]
 name = "nice-plug-derive"
 version = "0.1.2"
-source = "git+https://codeberg.org/RustAudio/nice-plug.git#0129769adc451387a3614ad8c2b33c9341346d64"
+source = "git+https://codeberg.org/RustAudio/nice-plug.git#7906999602139c71539859695a55da765e1532b4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3416,7 +3416,7 @@ dependencies = [
 [[package]]
 name = "nice-plug-xtask"
 version = "0.1.1"
-source = "git+https://codeberg.org/RustAudio/nice-plug.git#0129769adc451387a3614ad8c2b33c9341346d64"
+source = "git+https://codeberg.org/RustAudio/nice-plug.git#7906999602139c71539859695a55da765e1532b4"
 dependencies = [
  "anyhow",
  "cargo_metadata",
