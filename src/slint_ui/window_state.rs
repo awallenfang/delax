@@ -1,5 +1,5 @@
 use crate::slint_ui::editor::{EditorState, UiEvent};
-use baseview::{Event, EventStatus, HandlerError, MouseEvent, WindowEvent, WindowHandler, WindowSize};
+use baseview::{Event, EventStatus, HandlerError, MouseEvent, ScrollDelta, WindowEvent, WindowHandler, WindowSize};
 use crossbeam::channel::Receiver;
 use nice_plug::context::gui::GuiContext;
 use nice_plug::params::Params;
@@ -49,6 +49,21 @@ impl platform::Platform for ArcPlatformWrapper {
 
 thread_local! {
     static GLOBAL_PLATFORM: RefCell<Option<Arc<SlintPlatform>>> = RefCell::new(None);
+}
+
+fn global_platform() -> Arc<SlintPlatform> {
+    GLOBAL_PLATFORM.with(|cell| {
+        if let Some(p) = cell.borrow().clone() {
+            p
+        } else {
+            let p = Arc::new(SlintPlatform::new());
+            let wrapper = ArcPlatformWrapper(p.clone());
+            // `set_platform` can only succeed once per process; ignore error on subsequent windows
+            let _ = platform::set_platform(Box::new(wrapper));
+            *cell.borrow_mut() = Some(p.clone());
+            p
+        }
+    })
 }
 
 #[derive(Clone)]
@@ -108,15 +123,11 @@ impl SlintAdapter {
             }
         })
     }
-    pub fn init_gl_context(&self, ctx: &baseview::gl::GlContext) {
+    pub fn init_gl_context(&self, ctx: &baseview::gl::GlContext) -> Result<(), PlatformError> {
         self.gl
             .set(OpenGLInterface::new(ctx.clone()))
-            .expect("Failed initiating the GL context");
-    }
-
-    pub fn update_size(&self, width: u32, height: u32) {
-        *self.size.borrow_mut() = PhysicalSize::new(width, height);
-        self.window.request_redraw();
+            .map_err(|_| PlatformError::Other("GL context already initialized".into()))?;
+        Ok(())
     }
 
     fn resize(&self, w: u32, h: u32) {
@@ -141,6 +152,8 @@ impl WindowAdapter for SlintAdapter {
     }
 }
 
+/// `WindowState` hosts Slint inside a `baseview` window.
+/// It is `!Send` / `!Sync` by design (contains `Rc`/`RefCell`) and must stay on the window thread.
 pub struct WindowState<T: slint::ComponentHandle, P: Params> {
     gui_context: GuiContext,
     pub editor_state: Arc<EditorState>,
@@ -149,8 +162,17 @@ pub struct WindowState<T: slint::ComponentHandle, P: Params> {
     window_context: baseview::WindowContext,
     event_rx: Receiver<UiEvent>,
     params: Arc<P>,
-    last_pos: RefCell<Option<LogicalPosition>>,
+    last_pos: RefCell<LogicalPosition>,
     frame_callback: Arc<dyn Fn(&T) + Send + Sync>,
+}
+
+fn map_button(button: baseview::MouseButton) -> Option<platform::PointerEventButton> {
+    match button {
+        baseview::MouseButton::Left => Some(platform::PointerEventButton::Left),
+        baseview::MouseButton::Right => Some(platform::PointerEventButton::Right),
+        baseview::MouseButton::Middle => Some(platform::PointerEventButton::Middle),
+        _ => None,
+    }
 }
 
 impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
@@ -164,36 +186,35 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
         event_rx: Receiver<UiEvent>,
         params: Arc<P>,
         frame_callback: Arc<dyn Fn(&T) + Send + Sync>,
-    ) -> Self
+    ) -> Result<Self, PlatformError>
     where
         F: FnOnce() -> Result<T, PlatformError>,
     {
         if let Some(gl_ctx) = window_context.gl_context() {
-            unsafe { gl_ctx.make_current().unwrap() };
+            // SAFETY: baseview GL context must be made current on this thread.
+            unsafe {
+                gl_ctx
+                    .make_current()
+                    .map_err(|e| PlatformError::Other(format!("make_current failed: {e:?}")))?
+            };
         }
 
-        let platform = GLOBAL_PLATFORM.with(|cell| {
-            if cell.borrow().is_none() {
-                let p = Arc::new(SlintPlatform::new());
-                let wrapper = ArcPlatformWrapper(p.clone());
-                let _ = platform::set_platform(Box::new(wrapper));
-                *cell.borrow_mut() = Some(p.clone());
-                p
-            } else {
-                cell.borrow().as_ref().unwrap().clone()
-            }
-        });
+        let platform = global_platform();
 
         let adapter = SlintAdapter::new(init_width, init_height);
         if let Some(gl_ctx) = window_context.gl_context() {
-            adapter.init_gl_context(&gl_ctx);
+            adapter.init_gl_context(&gl_ctx)?;
         }
         platform.set_current(adapter.clone());
 
-        let root = builder().unwrap_or_else(|e| panic!("Failed to build: {}", e));
-        root.show().expect("Failed to show the root component");
+        let root = builder().map_err(|e| {
+            PlatformError::Other(format!("Failed to build Slint component: {e}"))
+        })?;
+        root.show().map_err(|e| {
+            PlatformError::Other(format!("Failed to show Slint component: {e}"))
+        })?;
 
-        Self {
+        Ok(Self {
             gui_context,
             editor_state,
             adapter,
@@ -201,9 +222,9 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
             window_context,
             event_rx,
             params,
-            last_pos: RefCell::new(None),
+            last_pos: RefCell::new(LogicalPosition::new(0.0, 0.0)),
             frame_callback,
-        }
+        })
     }
 
     pub fn window(&self) -> &Window {
@@ -245,11 +266,15 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
         self.window().request_redraw();
 
         if let Some(renderer) = self.adapter.renderer.get() {
-            let _ = renderer.render();
+            if let Err(e) = renderer.render() {
+                eprintln!("Slint render error: {e:?}");
+            }
         }
 
         if let Some(ctx) = self.window_context.gl_context() {
-            let _ = ctx.swap_buffers();
+            if let Err(e) = ctx.swap_buffers() {
+                eprintln!("GL swap_buffers error: {e:?}");
+            }
         }
 
         Ok(())
@@ -274,40 +299,48 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
                 _ => EventStatus::Ignored,
             },
             Event::Mouse(mouse_event) => {
-                if self.last_pos.borrow().is_none() {
-                    *self.last_pos.borrow_mut() = Some(LogicalPosition::new(0_f32, 0_f32))
-                }
                 let slint_event = match mouse_event {
                     MouseEvent::CursorMoved { position, .. } => {
                         let log_pos = LogicalPosition::new(position.x as f32, position.y as f32);
-                        *self.last_pos.borrow_mut() = Some(log_pos);
+                        *self.last_pos.borrow_mut() = log_pos;
                         Some(platform::WindowEvent::PointerMoved { position: log_pos })
                     }
                     MouseEvent::ButtonPressed { button, .. } => {
-                        let slint_button = match button {
-                            baseview::MouseButton::Left => platform::PointerEventButton::Left,
-                            baseview::MouseButton::Right => platform::PointerEventButton::Right,
-                            baseview::MouseButton::Middle => platform::PointerEventButton::Middle,
-                            _ => return EventStatus::Ignored,
+                        let Some(slint_button) = map_button(button) else {
+                            return EventStatus::Ignored;
                         };
                         Some(platform::WindowEvent::PointerPressed {
-                            position: self.last_pos.borrow().unwrap(),
+                            position: *self.last_pos.borrow(),
                             button: slint_button,
                         })
                     }
                     MouseEvent::ButtonReleased { button, .. } => {
-                        let slint_button = match button {
-                            baseview::MouseButton::Left => platform::PointerEventButton::Left,
-                            baseview::MouseButton::Right => platform::PointerEventButton::Right,
-                            baseview::MouseButton::Middle => platform::PointerEventButton::Middle,
-                            _ => return EventStatus::Ignored,
+                        let Some(slint_button) = map_button(button) else {
+                            return EventStatus::Ignored;
                         };
                         Some(platform::WindowEvent::PointerReleased {
-                            position: self.last_pos.borrow().unwrap(),
+                            position: *self.last_pos.borrow(),
                             button: slint_button,
                         })
                     }
-                    MouseEvent::WheelScrolled {  .. } => return EventStatus::Ignored,
+                    MouseEvent::WheelScrolled { delta, .. } => {
+                        match delta {
+                            ScrollDelta::Lines { x, y } => {
+                                Some(platform::WindowEvent::PointerScrolled {
+                                    position: *self.last_pos.borrow(),
+                                    delta_x: x,
+                                    delta_y: y,
+                                })
+                            }
+                            ScrollDelta::Pixels{x, y} => {
+                                Some(platform::WindowEvent::PointerScrolled {
+                                    position: *self.last_pos.borrow(),
+                                    delta_x: x,
+                                    delta_y: y,
+                                })
+                            }
+                        }
+                    },
                     _ => None,
                 };
                 if let Some(se) = slint_event {
