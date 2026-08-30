@@ -12,7 +12,7 @@ slint::include_modules!();
 thread_local! {
     static PARAM_STORE: RefCell<HashMap<String, f32>> = RefCell::new(HashMap::new());
 }
-pub fn create_editor<P: Params + 'static>(
+/*pub fn create_editor<P: Params + 'static>(
     editor_state: Arc<EditorState>,
     params: Arc<P>,
 ) -> UIEditor<AppWindow, P> {
@@ -37,7 +37,7 @@ pub fn create_editor<P: Params + 'static>(
         }
     })
 }
-
+*/
 impl<P> ParamComponent<P> for AppWindow
 where
     P: Params + 'static,
