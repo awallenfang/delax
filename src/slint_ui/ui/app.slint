@@ -112,8 +112,6 @@ export component AppWindow inherits Window {
                         width: 100px;
                     }
                 }
-
-
             }
 
             if tab == 0:
@@ -131,8 +129,8 @@ export component AppWindow inherits Window {
             if tab == 2:
             EditorPage {}
             if tab == 3:
-            AboutPage {}
-
+            AboutPage {
+            }
         }
         HorizontalLayout {
             alignment: LayoutAlignment.space-between;

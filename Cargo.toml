@@ -1,6 +1,6 @@
 [package]
 name = "delax"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Ava Wallenfang <ava@wallenfang.de>"]
 license = "MIT"
@@ -15,7 +15,6 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 nice-plug = { git = "https://codeberg.org/RustAudio/nice-plug.git", default-features = false, features = ["standalone", "editor"] }
-
 crossbeam = "0.8.4"
 serde = { version = "1.0.228", features = ["derive"] }
 slint = { version="1.16.1" }
