@@ -326,13 +326,14 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
                     MouseEvent::WheelScrolled { delta, .. } => {
                         match delta {
                             ScrollDelta::Lines { x, y } => {
+                                const LINES_TO_PX: f32 = 20.0;
                                 Some(platform::WindowEvent::PointerScrolled {
                                     position: *self.last_pos.borrow(),
-                                    delta_x: x,
-                                    delta_y: y,
+                                    delta_x: x * LINES_TO_PX,
+                                    delta_y: y * LINES_TO_PX,
                                 })
                             }
-                            ScrollDelta::Pixels{x, y} => {
+                            ScrollDelta::Pixels { x, y } => {
                                 Some(platform::WindowEvent::PointerScrolled {
                                     position: *self.last_pos.borrow(),
                                     delta_x: x,
