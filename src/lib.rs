@@ -2,7 +2,6 @@ use delay_engine::{
     engine::{DelayEngine, DelayInterpolationMode},
     params::DelayMode,
 };
-use filters::dattorro::DattorroReverb;
 use filters::simper::SimperSinSVF;
 use nice_plug::prelude::*;
 use params::DelaxParams;
@@ -49,8 +48,6 @@ pub struct Delax {
     sin_svf_r: SimperSinSVF,
     input_sin_svf_l: SimperSinSVF,
     input_sin_svf_r: SimperSinSVF,
-    datorro: DattorroReverb,
-    initial_dattorro: DattorroReverb,
     input_data: Arc<InputData>,
     peak_in_l: PeakFollower,
     peak_in_r: PeakFollower,
@@ -80,13 +77,11 @@ impl Default for Delax {
             sin_svf_r: SimperSinSVF::new(44100.),
             input_sin_svf_l: SimperSinSVF::new(44100.),
             input_sin_svf_r: SimperSinSVF::new(44100.),
-            datorro: DattorroReverb::new(44100., 0.5),
-            initial_dattorro: DattorroReverb::new(44100., 0.5),
             input_data: Arc::new(InputData::default()),
-            peak_in_l: PeakFollower::new(0.0008, 0., 0.2),
-            peak_in_r: PeakFollower::new(0.0008, 0., 0.2),
-            peak_out_l: PeakFollower::new(0.0008, 0., 0.2),
-            peak_out_r: PeakFollower::new(0.0008, 0., 0.2),
+            peak_in_l: PeakFollower::new(0.0008, 0.1, 0.2),
+            peak_in_r: PeakFollower::new(0.0008, 0.1, 0.2),
+            peak_out_l: PeakFollower::new(0.0008, 0.1, 0.2),
+            peak_out_r: PeakFollower::new(0.0008, 0.1, 0.2),
             out_fft: fft_plan,
             spectrum_producer: Some(prod),
             spectrum_consumer: Arc::new(std::sync::Mutex::new(Some(cons))),
@@ -216,8 +211,6 @@ impl Plugin for Delax {
                                     spectrum,
                                 )));
                             } else if !samples.is_empty() {
-                                // Not enough samples yet — push back? rtrb has no push_front, so just drop and wait for next frame
-                                // Optionally store partial for next frame, but simpler to wait for full window
                             }
                         }
                     }
@@ -250,11 +243,8 @@ impl Plugin for Delax {
         self.input_sin_svf_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_r.set_sample_rate(self.sample_rate);
 
-        self.datorro.set_sample_rate(self.sample_rate);
-        self.initial_dattorro.set_sample_rate(self.sample_rate);
 
         // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
-        // self.initial_filter_pipeline.register_stereo(Arc::new(Mutex::new(self.initial_dattorro.clone())));
 
         true
     }

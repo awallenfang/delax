@@ -1,0 +1,87 @@
+import {
+    Slider,
+    VerticalBox,
+    AboutSlint,
+    CheckBox,
+    Switch, Spinner, HorizontalBox
+} from "std-widgets.slint";
+import { ParamKnob } from "../components/param_knob.slint";
+import { ParamBus } from "../events.slint";
+import { ParamSwitch } from "../components/param_switch.slint";
+import { Palette } from "../components/global.slint";
+import { PeakMeter } from "../components/peak_meter.slint";
+import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
+import { Button } from "../components/button.slint";
+
+export component FilterPage inherits VerticalLayout {
+    in-out property <bool> is_filter_stereo: false;
+
+    Text {
+        horizontal-alignment: TextHorizontalAlignment.center;
+        text: "Filter";
+        color: Palette.text;
+        vertical-alignment: TextVerticalAlignment.center;
+    }
+    HorizontalLayout {
+        accessible-role: AccessibleRole.none;
+        alignment: LayoutAlignment.center;
+        spacing: 10px;
+        Text {
+            text: "Mono";
+            color: Palette.text;
+        }
+
+        ParamSwitch {
+            param_name: "svf_stereo_mode";
+            checked <=> root.is_filter_stereo;
+        }
+
+        Text {
+            text: "Stereo";
+            color: Palette.text;
+        }
+    }
+
+    HorizontalLayout {
+        alignment: LayoutAlignment.space-between;
+        height: 82px;
+        ParamKnob {
+            param_name: "svf_cutoff_l";
+            label: "Cutoff";
+            val: ParamBus.read_val("svf_cutoff_l");
+        }
+
+        ParamKnob {
+            param_name: "svf_res_l";
+            label: "Res";
+            val: ParamBus.read_val("svf_res_l");
+        }
+
+        ParamKnob {
+            param_name: "svf_mix_l";
+            label: "Mix";
+            val: ParamBus.read_val("svf_mix_l");
+        }
+
+        ParamKnob {
+            param_name: "svf_cutoff_r";
+            label: "Cutoff";
+            val: ParamBus.read_val("svf_cutoff_r");
+            enabled: root.is_filter_stereo;
+        }
+
+        ParamKnob {
+            param_name: "svf_res_r";
+            label: "Res";
+            val: ParamBus.read_val("svf_res_r");
+            enabled: root.is_filter_stereo;
+        }
+
+        ParamKnob {
+            param_name: "svf_mix_r";
+            label: "Mix";
+            val: ParamBus.read_val("svf_mix_r");
+            enabled: root.is_filter_stereo;
+        }
+    }
+}
