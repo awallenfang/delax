@@ -78,10 +78,10 @@ impl Default for Delax {
             input_sin_svf_l: SimperSinSVF::new(44100.),
             input_sin_svf_r: SimperSinSVF::new(44100.),
             input_data: Arc::new(InputData::default()),
-            peak_in_l: PeakFollower::new(0.0008, 0.1, 0.2),
-            peak_in_r: PeakFollower::new(0.0008, 0.1, 0.2),
-            peak_out_l: PeakFollower::new(0.0008, 0.1, 0.2),
-            peak_out_r: PeakFollower::new(0.0008, 0.1, 0.2),
+            peak_in_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
+            peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
+            peak_out_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
+            peak_out_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             out_fft: fft_plan,
             spectrum_producer: Some(prod),
             spectrum_consumer: Arc::new(std::sync::Mutex::new(Some(cons))),
@@ -142,6 +142,7 @@ impl Plugin for Delax {
                     let params = self.params.clone();
                     move |event_tx| {
                         let app = slint_ui::AppWindow::new()?;
+                        app.set_version(env!("CARGO_PKG_VERSION").into());
                         app.bind_param_changed(event_tx, params.clone());
                         Ok(app)
                     }
@@ -161,6 +162,9 @@ impl Plugin for Delax {
                     .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / 63.0).cos()))
                     .collect();
                 let hann_window = std::sync::Arc::new(hann_window);
+                let spectrum_buffer =
+                    std::sync::Arc::new(std::sync::Mutex::new(Vec::<f32>::with_capacity(128)));
+                let spectrum_buffer_clone = spectrum_buffer.clone();
                 move |app| {
                     for (p_id, param_ptr, _) in params.param_map().iter() {
                         let val = unsafe { param_ptr.unmodulated_normalized_value() };
@@ -173,44 +177,48 @@ impl Plugin for Delax {
                     app.set_out_level_l(input.out_l.load(Relaxed));
                     app.set_out_level_r(input.out_r.load(Relaxed));
 
-                    let mut samples = Vec::with_capacity(64);
                     if let Ok(mut guard) = spectrum_consumer.try_lock() {
                         if let Some(cons) = guard.as_mut() {
-                            while samples.len() < 64 {
-                                match cons.pop() {
-                                    Ok(v) => samples.push(v),
-                                    Err(_) => break,
+                            if let Ok(mut buf) = spectrum_buffer_clone.try_lock() {
+                                while let Ok(v) = cons.pop() {
+                                    buf.push(v);
                                 }
-                            }
-                            if samples.len() == 64 {
-                                for (s, w) in samples.iter_mut().zip(hann_window.iter()) {
-                                    *s *= *w;
-                                }
-                                let mut buf: Vec<Complex32> =
-                                    samples.into_iter().map(|s| Complex32::new(s, 0.0)).collect();
-                                if let Ok(mut scratch) = fft_scratch.try_lock() {
-                                    if scratch.len() == fft.get_inplace_scratch_len() {
-                                        fft.process_with_scratch(&mut buf, &mut scratch);
-                                    } else {
-                                        fft.process(&mut buf);
+                                while buf.len() >= 64 {
+                                    let mut samples: Vec<f32> = buf.drain(0..64).collect();
+                                    for (s, w) in samples.iter_mut().zip(hann_window.iter()) {
+                                        *s *= *w;
                                     }
-                                } else {
-                                    fft.process(&mut buf);
-                                }
-                                let spectrum: Vec<f32> = buf[0..32]
-                                    .iter()
-                                    .map(|c| {
-                                        let mag = c.norm();
-                                        let db =
-                                            (1.0 + util::gain_to_db_fast(mag.max(1e-5)) / 100.0)
+                                    let mut complex: Vec<Complex32> = samples
+                                        .into_iter()
+                                        .map(|s| Complex32::new(s, 0.0))
+                                        .collect();
+                                    if let Ok(mut scratch) = fft_scratch.try_lock() {
+                                        if scratch.len() == fft.get_inplace_scratch_len() {
+                                            fft.process_with_scratch(&mut complex, &mut scratch);
+                                        } else {
+                                            fft.process(&mut complex);
+                                        }
+                                    } else {
+                                        fft.process(&mut complex);
+                                    }
+                                    let spectrum: Vec<f32> = complex[0..32]
+                                        .iter()
+                                        .map(|c| {
+                                            let mag = c.norm();
+                                            let db = (1.0 + util::gain_to_db_fast(mag.max(1e-5)) / 100.0)
                                                 .clamp(0.0, 1.0);
-                                        db
-                                    })
-                                    .collect();
-                                app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(
-                                    spectrum,
-                                )));
-                            } else if !samples.is_empty() {
+                                            db
+                                        })
+                                        .collect();
+                                    app.set_out_spectrum(slint::ModelRc::new(
+                                        slint::VecModel::from(spectrum),
+                                    ));
+                                }
+                                // Keep buffer bounded: drop oldest if host produced too fast
+                                if buf.len() > 256 {
+                                    let excess = buf.len() - 128;
+                                    buf.drain(0..excess);
+                                }
                             }
                         }
                     }
@@ -242,6 +250,11 @@ impl Plugin for Delax {
         self.sin_svf_r.set_sample_rate(self.sample_rate);
         self.input_sin_svf_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_r.set_sample_rate(self.sample_rate);
+
+        self.peak_in_l.set_sample_rate(self.sample_rate);
+        self.peak_in_r.set_sample_rate(self.sample_rate);
+        self.peak_out_l.set_sample_rate(self.sample_rate);
+        self.peak_out_r.set_sample_rate(self.sample_rate);
 
 
         // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));

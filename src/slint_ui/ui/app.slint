@@ -31,6 +31,7 @@ export component AppWindow inherits Window {
     in-out property <float> out_level_l: 0.0;
     in-out property <float> out_level_r: 0.0;
     in-out property <[float]> out_spectrum;
+    in-out property <string> version;
 
     private property <int> tab: 0;
 
@@ -130,6 +131,7 @@ export component AppWindow inherits Window {
             EditorPage {}
             if tab == 3:
             AboutPage {
+                version <=> root.version;
             }
         }
         HorizontalLayout {

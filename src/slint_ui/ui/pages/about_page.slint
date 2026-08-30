@@ -14,65 +14,74 @@ import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
 
 export component AboutPage inherits VerticalLayout {
+    in property <string> version;
     padding-left: 20px;
     padding-right: 20px;
-    HorizontalLayout {
-        alignment: space-around;
-        Image {
-            source: @image-url("../assets/logo.svg");
-            width: 100px;
-            height: 50px;
-            horizontal-alignment: ImageHorizontalAlignment.center;
-            image-fit: ImageFit.contain;
+    ScrollView {
+        height: 210px;
+        width: 100%;
+        VerticalLayout {
+            spacing: 6px;
+            alignment: start;
+            HorizontalLayout {
+                alignment: center;
+                Image {
+                    source: @image-url("../assets/logo.svg");
+                    width: 100px;
+                    height: 50px;
+                    horizontal-alignment: ImageHorizontalAlignment.center;
+                    image-fit: ImageFit.contain;
+                }
+            }
+            Text {
+                text: "Built by Ritzin Dev";
+                color: Palette.text;
+                font-size: 17pt;
+            }
+            Text {
+                text: "Version: " + root.version;
+                color: Palette.text;
+            }
+            Text {
+                text: "Used dependencies:";
+                color: Palette.text;
+            }
+            StyledText {
+                text: @markdown("[Nice-Plug (ISC)](https://codeberg.org/RustAudio/nice-plug.git)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Crossbeam (MIT)](https://github.com/crossbeam-rs/crossbeam)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Serde (MIT)](https://github.com/serde-rs/serde)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Slint (Royalty free)](https://github.com/slint-ui/slint)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Baseview (MIT)](https://github.com/RustAudio/baseview)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[RustFFT (MIT)](https://github.com/ejmahler/RustFFT)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[rtrb (MIT)](https://github.com/mgeier/rtrb)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            AboutSlint { }
         }
     }
-    Text {
-        text: "Built by Ritzin Dev";
-        color: Palette.text;
-        font-size: 17pt;
-    }
-    Text {
-        text: "Version: 0.2.0";
-        color: Palette.text;
-    }
-    Text {
-        text: "Used dependencies:";
-        color: Palette.text;
-    }
-    StyledText {
-        text: @markdown("[Nice-Plug (ISC)](https://codeberg.org/RustAudio/nice-plug.git)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[Crossbeam (MIT)](https://github.com/crossbeam-rs/crossbeam)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[Serde (MIT)](https://github.com/serde-rs/serde)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[Slint (Royalty free)](https://github.com/slint-ui/slint)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[Baseview (MIT)](https://github.com/RustAudio/baseview)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[RustFFT (MIT)](https://github.com/ejmahler/RustFFT)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[rtrb (MIT)](https://github.com/mgeier/rtrb)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    AboutSlint { }
 }

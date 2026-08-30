@@ -227,7 +227,7 @@ impl<T: slint::ComponentHandle + ParamComponent<P> + 'static, P: Params> Editor 
                     event_rx,
                     params_clone.clone(),
                     callback_clone.clone(),
-                ))
+                )?)
             },
             host,
         )?;
