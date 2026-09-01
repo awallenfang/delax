@@ -31,7 +31,7 @@ impl SimperTanSVF {
         let ic1eq = 0.;
         let ic2eq = 0.;
 
-        let cutoff = 1000.;
+        let cutoff = 500.;
         let res = 0.2;
 
         let g = (PI * cutoff / sample_rate).tan();
@@ -293,8 +293,8 @@ impl SimperSinSVF {
         let v1 = t1 + self.ic1eq;
         let v2 = t2 + self.ic2eq;
 
-        self.ic1eq += 2. * t1;
-        self.ic2eq += 2. * t2;
+        self.ic1eq += flush_denormal(2. * t1);
+        self.ic2eq += flush_denormal(2. * t2);
 
         let high = sample - self.k * v1 - v2;
         let band = v1;
