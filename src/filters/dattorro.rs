@@ -1,4 +1,4 @@
-use super::StereoFilter;
+use super::{flush_denormal, StereoFilter};
 
 impl StereoFilter for DattorroReverb {
     fn process_stereo(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
@@ -350,7 +350,7 @@ impl Damper {
 
     /// Process a sample through the damper
     fn process(&mut self, input: f32) -> f32 {
-        let out = input * (1. - self.damping) + self.last_sample * self.damping;
+        let out = flush_denormal(input * (1. - self.damping) + self.last_sample * self.damping);
         self.last_sample = out;
         out
     }

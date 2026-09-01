@@ -73,7 +73,7 @@ impl DelayEngine {
             }
             DelayInterpolationMode::Linear => {
                 let upper_index =
-                    ((self.write_head - ms_to_samples(self.delay_time, self.sample_rate)) as i32)
+                    (self.write_head as i32 - ms_to_samples(self.delay_time, self.sample_rate) as i32)
                         .rem_euclid(self.buffer.len() as i32);
                 let lower_index = (upper_index - 1).rem_euclid(self.buffer.len() as i32);
 
@@ -82,7 +82,10 @@ impl DelayEngine {
 
                 let interpolation_factor = ((self.delay_time/1000.)*self.sample_rate).fract();
 
-                lower_sample * (1. - interpolation_factor) + upper_sample * interpolation_factor
+                // upper is the sample closest to write_head (least delayed),
+                // lower is one sample older. For integer delay fract==0 we must
+                // return upper to match Nearest.
+                upper_sample * (1. - interpolation_factor) + lower_sample * interpolation_factor
             }
         }
     }
@@ -119,7 +122,7 @@ impl DelayEngine {
     ///
     /// Values larger than the bank size will simply result in a duration of `samples % bank_size``
     pub fn set_delay_amount(&mut self, delay_time: f32) {
-        let delay_samples = ms_to_samples(delay_time, self.sample_rate);
+        let delay_samples = ms_to_samples(delay_time, self.sample_rate).clamp(0, self.buffer.len()-1);
         self.read_head = ((self.write_head as i32 - delay_samples as i32)
             .rem_euclid(self.buffer.len() as i32)) as usize;
         self.delay_time = delay_time;
@@ -170,6 +173,127 @@ pub enum DelayInterpolationMode {
 
 pub fn ms_to_samples(ms: f32, sample_rate: f32) -> usize {
     ((ms / 1000.) * sample_rate).floor() as usize
+}
+
+#[cfg(test)]
+mod interpolation_tests {
+    use super::{DelayEngine, DelayInterpolationMode, ms_to_samples};
+
+    fn make_ramp_engine(size: usize, sample_rate: f32) -> DelayEngine {
+        let mut e = DelayEngine::new(size, sample_rate);
+        for i in 0..size {
+            e.write_sample(i as f32);
+        }
+        e
+    }
+
+    #[test]
+    fn nearest_integer_delay_no_wrap() {
+        let mut e = make_ramp_engine(10, 1000.);
+        e.set_delay_amount(2.);
+        let s = e.interpolate_sample(DelayInterpolationMode::Nearest);
+        assert_eq!(s, 8.);
+    }
+
+    #[test]
+    fn nearest_delay_wraps_at_zero() {
+        let mut e = DelayEngine::new(10, 1000.);
+        for i in 0..1 {
+            e.write_sample(i as f32);
+        }
+        e.set_delay_amount(5.);
+        let s = e.interpolate_sample(DelayInterpolationMode::Nearest);
+        assert_eq!(s, 0.);
+
+        for i in 1..10 {
+            e.write_sample(i as f32);
+        }
+        e.set_delay_amount(3.);
+        assert_eq!(e.interpolate_sample(DelayInterpolationMode::Nearest), 7.);
+    }
+
+    #[test]
+    fn linear_no_panic_when_write_head_less_than_delay() {
+        let mut e = DelayEngine::new(10, 1000.);
+        e.write_sample(1.);
+        e.set_delay_amount(5.);
+        let s = e.interpolate_sample(DelayInterpolationMode::Linear);
+        assert!(s.is_finite());
+    }
+
+    #[test]
+    fn linear_integer_delay_matches_nearest() {
+        let mut e = make_ramp_engine(10, 1000.);
+        e.set_delay_amount(3.);
+        let nearest = e.interpolate_sample(DelayInterpolationMode::Nearest);
+        let linear = e.interpolate_sample(DelayInterpolationMode::Linear);
+        assert_eq!(linear, nearest);
+        let mut e2 = DelayEngine::new(10, 1000.);
+        for i in 0..5 {
+            e2.write_sample(i as f32 * 10.);
+        }
+        e2.set_delay_amount(2.);
+        assert_eq!(e2.interpolate_sample(DelayInterpolationMode::Nearest), 30.);
+        assert_eq!(e2.interpolate_sample(DelayInterpolationMode::Linear), 30.);
+    }
+
+    #[test]
+    fn linear_fractional_interpolation() {
+        let mut e = make_ramp_engine(10, 1000.);
+        e.set_delay_amount(1.5);
+        let s = e.interpolate_sample(DelayInterpolationMode::Linear);
+        assert!((s - 8.5).abs() < 1e-5, "got {s}");
+
+        let mut e2 = make_ramp_engine(10, 10000.);
+        e2.set_delay_amount(0.15); // 1.5 samples
+        assert!((e2.interpolate_sample(DelayInterpolationMode::Linear) - 8.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn linear_wrap_across_boundary_interpolates_correctly() {
+        let mut e = make_ramp_engine(10, 1000.);
+        e.set_delay_amount(0.5);
+        let s = e.interpolate_sample(DelayInterpolationMode::Linear);
+        assert!((s - 4.5).abs() < 1e-5, "wrap interpolation got {s}");
+    }
+
+    #[test]
+    fn clamping_prevents_zero_delay_garbage_at_max_delay() {
+        let mut e = DelayEngine::new(44100, 44100.);
+        for i in 0..100 {
+            e.write_sample(i as f32);
+        }
+        e.set_delay_amount(1000.);
+        let s = e.interpolate_sample(DelayInterpolationMode::Nearest);
+        assert!(s.is_finite());
+        e.set_delay_amount(5000.);
+        let s2 = e.interpolate_sample(DelayInterpolationMode::Nearest);
+        assert!(s2.is_finite());
+    }
+
+    #[test]
+    fn ms_to_samples_floor() {
+        assert_eq!(ms_to_samples(1., 1000.), 1);
+        assert_eq!(ms_to_samples(1.5, 1000.), 1); 
+        assert_eq!(ms_to_samples(1., 44100.), 44);
+        assert_eq!(ms_to_samples(1000., 44100.), 44100);
+    }
+
+    #[test]
+    fn sample_rate_scaling() {
+        let e1 = DelayEngine::new(48000, 48000.);
+        let e2 = DelayEngine::new(96000, 96000.);
+        assert_eq!(ms_to_samples(500., 48000.), 24000);
+        assert_eq!(ms_to_samples(500., 96000.), 48000);
+
+        let mut eng = DelayEngine::new(96000, 96000.);
+        for i in 0..100 {
+            eng.write_sample(i as f32);
+        }
+        eng.set_delay_amount(500.);
+        assert!(eng.interpolate_sample(DelayInterpolationMode::Nearest).is_finite());
+        let _ = e1; let _ = e2;
+    }
 }
 
 #[cfg(test)]

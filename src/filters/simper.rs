@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use super::{Filter, params::SVFFilterMode};
+use super::{Filter, params::SVFFilterMode, flush_denormal};
 
 /// A SVF filter implemented using the paper by Andrew Simper from Cytomic
 /// https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
@@ -58,7 +58,7 @@ impl SimperTanSVF {
 
     /// Set the cutoff value
     pub fn set_cutoff(&mut self, cutoff: f32) {
-        self.cutoff = cutoff;
+        self.cutoff = cutoff.clamp(10., 0.49 * self.sample_rate);
         self.reinit();
     }
 
@@ -110,8 +110,8 @@ impl SimperTanSVF {
         let v1 = self.a1 * self.ic1eq + self.a2 * (sample - self.ic2eq);
         let v2 = self.ic2eq + self.g * v1;
 
-        self.ic1eq = 2. * v1 - self.ic1eq;
-        self.ic2eq = 2. * v2 - self.ic2eq;
+        self.ic1eq = flush_denormal(2. * v1 - self.ic1eq);
+        self.ic2eq = flush_denormal(2. * v2 - self.ic2eq);
 
         let low = v2;
         let band = v1;
@@ -228,7 +228,7 @@ impl SimperSinSVF {
 
     /// Set the cutoff value
     pub fn set_cutoff(&mut self, cutoff: f32) {
-        self.cutoff = cutoff;
+        self.cutoff = cutoff.clamp(10., 0.49 * self.sample_rate);
         self.reinit();
     }
 
@@ -332,5 +332,190 @@ impl SimperSinSVF {
 impl Filter for SimperSinSVF {
     fn process(&mut self, input: f32) -> f32 {
         self.tick_sample(input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SimperSinSVF, SimperTanSVF};
+    use crate::filters::params::SVFFilterMode;
+
+    fn assert_finite(samples: &[f32]) {
+        for &s in samples {
+            assert!(s.is_finite(), "non-finite sample {s}");
+            assert!(!s.is_nan());
+        }
+    }
+
+    #[test]
+    fn sin_svf_extreme_cutoff_and_res_no_nan() {
+        let sample_rates = [8000., 44100., 48000., 96000., 192000.];
+        let cutoffs = [20., 500., 5000., 10000., 15000., 20000.];
+        let ress = [0., 0.5, 0.9, 1.0];
+        let modes = [
+            SVFFilterMode::Low,
+            SVFFilterMode::Band,
+            SVFFilterMode::High,
+            SVFFilterMode::Notch,
+            SVFFilterMode::Peak,
+        ];
+
+        for &sr in &sample_rates {
+            for &cutoff in &cutoffs {
+                if cutoff >= sr * 0.49 {
+                    continue;
+                }
+                for &res in &ress {
+                    for &mode in &modes {
+                        let mut f = SimperSinSVF::new(sr);
+                        f.set_mode(mode);
+                        f.set_cutoff(cutoff);
+                        f.set_res(res);
+                        let mut out = Vec::with_capacity(256);
+                        for i in 0..256 {
+                            let input = if i == 0 {
+                                1.0
+                            } else if i % 2 == 0 {
+                                0.5
+                            } else {
+                                -0.5
+                            };
+                            out.push(f.tick_sample(input));
+                        }
+                        assert_finite(&out);
+                        for &s in &out {
+                            assert!(
+                                s.abs() < 100.,
+                                "explosion: sr={sr} cutoff={cutoff} res={res} mode={mode:?} sample={s}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sin_svf_long_run_stability_silence() {
+        let mut f = SimperSinSVF::new(44100.);
+        f.set_cutoff(1000.);
+        f.set_res(0.9);
+        f.set_mode(SVFFilterMode::Low);
+        f.tick_sample(1.0);
+        let mut max = 0f32;
+        for _ in 0..1_000_000 {
+            let s = f.tick_sample(0.0);
+            assert!(s.is_finite(), "NaN/Inf after long silence");
+            max = max.max(s.abs());
+        }
+        assert!(max < 10., "max {max} too large");
+        let tail = f.tick_sample(0.0);
+        assert!(tail.abs() < 1e-3, "tail should decay, got {tail}");
+    }
+
+    #[test]
+    fn sin_svf_zero_cutoff_freezes_but_stays_finite() {
+        let mut f = SimperSinSVF::new(44100.);
+        f.set_cutoff(0.);
+        f.set_res(0.2);
+        for _ in 0..100 {
+            let s = f.tick_sample(1.0);
+            assert!(s.is_finite());
+        }
+        let s1 = f.tick_sample(1.0);
+        let s2 = f.tick_sample(1.0);
+        assert!(s1.is_finite() && s2.is_finite());
+    }
+
+    #[test]
+    fn sin_svf_nyquist_adjacent_stays_finite() {
+        for sr in [44100., 48000., 96000.] {
+            let mut f = SimperSinSVF::new(sr);
+            f.set_cutoff(sr * 0.45);
+            f.set_res(1.0);
+            for _ in 0..1024 {
+                let s = f.tick_sample(0.7);
+                assert!(
+                    s.is_finite(),
+                    "nyquist blowup sr={sr} cutoff={} res=1 got {s}",
+                    sr * 0.45
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sin_svf_high_res_does_not_explode_on_dc() {
+        let mut f = SimperSinSVF::new(44100.);
+        f.set_cutoff(500.);
+        f.set_res(1.0);
+        f.set_mode(SVFFilterMode::Low);
+        for _ in 0..10000 {
+            let s = f.tick_sample(1.0);
+            assert!(s.is_finite());
+            assert!(s.abs() < 5., "DC explosion at res=1: {s}");
+        }
+    }
+
+    #[test]
+    fn sin_svf_mode_switch_mid_stream_finite() {
+        let mut f = SimperSinSVF::new(44100.);
+        f.set_cutoff(1000.);
+        f.set_res(0.5);
+        for mode in [
+            SVFFilterMode::Low,
+            SVFFilterMode::High,
+            SVFFilterMode::Band,
+            SVFFilterMode::Notch,
+            SVFFilterMode::Peak,
+        ] {
+            f.set_mode(mode);
+            for _ in 0..64 {
+                assert!(f.tick_sample(0.3).is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn sin_svf_sample_rate_change_reinit_finite() {
+        let mut f = SimperSinSVF::new(44100.);
+        f.set_cutoff(5000.);
+        f.set_res(0.7);
+        for _ in 0..100 {
+            assert!(f.tick_sample(0.5).is_finite());
+        }
+        f.set_sample_rate(96000.);
+        for _ in 0..100 {
+            assert!(f.tick_sample(0.5).is_finite());
+        }
+        f.set_sample_rate(8000.);
+        for _ in 0..100 {
+            assert!(f.tick_sample(0.5).is_finite());
+        }
+    }
+
+    #[test]
+    fn tan_svf_basic_finite_for_reference() {
+        let mut f = SimperTanSVF::new(44100.);
+        for _ in 0..256 {
+            let (l, b, h) = f.tick_sample_full(0.4);
+            assert!(l.is_finite() && b.is_finite() && h.is_finite());
+        }
+        let all = f.tick_sample_allpass(0.4);
+        assert!(all.is_finite());
+    }
+
+    #[test]
+    fn sin_svf_impulse_decay_low_res() {
+        let mut f = SimperSinSVF::new(44100.);
+        f.set_cutoff(1000.);
+        f.set_res(0.2);
+        f.set_mode(SVFFilterMode::Low);
+        let mut energy = 0f32;
+        f.tick_sample(1.0);
+        for _ in 0..44100 {
+            energy += f.tick_sample(0.0).abs();
+        }
+        assert!(energy < 1000., "low-res impulse energy too high: {energy}");
     }
 }
