@@ -64,7 +64,7 @@ impl Default for EngineParams {
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" 16th")
-            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            .with_value_to_string(formatters::v2s_f32_rounded(0)),
 
             delay_note_r: FloatParam::new(
                 "Delay Note R",
@@ -73,7 +73,7 @@ impl Default for EngineParams {
             )
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" 16th")
-            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            .with_value_to_string(formatters::v2s_f32_rounded(0)),
 
             feedback_l: FloatParam::new("Feedback", 0.5, FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.0))

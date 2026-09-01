@@ -4,15 +4,15 @@ use baseview::Window;
 use baseview::dpi::PhysicalSize;
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::unbounded;
+use nice_plug::context::gui::GuiContext;
 use nice_plug::editor::{Editor, EditorHandle, HostMethods, ParentWindowHandle, SpawnedEditor};
 use nice_plug::params::Params;
 use nice_plug::params::persist::PersistentField;
-use nice_plug::context::gui::GuiContext;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::sync::Arc;
 
-pub const DEFAULT_WIDTH: u32 = 500;
+pub const DEFAULT_WIDTH: u32 = 550;
 pub const DEFAULT_HEIGHT: u32 = 350;
 
 pub enum UiEvent {

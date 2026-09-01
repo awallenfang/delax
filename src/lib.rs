@@ -1,16 +1,17 @@
+use crate::delay_engine::delay_time_from_bpm_and_16th;
 use delay_engine::{
     engine::{DelayEngine, DelayInterpolationMode},
     params::DelayMode,
 };
+use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
 use nice_plug::prelude::*;
 use params::DelaxParams;
+use rustfft::num_complex::Complex32;
+use rustfft::{Fft, FftPlanner};
+use slint::SharedString;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
-use rustfft::{Fft, FftPlanner};
-use rustfft::num_complex::Complex32;
-use crate::delay_engine::delay_time_from_bpm_and_16th;
-use filters::peak_follower::PeakFollower;
 
 mod delay_engine;
 mod filter_pipeline;
@@ -33,7 +34,7 @@ impl Default for InputData {
             in_r: AtomicF32::new(0.),
             out_l: AtomicF32::new(0.),
             out_r: AtomicF32::new(0.),
-            out_spectrum: [const { AtomicF32::new(0.)}; 32],
+            out_spectrum: [const { AtomicF32::new(0.) }; 32],
         }
     }
 }
@@ -167,8 +168,13 @@ impl Plugin for Delax {
                 move |app| {
                     for (p_id, param_ptr, _) in params.param_map().iter() {
                         let val = unsafe { param_ptr.unmodulated_normalized_value() };
+                        let display_val =
+                            unsafe { param_ptr.normalized_value_to_string(val, true) };
                         <slint_ui::AppWindow as ParamComponent<DelaxParams>>::set_param_from_host(
-                            app, p_id, val,
+                            app,
+                            p_id,
+                            val,
+                            SharedString::from(display_val),
                         );
                     }
                     app.set_in_level_l(input.in_l.load(Relaxed));
@@ -204,7 +210,8 @@ impl Plugin for Delax {
                                         .iter()
                                         .map(|c| {
                                             let mag = c.norm();
-                                            let db = (1.0 + util::gain_to_db_fast(mag.max(1e-5)) / 100.0)
+                                            let db = (1.0
+                                                + util::gain_to_db_fast(mag.max(1e-5)) / 100.0)
                                                 .clamp(0.0, 1.0);
                                             db
                                         })
@@ -254,7 +261,6 @@ impl Plugin for Delax {
         self.peak_in_r.set_sample_rate(self.sample_rate);
         self.peak_out_l.set_sample_rate(self.sample_rate);
         self.peak_out_r.set_sample_rate(self.sample_rate);
-
 
         // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
 
@@ -365,7 +371,6 @@ impl Plugin for Delax {
             self.right_delay_engine.write_sample(
                 input_right + (feedbacked_right * (1. - mix_right) + filtered_output_r * mix_right),
             );
-
 
             // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
@@ -500,12 +505,8 @@ impl Delax {
         let l = self.peak_in_l.process(l_db).clamp(0., 1.5);
         let r = self.peak_in_r.process(r_db).clamp(0., 1.5);
 
-        self.input_data
-            .in_l
-            .store(l, Relaxed);
-        self.input_data
-            .in_r
-            .store(r, Relaxed);
+        self.input_data.in_l.store(l, Relaxed);
+        self.input_data.in_r.store(r, Relaxed);
     }
 
     fn output_ui_send(&mut self, l: f32, r: f32) {

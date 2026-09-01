@@ -1,4 +1,4 @@
-use super::{flush_denormal, StereoFilter};
+use super::{StereoFilter, flush_denormal};
 
 impl StereoFilter for DattorroReverb {
     fn process_stereo(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
