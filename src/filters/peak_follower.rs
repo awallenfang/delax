@@ -24,7 +24,10 @@ impl PeakFollower {
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
-        if (sample_rate - self.sample_rate).abs() < f32::EPSILON || !sample_rate.is_finite() || sample_rate <= 0. {
+        if (sample_rate - self.sample_rate).abs() < f32::EPSILON
+            || !sample_rate.is_finite()
+            || sample_rate <= 0.
+        {
             self.sample_rate = sample_rate;
             return;
         }
@@ -117,8 +120,15 @@ mod tests {
         let mut last = 1.0;
         for i in 0..10 {
             let p = pf.process(0.0);
-            assert!(p < last, "should decay each sample after hold, iter {i}: {p} >= {last}");
-            assert!((last - p - 0.01).abs() < 1e-5, "release step 0.01, got {}", last - p);
+            assert!(
+                p < last,
+                "should decay each sample after hold, iter {i}: {p} >= {last}"
+            );
+            assert!(
+                (last - p - 0.01).abs() < 1e-5,
+                "release step 0.01, got {}",
+                last - p
+            );
             last = p;
         }
         // After 100 steps should be ~0
@@ -151,7 +161,10 @@ mod tests {
         let p_pos = pf.process(0.5);
         let mut pf2 = PeakFollower::new(0.01, 0., 44100., 1.0);
         let p_neg = pf2.process(-0.5);
-        assert!((p_pos - p_neg).abs() < 1e-5, "should handle negative via abs");
+        assert!(
+            (p_pos - p_neg).abs() < 1e-5,
+            "should handle negative via abs"
+        );
     }
 
     #[test]
@@ -212,7 +225,11 @@ mod tests {
         }
         assert!((pf.hold_counter - 2205.).abs() < 1e-3);
         pf.set_sample_rate(96000.);
-        assert!((pf.hold_counter - 4800.).abs() < 1e-3, "hold_counter should rescale to 4800, got {}", pf.hold_counter);
+        assert!(
+            (pf.hold_counter - 4800.).abs() < 1e-3,
+            "hold_counter should rescale to 4800, got {}",
+            pf.hold_counter
+        );
         pf.peak = 0.;
         pf.hold_counter = 0.;
         pf.process(1.0);
@@ -225,14 +242,26 @@ mod tests {
         let release_per_sec_old = pf.release * 44100.;
         pf.set_sample_rate(96000.);
         let release_per_sec_new = pf.release * 96000.;
-        assert!((release_per_sec_old - release_per_sec_new).abs() < 1e-5, "release_per_sec should be invariant: {release_per_sec_old} vs {release_per_sec_new}");
+        assert!(
+            (release_per_sec_old - release_per_sec_new).abs() < 1e-5,
+            "release_per_sec should be invariant: {release_per_sec_old} vs {release_per_sec_new}"
+        );
         let mut pf_low = PeakFollower::new(0.0008, 0., 44100., 1.0);
         let mut pf_high = PeakFollower::new(0.0008, 0., 96000., 1.0);
         pf_low.process(1.0);
         pf_high.process(1.0);
-        for _ in 0..4410 { pf_low.process(0.0); }
-        for _ in 0..9600 { pf_high.process(0.0); }
-        assert!((pf_low.peak - pf_high.peak).abs() < 0.01, "release wall-time mismatch low={} high={}", pf_low.peak, pf_high.peak);
+        for _ in 0..4410 {
+            pf_low.process(0.0);
+        }
+        for _ in 0..9600 {
+            pf_high.process(0.0);
+        }
+        assert!(
+            (pf_low.peak - pf_high.peak).abs() < 0.01,
+            "release wall-time mismatch low={} high={}",
+            pf_low.peak,
+            pf_high.peak
+        );
 
         let mut pf_chain = PeakFollower::new(0.0008, 0., 44100., 1.0);
         pf_chain.set_sample_rate(96000.);
@@ -246,16 +275,23 @@ mod tests {
     fn peak_smoother_rescale_preserves_wall_time() {
         let mut sm_low = PeakSmoother::new(0.2);
         sm_low.process(1.0);
-        for _ in 0..4410 { sm_low.process(0.0); }
+        for _ in 0..4410 {
+            sm_low.process(0.0);
+        }
         let low_tail = sm_low.prev;
 
         let mut sm_high = PeakSmoother::new(0.2);
         sm_high.rescale(44100., 96000.);
         sm_high.process(1.0);
-        for _ in 0..9600 { sm_high.process(0.0); }
+        for _ in 0..9600 {
+            sm_high.process(0.0);
+        }
         let high_tail = sm_high.prev;
 
-        assert!((low_tail - high_tail).abs() < 1e-3, "smoother tails differ low={low_tail} high={high_tail}");
+        assert!(
+            (low_tail - high_tail).abs() < 1e-3,
+            "smoother tails differ low={low_tail} high={high_tail}"
+        );
         let mut sm_chain = PeakSmoother::new(0.2);
         sm_chain.rescale(44100., 96000.);
         sm_chain.rescale(96000., 48000.);

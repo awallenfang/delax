@@ -1,5 +1,8 @@
 use crate::slint_ui::editor::{EditorState, UiEvent};
-use baseview::{Event, EventStatus, HandlerError, MouseEvent, ScrollDelta, WindowEvent, WindowHandler, WindowSize};
+use baseview::{
+    Event, EventStatus, HandlerError, MouseEvent, ScrollDelta, WindowEvent, WindowHandler,
+    WindowSize,
+};
 use crossbeam::channel::Receiver;
 use nice_plug::context::gui::GuiContext;
 use nice_plug::params::Params;
@@ -207,12 +210,10 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
         }
         platform.set_current(adapter.clone());
 
-        let root = builder().map_err(|e| {
-            PlatformError::Other(format!("Failed to build Slint component: {e}"))
-        })?;
-        root.show().map_err(|e| {
-            PlatformError::Other(format!("Failed to show Slint component: {e}"))
-        })?;
+        let root = builder()
+            .map_err(|e| PlatformError::Other(format!("Failed to build Slint component: {e}")))?;
+        root.show()
+            .map_err(|e| PlatformError::Other(format!("Failed to show Slint component: {e}")))?;
 
         Ok(Self {
             gui_context,
@@ -323,23 +324,21 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
                             button: slint_button,
                         })
                     }
-                    MouseEvent::WheelScrolled { delta, .. } => {
-                        match delta {
-                            ScrollDelta::Lines { x, y } => {
-                                const LINES_TO_PX: f32 = 20.0;
-                                Some(platform::WindowEvent::PointerScrolled {
-                                    position: *self.last_pos.borrow(),
-                                    delta_x: x * LINES_TO_PX,
-                                    delta_y: y * LINES_TO_PX,
-                                })
-                            }
-                            ScrollDelta::Pixels { x, y } => {
-                                Some(platform::WindowEvent::PointerScrolled {
-                                    position: *self.last_pos.borrow(),
-                                    delta_x: x,
-                                    delta_y: y,
-                                })
-                            }
+                    MouseEvent::WheelScrolled { delta, .. } => match delta {
+                        ScrollDelta::Lines { x, y } => {
+                            const LINES_TO_PX: f32 = 20.0;
+                            Some(platform::WindowEvent::PointerScrolled {
+                                position: *self.last_pos.borrow(),
+                                delta_x: x * LINES_TO_PX,
+                                delta_y: y * LINES_TO_PX,
+                            })
+                        }
+                        ScrollDelta::Pixels { x, y } => {
+                            Some(platform::WindowEvent::PointerScrolled {
+                                position: *self.last_pos.borrow(),
+                                delta_x: x,
+                                delta_y: y,
+                            })
                         }
                     },
                     _ => None,

@@ -6,4 +6,8 @@ export global ParamBus {
     public pure function read_val(key: string) -> float {
         return get_val_by_key(key, version);
     }
+    pure callback get_display_val_by_key(key: string, version: int) -> string;
+    public pure function read_display_val(key: string) -> string {
+        return get_display_val_by_key(key, version);
+    }
 }

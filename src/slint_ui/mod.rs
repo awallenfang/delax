@@ -2,17 +2,19 @@ pub mod editor;
 pub mod param_component;
 mod window_state;
 
-use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::editor::UiEvent;
+use crate::slint_ui::param_component::ParamComponent;
 use nice_plug::params::Params;
+use slint::SharedString;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
+
 slint::include_modules!();
 
-static PARAM_STORE: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+static PARAM_STORE: OnceLock<RwLock<HashMap<String, (f32, SharedString)>>> = OnceLock::new();
 
-fn param_store() -> &'static Mutex<HashMap<String, f32>> {
-    PARAM_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+fn param_store() -> &'static RwLock<HashMap<String, (f32, SharedString)>> {
+    PARAM_STORE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
 impl<P> ParamComponent<P> for AppWindow
@@ -22,11 +24,14 @@ where
     fn bind_param_changed(&self, tx: crossbeam::channel::Sender<UiEvent>, params: Arc<P>) {
         let bus = self.global::<ParamBus>();
         {
-            let mut map = param_store().lock().unwrap();
+            let mut map = param_store().write().unwrap();
             for (p_id, param_ptr, _) in params.param_map().iter() {
-                map.insert(p_id.to_string(), unsafe {
-                    param_ptr.unmodulated_normalized_value()
-                });
+                let val = unsafe { param_ptr.unmodulated_normalized_value() };
+                let string = unsafe {
+                    param_ptr
+                        .normalized_value_to_string(param_ptr.unmodulated_normalized_value(), true)
+                };
+                map.insert(p_id.to_string(), (val, SharedString::from(string)));
             }
         }
         bus.on_param_changed(move |param_id, new_val| {
@@ -37,21 +42,35 @@ where
         });
         bus.on_get_val_by_key(|key, _version| {
             param_store()
-                .lock()
+                .read()
                 .unwrap()
                 .get(key.as_str())
-                .copied()
-                .unwrap_or(0.0)
+                .cloned()
+                .unwrap_or((0.0, SharedString::from("0.0")))
+                .0
+        });
+        bus.on_get_display_val_by_key(|key, _version| {
+            param_store()
+                .read()
+                .unwrap()
+                .get(key.as_str())
+                .cloned()
+                .unwrap_or((0.0, SharedString::from("0.0")))
+                .1
         });
     }
 
-    fn set_param_from_host(&self, param_id: &str, value: f32) {
+    fn set_param_from_host(&self, param_id: &str, value: f32, display: SharedString) {
         let mut changed = false;
 
         {
-            let mut map = param_store().lock().unwrap();
-            if map.get(param_id).copied() != Some(value) {
-                map.insert(param_id.to_string(), value);
+            let mut map = param_store().write().unwrap();
+            if !map
+                .get(param_id)
+                .map(|(v, s)| *v == value && *s == display)
+                .unwrap_or(false)
+            {
+                map.insert(param_id.to_string(), (value, display));
                 changed = true;
             }
         }

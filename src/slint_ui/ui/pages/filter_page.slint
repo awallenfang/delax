@@ -49,24 +49,28 @@ export component FilterPage inherits VerticalLayout {
             param_name: "svf_cutoff_l";
             label: "Cutoff";
             val: ParamBus.read_val("svf_cutoff_l");
+            display_val: ParamBus.read_display_val("svf_cutoff_l");
         }
 
         ParamKnob {
             param_name: "svf_res_l";
             label: "Res";
             val: ParamBus.read_val("svf_res_l");
+            display_val: ParamBus.read_display_val("svf_res_l");
         }
 
         ParamKnob {
             param_name: "svf_mix_l";
             label: "Mix";
             val: ParamBus.read_val("svf_mix_l");
+            display_val: ParamBus.read_display_val("svf_mix_l");
         }
 
         ParamKnob {
             param_name: "svf_cutoff_r";
             label: "Cutoff";
             val: ParamBus.read_val("svf_cutoff_r");
+            display_val: ParamBus.read_display_val("svf_cutoff_r");
             enabled: root.is_filter_stereo;
         }
 
@@ -74,6 +78,7 @@ export component FilterPage inherits VerticalLayout {
             param_name: "svf_res_r";
             label: "Res";
             val: ParamBus.read_val("svf_res_r");
+            display_val: ParamBus.read_display_val("svf_res_r");
             enabled: root.is_filter_stereo;
         }
 
@@ -81,7 +86,9 @@ export component FilterPage inherits VerticalLayout {
             param_name: "svf_mix_r";
             label: "Mix";
             val: ParamBus.read_val("svf_mix_r");
+            display_val: ParamBus.read_display_val("svf_mix_r");
             enabled: root.is_filter_stereo;
         }
     }
+
 }

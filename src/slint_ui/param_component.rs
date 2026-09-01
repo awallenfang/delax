@@ -1,4 +1,5 @@
 use nice_plug::params::Params;
+use slint::SharedString;
 use std::sync::Arc;
 
 pub trait ParamComponent<P: Params + 'static> {
@@ -8,5 +9,5 @@ pub trait ParamComponent<P: Params + 'static> {
         params: Arc<P>,
     );
 
-    fn set_param_from_host(&self, param_id: &str, value: f32);
+    fn set_param_from_host(&self, param_id: &str, value: f32, display: SharedString);
 }
