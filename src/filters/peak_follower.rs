@@ -24,6 +24,14 @@ impl PeakFollower {
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
+        if (sample_rate - self.sample_rate).abs() < f32::EPSILON || !sample_rate.is_finite() || sample_rate <= 0. {
+            self.sample_rate = sample_rate;
+            return;
+        }
+        let old_sr = self.sample_rate;
+        self.hold_counter = self.hold_counter * sample_rate / old_sr;
+        self.release = self.release * old_sr / sample_rate;
+        self.peak_smoother.rescale(old_sr, sample_rate);
         self.sample_rate = sample_rate;
     }
 
@@ -51,8 +59,21 @@ impl PeakSmoother {
     pub fn new(smooth: f32) -> Self {
         Self {
             prev: 0.,
-            smoothness: smooth,
+            smoothness: smooth.clamp(0., 1.),
         }
+    }
+
+    fn rescale(&mut self, old_sr: f32, new_sr: f32) {
+        if (old_sr - new_sr).abs() < f32::EPSILON {
+            return;
+        }
+        let d_old = (1.0 - self.smoothness).clamp(0., 1.);
+        if d_old == 0. || d_old == 1. {
+            return;
+        }
+        let ratio = old_sr / new_sr;
+        let d_new = d_old.powf(ratio);
+        self.smoothness = (1.0 - d_new).clamp(0., 1.);
     }
 
     pub fn process(&mut self, input: f32) -> f32 {
@@ -179,5 +200,67 @@ mod tests {
         let mut sm_one = PeakSmoother::new(1.0);
         sm_one.process(1.0);
         assert!((sm_one.process(0.0) - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn peak_follower_set_sample_rate_preserves_hold_wall_time() {
+        let mut pf = PeakFollower::new(0.0008, 0.1, 44100., 1.0);
+        pf.process(1.0);
+        assert_eq!(pf.hold_counter, 4410.);
+        for _ in 0..2205 {
+            pf.process(0.0);
+        }
+        assert!((pf.hold_counter - 2205.).abs() < 1e-3);
+        pf.set_sample_rate(96000.);
+        assert!((pf.hold_counter - 4800.).abs() < 1e-3, "hold_counter should rescale to 4800, got {}", pf.hold_counter);
+        pf.peak = 0.;
+        pf.hold_counter = 0.;
+        pf.process(1.0);
+        assert_eq!(pf.hold_counter, 9600.);
+    }
+
+    #[test]
+    fn peak_follower_set_sample_rate_preserves_release_wall_time() {
+        let mut pf = PeakFollower::new(0.0008, 0., 44100., 1.0);
+        let release_per_sec_old = pf.release * 44100.;
+        pf.set_sample_rate(96000.);
+        let release_per_sec_new = pf.release * 96000.;
+        assert!((release_per_sec_old - release_per_sec_new).abs() < 1e-5, "release_per_sec should be invariant: {release_per_sec_old} vs {release_per_sec_new}");
+        let mut pf_low = PeakFollower::new(0.0008, 0., 44100., 1.0);
+        let mut pf_high = PeakFollower::new(0.0008, 0., 96000., 1.0);
+        pf_low.process(1.0);
+        pf_high.process(1.0);
+        for _ in 0..4410 { pf_low.process(0.0); }
+        for _ in 0..9600 { pf_high.process(0.0); }
+        assert!((pf_low.peak - pf_high.peak).abs() < 0.01, "release wall-time mismatch low={} high={}", pf_low.peak, pf_high.peak);
+
+        let mut pf_chain = PeakFollower::new(0.0008, 0., 44100., 1.0);
+        pf_chain.set_sample_rate(96000.);
+        pf_chain.set_sample_rate(48000.);
+        let mut pf_direct = PeakFollower::new(0.0008, 0., 44100., 1.0);
+        pf_direct.set_sample_rate(48000.);
+        assert!((pf_chain.release - pf_direct.release).abs() < 1e-7);
+    }
+
+    #[test]
+    fn peak_smoother_rescale_preserves_wall_time() {
+        let mut sm_low = PeakSmoother::new(0.2);
+        sm_low.process(1.0);
+        for _ in 0..4410 { sm_low.process(0.0); }
+        let low_tail = sm_low.prev;
+
+        let mut sm_high = PeakSmoother::new(0.2);
+        sm_high.rescale(44100., 96000.);
+        sm_high.process(1.0);
+        for _ in 0..9600 { sm_high.process(0.0); }
+        let high_tail = sm_high.prev;
+
+        assert!((low_tail - high_tail).abs() < 1e-3, "smoother tails differ low={low_tail} high={high_tail}");
+        let mut sm_chain = PeakSmoother::new(0.2);
+        sm_chain.rescale(44100., 96000.);
+        sm_chain.rescale(96000., 48000.);
+        let mut sm_direct = PeakSmoother::new(0.2);
+        sm_direct.rescale(44100., 48000.);
+        assert!((sm_chain.smoothness - sm_direct.smoothness).abs() < 1e-6);
     }
 }
