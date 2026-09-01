@@ -10,13 +10,12 @@ use std::sync::atomic::Ordering::Relaxed;
 use rustfft::{Fft, FftPlanner};
 use rustfft::num_complex::Complex32;
 use crate::delay_engine::delay_time_from_bpm_and_16th;
-use crate::peak_follower::PeakFollower;
+use filters::peak_follower::PeakFollower;
 
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
-mod peak_follower;
 mod slint_ui;
 
 pub struct InputData {
