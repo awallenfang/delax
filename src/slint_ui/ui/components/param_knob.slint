@@ -7,6 +7,7 @@ export component ParamKnob inherits VerticalLayout {
     in property <string> param_name: "knob";
     in property <string> label: "Knob";
     in-out property <float> val: 0.5;
+    in-out property <string> display_val: 0.5;
 
     in property <float> minimum: 0.0;
     in property <float> maximum: 1.0;
@@ -15,21 +16,37 @@ export component ParamKnob inherits VerticalLayout {
     in property <bool> enabled: true;
 
     width: 50px;
-    height: 70px;
-    spacing: 4px;
+    height: 75px;
     alignment: center;
 
     accessible-role: slider;
     accessible-label: root.label;
     accessible-value: root.val;
-
+    Text {
+        text: root.label;
+        color: root.enabled ? Palette.text : Palette.text-muted;
+        font-size: 10px;
+        horizontal-alignment: TextHorizontalAlignment.center;
+        vertical-alignment: TextVerticalAlignment.center;
+        opacity: root.enabled ? 1.0 : 0.5;
+        accessible-role: none;
+        wrap: TextWrap.no-wrap;
+        overflow: TextOverflow.elide;
+        height: 15px;
+    }
     knob_rect := Rectangle {
         width: 50px;
         height: 50px;
         property <length> arc_width: 3px;
         property <length> arc_margin: 10px - arc_width;
         property <length> arc_space: arc_width + arc_margin;
-
+        Text {
+            text: display_val;
+            color: root.enabled ? Palette.text : Palette.text-muted;
+            y: 42px;
+            horizontal-alignment: center;
+            font-size: 7pt;
+        }
         ta := TouchArea {
             mouse-cursor: self.pressed ? grabbing : grab;
             enabled: root.enabled;
@@ -97,7 +114,7 @@ export component ParamKnob inherits VerticalLayout {
             border-color: !root.enabled ? Palette.primary.darker(20%) : (ta.has-hover ? Palette.primary : Palette.primary-muted);
             opacity: root.enabled ? 1.0 : 0.4;
 
-                Rectangle {
+            Rectangle {
                 width: 6px;
                 height: 6px;
                 background: (ta.has-hover ? Palette.primary.darker(-20%) : Palette.primary-muted.darker(-20%));
@@ -114,17 +131,5 @@ export component ParamKnob inherits VerticalLayout {
         }
     }
 
-    Text {
-        text: root.label;
-        color: root.enabled ? Palette.text : Palette.text-muted;
-        font-size: 10px;
-        horizontal-alignment: TextHorizontalAlignment.center;
-        vertical-alignment: TextVerticalAlignment.center;
-        opacity: root.enabled ? 1.0 : 0.5;
-        accessible-role: none;
-        wrap: TextWrap.no-wrap;
-        overflow: TextOverflow.elide;
-        width: 60px;
-        height: 14px;
-    }
+
 }

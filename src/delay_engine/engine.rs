@@ -72,15 +72,15 @@ impl DelayEngine {
                 self.buffer[index as usize]
             }
             DelayInterpolationMode::Linear => {
-                let upper_index =
-                    (self.write_head as i32 - ms_to_samples(self.delay_time, self.sample_rate) as i32)
-                        .rem_euclid(self.buffer.len() as i32);
+                let upper_index = (self.write_head as i32
+                    - ms_to_samples(self.delay_time, self.sample_rate) as i32)
+                    .rem_euclid(self.buffer.len() as i32);
                 let lower_index = (upper_index - 1).rem_euclid(self.buffer.len() as i32);
 
                 let lower_sample = self.buffer[lower_index as usize];
                 let upper_sample = self.buffer[upper_index as usize];
 
-                let interpolation_factor = ((self.delay_time/1000.)*self.sample_rate).fract();
+                let interpolation_factor = ((self.delay_time / 1000.) * self.sample_rate).fract();
 
                 // upper is the sample closest to write_head (least delayed),
                 // lower is one sample older. For integer delay fract==0 we must
@@ -122,7 +122,8 @@ impl DelayEngine {
     ///
     /// Values larger than the bank size will simply result in a duration of `samples % bank_size``
     pub fn set_delay_amount(&mut self, delay_time: f32) {
-        let delay_samples = ms_to_samples(delay_time, self.sample_rate).clamp(0, self.buffer.len()-1);
+        let delay_samples =
+            ms_to_samples(delay_time, self.sample_rate).clamp(0, self.buffer.len() - 1);
         self.read_head = ((self.write_head as i32 - delay_samples as i32)
             .rem_euclid(self.buffer.len() as i32)) as usize;
         self.delay_time = delay_time;
@@ -274,7 +275,7 @@ mod interpolation_tests {
     #[test]
     fn ms_to_samples_floor() {
         assert_eq!(ms_to_samples(1., 1000.), 1);
-        assert_eq!(ms_to_samples(1.5, 1000.), 1); 
+        assert_eq!(ms_to_samples(1.5, 1000.), 1);
         assert_eq!(ms_to_samples(1., 44100.), 44);
         assert_eq!(ms_to_samples(1000., 44100.), 44100);
     }
@@ -291,8 +292,12 @@ mod interpolation_tests {
             eng.write_sample(i as f32);
         }
         eng.set_delay_amount(500.);
-        assert!(eng.interpolate_sample(DelayInterpolationMode::Nearest).is_finite());
-        let _ = e1; let _ = e2;
+        assert!(
+            eng.interpolate_sample(DelayInterpolationMode::Nearest)
+                .is_finite()
+        );
+        let _ = e1;
+        let _ = e2;
     }
 }
 

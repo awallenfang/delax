@@ -45,6 +45,7 @@ export component DelayPage inherits VerticalLayout {
             param_name: "delay_l";
             label: "Time";
             val: ParamBus.read_val("delay_l");
+            display_val: ParamBus.read_display_val("delay_l");
             enabled: !root.is_bpm_bound_l;
         }
 
@@ -52,12 +53,14 @@ export component DelayPage inherits VerticalLayout {
             param_name: "feedback_l";
             label: "Feedback";
             val: ParamBus.read_val("feedback_l");
+            display_val: ParamBus.read_display_val("feedback_l");
         }
 
         ParamKnob {
             param_name: "delay_r";
             label: "Time";
             val: ParamBus.read_val("delay_r");
+            display_val: ParamBus.read_display_val("delay_r");
             enabled: root.is_stereo && !root.is_bpm_bound_r;
         }
 
@@ -65,6 +68,7 @@ export component DelayPage inherits VerticalLayout {
             param_name: "feedback_r";
             label: "Feedback";
             val: ParamBus.read_val("feedback_r");
+            display_val: ParamBus.read_display_val("feedback_r");
             enabled: root.is_stereo;
         }
     }
@@ -93,15 +97,21 @@ export component DelayPage inherits VerticalLayout {
             param_name: "delay_note_l";
             label: "16ths";
             val: ParamBus.read_val("delay_note_l");
+            display_val: ParamBus.read_display_val("delay_note_l");
             enabled: root.is_bpm_bound_l;
         }
-        Rectangle { width: 60px; height: 80px; } // spacer to keep layout when mono – aligns with feedback
         ParamKnob {
             param_name: "delay_note_r";
             label: "16ths";
             val: ParamBus.read_val("delay_note_r");
+            display_val: ParamBus.read_display_val("delay_note_r");
             enabled: root.is_stereo && root.is_bpm_bound_r;
         }
-        Rectangle { width: 60px; height: 80px; }
     }
+        ParamKnob {
+            param_name: "wetness";
+            label: "Wetness";
+            val: ParamBus.read_val("wetness");
+            display_val: ParamBus.read_display_val("wetness");
+        }
 }

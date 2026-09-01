@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use super::{Filter, params::SVFFilterMode, flush_denormal};
+use super::{Filter, flush_denormal, params::SVFFilterMode};
 
 /// A SVF filter implemented using the paper by Andrew Simper from Cytomic
 /// https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
@@ -293,8 +293,8 @@ impl SimperSinSVF {
         let v1 = t1 + self.ic1eq;
         let v2 = t2 + self.ic2eq;
 
-        self.ic1eq += flush_denormal(2. * t1);
-        self.ic2eq += flush_denormal(2. * t2);
+        self.ic1eq = flush_denormal(self.ic1eq + 2. * t1);
+        self.ic2eq = flush_denormal(self.ic2eq + 2. * t2);
 
         let high = sample - self.k * v1 - v2;
         let band = v1;
@@ -517,5 +517,54 @@ mod tests {
             energy += f.tick_sample(0.0).abs();
         }
         assert!(energy < 1000., "low-res impulse energy too high: {energy}");
+    }
+
+    fn sin_svf_gain(sr: f32, cutoff: f32, mode: SVFFilterMode, freq: f32) -> f32 {
+        let mut f = SimperSinSVF::new(sr);
+        f.set_mode(mode);
+        f.set_cutoff(cutoff);
+        f.set_res(0.2);
+        let n = (sr * 0.2) as usize;
+        let mut out_power = 0f64;
+        let mut in_power = 0f64;
+        for i in 0..n {
+            let s = (2.0 * std::f32::consts::PI * freq * i as f32 / sr).sin();
+            let o = f.tick_sample(s);
+            if i > 1000 {
+                out_power += (o as f64) * (o as f64);
+                in_power += (s as f64) * (s as f64);
+            }
+        }
+        ((out_power / in_power).sqrt()) as f32
+    }
+
+    #[test]
+    fn sin_svf_cutoff_extremes_mode_correctness() {
+        let sr = 44100.;
+        let freq = 1000.;
+        assert!(
+            sin_svf_gain(sr, 10., SVFFilterMode::Low, freq) < 0.05,
+            "low at 10Hz should cut 1k"
+        );
+        assert!(
+            sin_svf_gain(sr, 20000., SVFFilterMode::Low, freq) > 0.9,
+            "low at 20k should pass 1k"
+        );
+        assert!(
+            sin_svf_gain(sr, 10., SVFFilterMode::High, freq) > 0.9,
+            "high at 10Hz should pass 1k"
+        );
+        assert!(
+            sin_svf_gain(sr, 20000., SVFFilterMode::High, freq) < 0.05,
+            "high at 20k should cut 1k"
+        );
+        assert!(sin_svf_gain(sr, 10., SVFFilterMode::Band, freq) < 0.05);
+        assert!(sin_svf_gain(sr, 20000., SVFFilterMode::Band, freq) < 0.05);
+        assert!(
+            sin_svf_gain(sr, 1000., SVFFilterMode::Band, freq) > 0.3,
+            "band at 1k should pass 1k"
+        );
+        assert!(sin_svf_gain(sr, 10., SVFFilterMode::Notch, freq) > 0.9);
+        assert!(sin_svf_gain(sr, 20000., SVFFilterMode::Notch, freq) > 0.9);
     }
 }
