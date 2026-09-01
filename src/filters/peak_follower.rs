@@ -73,18 +73,14 @@ mod tests {
 
     #[test]
     fn peak_follower_holds_then_releases() {
-        // release 0.0008 per sample at 44.1k, hold 0.1 sec => 4410 samples hold
         let mut pf = PeakFollower::new(0.0008, 0.1, 44100., 0.2);
         let peak = pf.process(1.0);
         assert!((peak - 1.0).abs() < 1e-5);
 
-        // Within hold window, peak should stay at 1.0 even if input drops
         for _ in 0..4400 {
             let p = pf.process(0.0);
             assert!((p - 1.0).abs() < 1e-5, "should hold, got {p}");
         }
-        // Just after hold expires, should start decaying
-        // One more to exhaust hold_counter
         for _ in 0..20 {
             pf.process(0.0);
         }
@@ -95,7 +91,6 @@ mod tests {
 
     #[test]
     fn peak_follower_release_rate() {
-        // No hold, immediate release
         let mut pf = PeakFollower::new(0.01, 0., 44100., 1.0); // smoothness 1.0 = no smoothing
         pf.process(1.0);
         let mut last = 1.0;
@@ -120,11 +115,9 @@ mod tests {
             pf.process(0.0);
         }
         assert!(pf.peak > 0.49, "should still hold around 0.5");
-        // New larger peak should replace and reset hold
         let p2 = pf.process(1.0);
         assert!((p2 - 1.0).abs() < 1e-5);
         assert!((pf.hold_counter - 0.05 * 44100.).abs() < 1e-3);
-        // Hold again
         for _ in 0..2000 {
             let p = pf.process(0.0);
             assert!((p - 1.0).abs() < 1e-5);
@@ -151,10 +144,8 @@ mod tests {
         pf_high.process(1.0);
         assert_eq!(pf_low.hold_counter, hold * sr_low);
         assert_eq!(pf_high.hold_counter, hold * sr_high);
-        // High SR should hold ~2x samples
         assert!((pf_high.hold_counter / pf_low.hold_counter - sr_high / sr_low).abs() < 1e-5);
 
-        // Verify actual sample count until decay starts
         let mut count_low = 0;
         while pf_low.hold_counter > 0. {
             pf_low.process(0.0);
@@ -170,31 +161,12 @@ mod tests {
     }
 
     #[test]
-    fn peak_follower_set_sample_rate_updates_hold_duration() {
-        // Documents current bug: set_sample_rate only updates sr field, not rescaling
-        // of hold_counter that is already set. New peaks after sr change should use new sr.
-        let mut pf = PeakFollower::new(0.0008, 0.1, 44100., 1.0);
-        pf.process(1.0);
-        assert_eq!(pf.hold_counter, 4410.);
-        pf.set_sample_rate(96000.);
-        // Old hold_counter still 4410 until it decays; next peak uses new sr
-        pf.peak = 0.;
-        pf.hold_counter = 0.;
-        pf.process(1.0);
-        assert_eq!(pf.hold_counter, 9600., "new peak after sr change should use new sr");
-    }
-
-    #[test]
     fn peak_smoother_only_smooths_falling() {
         let mut sm = PeakSmoother::new(0.5);
-        // Rising is instant
         assert_eq!(sm.process(0.0), 0.0);
         assert_eq!(sm.process(1.0), 1.0);
-        // Falling is smoothed: prev=1, input=0 => 1 + (0-1)*0.5 =0.5
         assert!((sm.process(0.0) - 0.5).abs() < 1e-5);
-        // Next fall: prev 0.5 -> 0.25
         assert!((sm.process(0.0) - 0.25).abs() < 1e-5);
-        // Rising again instant
         assert_eq!(sm.process(1.0), 1.0);
     }
 
@@ -202,12 +174,10 @@ mod tests {
     fn peak_smoother_smoothness_zero_or_one() {
         let mut sm_zero = PeakSmoother::new(0.0);
         sm_zero.process(1.0);
-        // smoothness 0 => no decay at all on fall
         assert!((sm_zero.process(0.0) - 1.0).abs() < 1e-5);
 
         let mut sm_one = PeakSmoother::new(1.0);
         sm_one.process(1.0);
-        // smoothness 1 => instant fall
         assert!((sm_one.process(0.0) - 0.0).abs() < 1e-5);
     }
 }

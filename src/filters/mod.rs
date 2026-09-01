@@ -12,6 +12,6 @@ pub trait StereoFilter: Send + Sync {
 }
 
 #[inline]
-fn flush_denormal(x: f32) -> f32 {
+pub(crate) fn flush_denormal(x: f32) -> f32 {
     if x.abs() < 1e-30 { 0.0 } else { x }
 }
