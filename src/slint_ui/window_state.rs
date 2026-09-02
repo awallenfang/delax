@@ -255,6 +255,39 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
                         }
                     }
                 }
+                UiEvent::SetDiv { div_id, bpm_id, factor } => {
+                    use crate::delay_engine::params::NoteDiv;
+                    let norm = NoteDiv::from_factor(factor).to_norm();
+                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                        if param_id == &div_id {
+                            unsafe {
+                                self.gui_context.raw_begin_set_parameter(*ptr);
+                                self.gui_context
+                                    .raw_set_parameter_normalized(*ptr, norm);
+                                self.gui_context.raw_end_set_parameter(*ptr);
+                            }
+                        }
+                        if param_id == &bpm_id {
+                            unsafe {
+                                self.gui_context.raw_begin_set_parameter(*ptr);
+                                self.gui_context.raw_set_parameter_normalized(*ptr, 1.0);
+                                self.gui_context.raw_end_set_parameter(*ptr);
+                            }
+                        }
+                    }
+                }
+                UiEvent::SetTimeMode { bpm_id } => {
+                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                        if param_id == &bpm_id {
+                            unsafe {
+                                self.gui_context.raw_begin_set_parameter(*ptr);
+                                self.gui_context.raw_set_parameter_normalized(*ptr, 0.0);
+                                self.gui_context.raw_end_set_parameter(*ptr);
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         }
 

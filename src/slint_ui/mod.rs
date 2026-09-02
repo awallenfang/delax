@@ -34,12 +34,33 @@ where
                 map.insert(p_id.to_string(), (val, SharedString::from(string)));
             }
         }
-        bus.on_param_changed(move |param_id, new_val| {
-            let _ = tx.send(UiEvent::ParamChanged {
-                id: param_id.to_string(),
-                value: new_val,
+        {
+            let tx1 = tx.clone();
+            bus.on_param_changed(move |param_id, new_val| {
+                let _ = tx1.send(UiEvent::ParamChanged {
+                    id: param_id.to_string(),
+                    value: new_val,
+                });
             });
-        });
+        }
+        {
+            let tx2 = tx.clone();
+            bus.on_set_div(move |div_id, bpm_id, factor| {
+                let _ = tx2.send(UiEvent::SetDiv {
+                    div_id: div_id.to_string(),
+                    bpm_id: bpm_id.to_string(),
+                    factor,
+                });
+            });
+        }
+        {
+            let tx3 = tx.clone();
+            bus.on_set_time_mode(move |bpm_id| {
+                let _ = tx3.send(UiEvent::SetTimeMode {
+                    bpm_id: bpm_id.to_string(),
+                });
+            });
+        }
         bus.on_get_val_by_key(|key, _version| {
             param_store()
                 .read()

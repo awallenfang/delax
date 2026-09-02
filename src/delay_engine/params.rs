@@ -6,6 +6,66 @@ pub enum DelayMode {
     Stereo,
 }
 
+#[derive(Enum, PartialEq, Clone, Copy)]
+pub enum NoteDiv {
+    Sixteenth,
+    Eighth,
+    Quarter,
+    Half,
+}
+
+impl NoteDiv {
+    pub fn factor(self) -> f32 {
+        match self {
+            NoteDiv::Sixteenth => 1.0,
+            NoteDiv::Eighth => 2.0,
+            NoteDiv::Quarter => 4.0,
+            NoteDiv::Half => 8.0,
+        }
+    }
+    pub fn suffix(self) -> &'static str {
+        match self {
+            NoteDiv::Sixteenth => "16th",
+            NoteDiv::Eighth => "8th",
+            NoteDiv::Quarter => "1/4",
+            NoteDiv::Half => "1/2",
+        }
+    }
+    pub fn from_factor(f: f32) -> Self {
+        if f < 1.5 {
+            NoteDiv::Sixteenth
+        } else if f < 3.0 {
+            NoteDiv::Eighth
+        } else if f < 6.0 {
+            NoteDiv::Quarter
+        } else {
+            NoteDiv::Half
+        }
+    }
+    pub fn from_norm(norm: f32) -> Self {
+        if norm < 0.166 {
+            NoteDiv::Sixteenth
+        } else if norm < 0.5 {
+            NoteDiv::Eighth
+        } else if norm < 0.833 {
+            NoteDiv::Quarter
+        } else {
+            NoteDiv::Half
+        }
+    }
+    pub fn to_norm(self) -> f32 {
+        match self {
+            NoteDiv::Sixteenth => 0.0,
+            NoteDiv::Eighth => 0.333_333_34,
+            NoteDiv::Quarter => 0.666_666_7,
+            NoteDiv::Half => 1.0,
+        }
+    }
+    pub fn to_norm_factor(f: f32) -> f32 {
+        Self::from_factor(f).to_norm()
+    }
+}
+
 #[derive(Params)]
 pub struct EngineParams {
     #[id = "delay_l"]
@@ -26,6 +86,10 @@ pub struct EngineParams {
     pub bpm_bound_l: BoolParam,
     #[id = "bpm_bound_r"]
     pub bpm_bound_r: BoolParam,
+    #[id = "delay_div_l"]
+    pub delay_div_l: EnumParam<NoteDiv>,
+    #[id = "delay_div_r"]
+    pub delay_div_r: EnumParam<NoteDiv>,
 }
 
 impl Default for EngineParams {
@@ -88,6 +152,8 @@ impl Default for EngineParams {
             stereo_delay: EnumParam::new("Seperate Delay", DelayMode::Mono),
             bpm_bound_l: BoolParam::new("BPM Bound", false),
             bpm_bound_r: BoolParam::new("BPM Bound Channel 2", false),
+            delay_div_l: EnumParam::new("Div L", NoteDiv::Sixteenth),
+            delay_div_r: EnumParam::new("Div R", NoteDiv::Sixteenth),
         }
     }
 }

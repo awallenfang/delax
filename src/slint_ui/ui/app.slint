@@ -26,6 +26,11 @@ export component AppWindow inherits Window {
     in-out property <bool> is_bpm_bound_l: false;
     in-out property <bool> is_bpm_bound_r: false;
 
+    in-out property <string> timing_display_l: "2 16th";
+    in-out property <string> timing_display_r: "2 16th";
+    in-out property <float> timing_factor_l: 1.0;
+    in-out property <float> timing_factor_r: 1.0;
+
     in-out property <float> in_level_l: 0.0;
     in-out property <float> in_level_r: 0.0;
     in-out property <float> out_level_l: 0.0;
@@ -120,6 +125,10 @@ export component AppWindow inherits Window {
                 is-stereo <=> root.is_stereo;
                 is-bpm-bound-l <=> root.is_bpm_bound_l;
                 is-bpm-bound-r <=> root.is_bpm_bound_r;
+                timing-display-l <=> root.timing_display_l;
+                timing-display-r <=> root.timing_display_r;
+                timing-factor-l <=> root.timing_factor_l;
+                timing-factor-r <=> root.timing_factor_r;
             }
 
             if tab == 1:

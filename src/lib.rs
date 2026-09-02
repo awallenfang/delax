@@ -177,6 +177,37 @@ impl Plugin for Delax {
                             SharedString::from(display_val),
                         );
                     }
+                    // TODO: Very dirty way if generating the labels. This should be done together somewhere with the params
+                    {
+                        let count_l = params.delay_params.delay_note_l.value();
+                        let div_l = params.delay_params.delay_div_l.value();
+                        let factor_l = div_l.factor();
+                        let suffix_l = div_l.suffix();
+                        let display_l = {
+                            let c = (count_l * 10.0).round() / 10.0;
+                            if c.fract().abs() < 0.0005 {
+                                format!("{} {}", c as i32, suffix_l)
+                            } else {
+                                format!("{:.1} {}", c, suffix_l)
+                            }
+                        };
+                        app.set_timing_display_l(display_l.into());
+                        app.set_timing_factor_l(factor_l);
+                        let count_r = params.delay_params.delay_note_r.value();
+                        let div_r = params.delay_params.delay_div_r.value();
+                        let factor_r = div_r.factor();
+                        let suffix_r = div_r.suffix();
+                        let display_r = {
+                            let c = (count_r * 10.0).round() / 10.0;
+                            if c.fract().abs() < 0.0005 {
+                                format!("{} {}", c as i32, suffix_r)
+                            } else {
+                                format!("{:.1} {}", c, suffix_r)
+                            }
+                        };
+                        app.set_timing_display_r(display_r.into());
+                        app.set_timing_factor_r(factor_r);
+                    }
                     app.set_in_level_l(input.in_l.load(Relaxed));
                     app.set_in_level_r(input.in_r.load(Relaxed));
                     app.set_out_level_l(input.out_l.load(Relaxed));
@@ -397,16 +428,19 @@ impl Delax {
                 // Advance all smoothers so they stay in sync when switching modes.
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
                 let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
-                let note_l = self.params.delay_params.delay_note_l.smoothed.next();
-                let _note_r = self.params.delay_params.delay_note_r.smoothed.next();
-                let _ = (ms_r, _note_r);
+                let count_l = self.params.delay_params.delay_note_l.smoothed.next();
+                let _count_r = self.params.delay_params.delay_note_r.smoothed.next();
+                let _ = (ms_r, _count_r);
+                // Advance div smoothers not needed – EnumParam not smoothed; just read value
+                let div_factor_l = self.params.delay_params.delay_div_l.value().factor();
                 let bpm_bound = self.params.delay_params.bpm_bound_l.value();
                 let mut bpm = 120.;
                 if let Some(t) = transport.tempo {
                     bpm = t;
                 }
                 let delay_amt = if bpm_bound {
-                    delay_time_from_bpm_and_16th(note_l, bpm as f32)
+                    let total_l = count_l * div_factor_l;
+                    delay_time_from_bpm_and_16th(total_l, bpm as f32)
                 } else {
                     ms_l
                 };
@@ -427,8 +461,10 @@ impl Delax {
             DelayMode::Stereo => {
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
                 let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
-                let note_l = self.params.delay_params.delay_note_l.smoothed.next();
-                let note_r = self.params.delay_params.delay_note_r.smoothed.next();
+                let count_l = self.params.delay_params.delay_note_l.smoothed.next();
+                let count_r = self.params.delay_params.delay_note_r.smoothed.next();
+                let div_factor_l = self.params.delay_params.delay_div_l.value().factor();
+                let div_factor_r = self.params.delay_params.delay_div_r.value().factor();
                 let bpm_bound_l = self.params.delay_params.bpm_bound_l.value();
                 let bpm_bound_r = self.params.delay_params.bpm_bound_r.value();
                 let mut bpm = 120.;
@@ -436,12 +472,14 @@ impl Delax {
                     bpm = t;
                 }
                 let delay_amt_l = if bpm_bound_l {
-                    delay_time_from_bpm_and_16th(note_l, bpm as f32)
+                    let total_l = count_l * div_factor_l;
+                    delay_time_from_bpm_and_16th(total_l, bpm as f32)
                 } else {
                     ms_l
                 };
                 let delay_amt_r = if bpm_bound_r {
-                    delay_time_from_bpm_and_16th(note_r, bpm as f32)
+                    let total_r = count_r * div_factor_r;
+                    delay_time_from_bpm_and_16th(total_r, bpm as f32)
                 } else {
                     ms_r
                 };
