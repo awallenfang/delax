@@ -100,7 +100,7 @@ impl Default for EngineParams {
                 500.,
                 FloatRange::Skewed {
                     min: 0.,
-                    max: 1000.,
+                    max: 10000.,
                     factor: 0.5,
                 },
             )
@@ -113,7 +113,7 @@ impl Default for EngineParams {
                 500.,
                 FloatRange::Skewed {
                     min: 0.,
-                    max: 1000.,
+                    max: 10000.,
                     factor: 0.5,
                 },
             )
@@ -126,6 +126,7 @@ impl Default for EngineParams {
                 2.,
                 FloatRange::Linear { min: 0., max: 32. },
             )
+            .with_step_size(0.5)
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" 16th")
             .with_value_to_string(formatters::v2s_f32_rounded(0)),
@@ -135,6 +136,7 @@ impl Default for EngineParams {
                 2.,
                 FloatRange::Linear { min: 0., max: 32. },
             )
+            .with_step_size(0.5)
             .with_smoother(SmoothingStyle::Linear(50.0))
             .with_unit(" 16th")
             .with_value_to_string(formatters::v2s_f32_rounded(0)),

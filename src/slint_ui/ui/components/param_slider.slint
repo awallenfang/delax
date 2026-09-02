@@ -1,0 +1,55 @@
+import { ParamBus } from "../events.slint";
+import { Palette } from "./global.slint";
+
+struct Click { x: length, y: length}
+
+export component ParamSlider inherits VerticalLayout {
+    in property <string> param_name: "knob";
+    in property <string> label: "Knob";
+    in-out property <float> val: 0.5;
+    in-out property <string> display_val: 0.5;
+
+    in property <bool> enabled: true;
+    alignment: center;
+    height: 15px;
+    slider_rect := Rectangle {
+        height: 15px;
+
+        Rectangle {
+            height: 3px;
+            background: Palette.secondary;
+            Rectangle {
+                x: root.val * root.width;
+                width: 3px;
+                height: 15px;
+                background: Palette.primary;
+            }
+        }
+        ta := TouchArea {
+            mouse-cursor: self.pressed ? grabbing : grab;
+            enabled: root.enabled;
+            property <float> last_val;
+            property <Click> start_click;
+
+            pointer-event(event) => {
+                if (event.kind==PointerEventKind.down) {
+                    let v = clamp(self.mouse-x / slider_rect.width, 0.0, 1.0);
+                    ParamBus.param_changed(root.param_name, v);
+                    root.val=v;
+                }
+            }
+
+            moved => {
+                let v = clamp(self.mouse-x / slider_rect.width, 0.0, 1.0);
+                ParamBus.param_changed(root.param_name, v);
+                root.val=v;
+            }
+        }
+    }
+    Text {
+        text: root.display_val;
+        color: Palette.text;
+        font-size: 8pt;
+        horizontal-alignment: TextHorizontalAlignment.center;
+    }
+}

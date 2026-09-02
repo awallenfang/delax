@@ -1,71 +1,108 @@
-import { ParamSwitch } from "param_switch.slint";
-import { ParamButton } from "param_button.slint";
+import { ParamBus } from "../events.slint";
 import { Palette } from "../components/global.slint";
-import { Button } from "std-widgets.slint";
+import { ParamKnob } from "param_knob.slint";
 import { IconButton } from "icon_button.slint";
+import { ParamSlider } from "param_slider.slint";
 
 export component Timing inherits VerticalLayout {
-    in-out property <float> time_ms: 10.0;
-    in-out property <string> display_time_ms;
-    in-out property <float> time_16th: 8.0;
-    in-out property <string> display_time_16th;
+    in-out property <float> time_ms: 0.5;
+    in-out property <string> display_time_ms: "0 ms";
+    in-out property <float> time_16th: 0.0625;
     in-out property <bool> bpm_bound: false;
-    HorizontalLayout {
-        ParamButton {
-            param_name: "bpm_bound_l";
-            width: 25px;
-            height: 25px;
-            Image {
-                source: @image-url("../assets/time.svg");
-                width: 100%;
-                height: 100%;
-                image-fit: contain;
-                colorize: parent.checked ? Palette.text-dark : Palette.text;
+    in property <bool> enabled: true;
+
+    in property <float> selected_factor: 1.0;
+    in property <string> note_display: "2 16th";
+
+    in property <string> bpm_param: "bpm_bound_l";
+    in property <string> ms_param: "delay_l";
+    in property <string> note_param: "delay_note_l";
+    in property <string> div_param: "delay_div_l";
+
+    spacing: 6px;
+    alignment: center;
+    opacity: root.enabled ? 1.0 : 0.5;
+
+    VerticalLayout {
+        alignment: LayoutAlignment.center;
+        spacing: 5px;
+        HorizontalLayout {
+            alignment: center;
+            spacing: 4px;
+            IconButton {
+                width: 25px;
+                height: 25px;
+                enabled: root.enabled;
+                checked: !root.bpm_bound;
+                clicked => { ParamBus.set_time_mode(root.bpm_param); }
+                Image {
+                    source: @image-url("../assets/time.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+            }
+            IconButton {
+                width: 25px;
+                height: 25px;
+                enabled: root.enabled;
+                checked: root.bpm_bound && abs(root.selected_factor - 1.0) < 0.01;
+                clicked => { ParamBus.set_div(root.div_param, root.bpm_param, 1.0); }
+                Image {
+                    source: @image-url("../assets/16th.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+            }
+            IconButton {
+                width: 25px;
+                height: 25px;
+                enabled: root.enabled;
+                checked: root.bpm_bound && abs(root.selected_factor - 2.0) < 0.01;
+                clicked => { ParamBus.set_div(root.div_param, root.bpm_param, 2.0); }
+                Image {
+                    source: @image-url("../assets/8th.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+            }
+            IconButton {
+                width: 25px;
+                height: 25px;
+                enabled: root.enabled;
+                checked: root.bpm_bound && abs(root.selected_factor - 4.0) < 0.01;
+                clicked => { ParamBus.set_div(root.div_param, root.bpm_param, 4.0); }
+                Image {
+                    source: @image-url("../assets/quarter.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+            }
+            IconButton {
+                width: 25px;
+                height: 25px;
+                enabled: root.enabled;
+                checked: root.bpm_bound && abs(root.selected_factor - 8.0) < 0.01;
+                clicked => { ParamBus.set_div(root.div_param, root.bpm_param, 8.0); }
+                Image {
+                    source: @image-url("../assets/half.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
             }
         }
-        IconButton {
-            width: 25px;
-            height: 25px;
-            Image {
-                source: @image-url("../assets/16th.svg");
-                width: 100%;
-                height: 100%;
-                image-fit: contain;
-                colorize: parent.checked ? Palette.text-dark : Palette.text;
-            }
+        if !root.bpm_bound: ParamSlider {
+            param_name: root.ms_param;
+            label: "Time";
+            val: root.time_ms;
+            display_val: root.display_time_ms;
+            enabled: root.enabled;
         }
-        IconButton {
-            width: 25px;
-            height: 25px;
-            Image {
-                source: @image-url("../assets/8th.svg");
-                width: 100%;
-                height: 100%;
-                image-fit: contain;
-                colorize: parent.checked ? Palette.text-dark : Palette.text;
-            }
-        }
-        IconButton {
-            width: 25px;
-            height: 25px;
-            Image {
-                source: @image-url("../assets/quarter.svg");
-                width: 100%;
-                height: 100%;
-                image-fit: contain;
-                colorize: parent.checked ? Palette.text-dark : Palette.text;
-            }
-        }
-        IconButton {
-            width: 25px;
-            height: 25px;
-            Image {
-                source: @image-url("../assets/half.svg");
-                width: 100%;
-                height: 100%;
-                image-fit: contain;
-                colorize: parent.checked ? Palette.text-dark : Palette.text;
-            }
+        if root.bpm_bound: ParamSlider {
+            param_name: root.note_param;
+            label: "";
+            val: root.time_16th;
+            display_val: root.note_display;
+            enabled: root.enabled;
         }
     }
 }
