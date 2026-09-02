@@ -1,0 +1,71 @@
+import { ParamSwitch } from "param_switch.slint";
+import { ParamButton } from "param_button.slint";
+import { Palette } from "../components/global.slint";
+import { Button } from "std-widgets.slint";
+import { IconButton } from "icon_button.slint";
+
+export component Timing inherits VerticalLayout {
+    in-out property <float> time_ms: 10.0;
+    in-out property <string> display_time_ms;
+    in-out property <float> time_16th: 8.0;
+    in-out property <string> display_time_16th;
+    in-out property <bool> bpm_bound: false;
+    HorizontalLayout {
+        ParamButton {
+            param_name: "bpm_bound_l";
+            width: 25px;
+            height: 25px;
+            Image {
+                source: @image-url("../assets/time.svg");
+                width: 100%;
+                height: 100%;
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+        }
+        IconButton {
+            width: 25px;
+            height: 25px;
+            Image {
+                source: @image-url("../assets/16th.svg");
+                width: 100%;
+                height: 100%;
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+        }
+        IconButton {
+            width: 25px;
+            height: 25px;
+            Image {
+                source: @image-url("../assets/8th.svg");
+                width: 100%;
+                height: 100%;
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+        }
+        IconButton {
+            width: 25px;
+            height: 25px;
+            Image {
+                source: @image-url("../assets/quarter.svg");
+                width: 100%;
+                height: 100%;
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+        }
+        IconButton {
+            width: 25px;
+            height: 25px;
+            Image {
+                source: @image-url("../assets/half.svg");
+                width: 100%;
+                height: 100%;
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+        }
+    }
+}

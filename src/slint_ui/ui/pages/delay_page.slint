@@ -12,6 +12,7 @@ import { Palette } from "../components/global.slint";
 import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
+import { Timing } from "../components/timing.slint";
 
 export component DelayPage inherits VerticalLayout {
     in-out property <bool> is_stereo: false;
@@ -37,10 +38,65 @@ export component DelayPage inherits VerticalLayout {
             color: Palette.text;
         }
     }
+    HorizontalLayout {
+        alignment: LayoutAlignment.space-between;
+        height: 70px;
+        Text {
+            text: "EQ";
+            color: Palette.text;
+            vertical-alignment: center;
+        }
+        ParamKnob {
+            param_name: "input_svf_cutoff_l";
+            label: "Cutoff";
+            val: ParamBus.read_val("input_svf_cutoff_l");
+            display_val: ParamBus.read_display_val("input_svf_cutoff_l");
+        }
 
+        ParamKnob {
+            param_name: "input_svf_res_l";
+            label: "Res";
+            val: ParamBus.read_val("input_svf_res_l");
+            display_val: ParamBus.read_display_val("input_svf_res_l");
+        }
+        ParamKnob {
+            param_name: "input_svf_cutoff_r";
+            label: "Cutoff";
+            val: ParamBus.read_val("input_svf_cutoff_r");
+            display_val: ParamBus.read_display_val("input_svf_cutoff_r");
+            enabled: root.is_stereo;
+        }
+        ParamKnob {
+            param_name: "input_svf_res_r";
+            label: "Res";
+            val: ParamBus.read_val("input_svf_res_r");
+            display_val: ParamBus.read_display_val("input_svf_res_r");
+            enabled: root.is_stereo;
+        }
+    }
     HorizontalLayout {
         alignment: LayoutAlignment.space-between;
         height: 82px;
+        Text {
+            text: "Delay";
+            color: Palette.text;
+            vertical-alignment: center;
+        }
+        Timing {
+            time_ms: ParamBus.read_val("delay_l");
+            display_time_ms: ParamBus.read_display_val("delay_l");
+            time_16th: ParamBus.read_val("delay_note_l");
+            display_time_16th: ParamBus.read_display_val("delay_note_l");
+            bpm_bound <=> root.is_bpm_bound_l;
+        }
+        Timing {
+            time_ms: ParamBus.read_val("delay_r");
+            display_time_ms: ParamBus.read_display_val("delay_r");
+            time_16th: ParamBus.read_val("delay_note_r");
+            display_time_16th: ParamBus.read_display_val("delay_note_r");
+            bpm_bound <=> root.is_bpm_bound_r;
+        }
+    /*
         ParamKnob {
             param_name: "delay_l";
             label: "Time";
@@ -48,14 +104,13 @@ export component DelayPage inherits VerticalLayout {
             display_val: ParamBus.read_display_val("delay_l");
             enabled: !root.is_bpm_bound_l;
         }
-
         ParamKnob {
-            param_name: "feedback_l";
-            label: "Feedback";
-            val: ParamBus.read_val("feedback_l");
-            display_val: ParamBus.read_display_val("feedback_l");
+            param_name: "delay_note_l";
+            label: "16ths";
+            val: ParamBus.read_val("delay_note_l");
+            display_val: ParamBus.read_display_val("delay_note_l");
+            enabled: root.is_bpm_bound_l;
         }
-
         ParamKnob {
             param_name: "delay_r";
             label: "Time";
@@ -63,16 +118,16 @@ export component DelayPage inherits VerticalLayout {
             display_val: ParamBus.read_display_val("delay_r");
             enabled: root.is_stereo && !root.is_bpm_bound_r;
         }
-
         ParamKnob {
-            param_name: "feedback_r";
-            label: "Feedback";
-            val: ParamBus.read_val("feedback_r");
-            display_val: ParamBus.read_display_val("feedback_r");
-            enabled: root.is_stereo;
+            param_name: "delay_note_r";
+            label: "16ths";
+            val: ParamBus.read_val("delay_note_r");
+            display_val: ParamBus.read_display_val("delay_note_r");
+            enabled: root.is_stereo && root.is_bpm_bound_r;
         }
+    */
     }
-
+    /*
     HorizontalLayout {
         accessible-role: AccessibleRole.none;
         alignment: LayoutAlignment.center;
@@ -89,29 +144,32 @@ export component DelayPage inherits VerticalLayout {
             enabled: root.is_stereo;
         }
     }
-
+    */
     HorizontalLayout {
         alignment: LayoutAlignment.space-between;
         height: 82px;
-        ParamKnob {
-            param_name: "delay_note_l";
-            label: "16ths";
-            val: ParamBus.read_val("delay_note_l");
-            display_val: ParamBus.read_display_val("delay_note_l");
-            enabled: root.is_bpm_bound_l;
+        Text {
+            text: "Mix";
+            color: Palette.text;
         }
         ParamKnob {
-            param_name: "delay_note_r";
-            label: "16ths";
-            val: ParamBus.read_val("delay_note_r");
-            display_val: ParamBus.read_display_val("delay_note_r");
-            enabled: root.is_stereo && root.is_bpm_bound_r;
-        }
-    }
-        ParamKnob {
-            param_name: "wetness";
+             param_name: "wetness";
             label: "Wetness";
             val: ParamBus.read_val("wetness");
             display_val: ParamBus.read_display_val("wetness");
         }
+        ParamKnob {
+            param_name: "feedback_l";
+            label: "Feedback";
+            val: ParamBus.read_val("feedback_l");
+            display_val: ParamBus.read_display_val("feedback_l");
+        }
+        ParamKnob {
+            param_name: "feedback_r";
+            label: "Feedback";
+            val: ParamBus.read_val("feedback_r");
+            display_val: ParamBus.read_display_val("feedback_r");
+            enabled: root.is_stereo;
+        }
+    }
 }
