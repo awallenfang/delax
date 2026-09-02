@@ -1,0 +1,29 @@
+import { ParamBus } from "../events.slint";
+import { Palette } from "./global.slint";
+
+export component ParamButton inherits Rectangle {
+    in property <string> param_name: "button";
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+
+    // Style properties
+    border-radius: 6px;
+
+    // Dynamic styling based on interaction state
+    background: checked ? Palette.primary-muted : Palette.secondary-muted;
+    border-width: 1px;
+    border-color: touch.pressed ? #002d8a : #0041c2;
+    HorizontalLayout {
+         width: 100%;
+         height: 100%;
+         padding: 4px;
+         @children
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.checked = !root.checked;
+                     ParamBus.param_changed(root.param_name, root.checked ? 1.0 : 0.0);
+        }
+    }
+
+}

@@ -7,7 +7,7 @@ use crate::slint_ui::param_component::ParamComponent;
 use nice_plug::params::Params;
 use slint::SharedString;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 slint::include_modules!();
 

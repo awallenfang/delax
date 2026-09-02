@@ -412,6 +412,17 @@ impl Delax {
                 };
                 self.left_delay_engine.set_delay_amount(delay_amt);
                 self.right_delay_engine.set_delay_amount(delay_amt);
+
+                let res = self.params.filter_params.input_svf_res_l.smoothed.next();
+                let cutoff = self.params.filter_params.input_svf_cutoff_l.smoothed.next();
+                let mode = self.params.filter_params.input_svf_filter_mode_l.value();
+
+                self.input_sin_svf_l.set_res(res);
+                self.input_sin_svf_r.set_res(res);
+                self.input_sin_svf_l.set_cutoff(cutoff);
+                self.input_sin_svf_r.set_cutoff(cutoff);
+                self.input_sin_svf_l.set_mode(mode);
+                self.input_sin_svf_r.set_mode(mode);
             }
             DelayMode::Stereo => {
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
@@ -436,6 +447,20 @@ impl Delax {
                 };
                 self.left_delay_engine.set_delay_amount(delay_amt_l);
                 self.right_delay_engine.set_delay_amount(delay_amt_r);
+
+                let res_l = self.params.filter_params.input_svf_res_l.smoothed.next();
+                let res_r = self.params.filter_params.input_svf_res_r.smoothed.next();
+                let cutoff_l = self.params.filter_params.input_svf_cutoff_l.smoothed.next();
+                let cutoff_r = self.params.filter_params.input_svf_cutoff_r.smoothed.next();
+                let mode_l = self.params.filter_params.input_svf_filter_mode_l.value();
+                let mode_r = self.params.filter_params.input_svf_filter_mode_r.value();
+
+                self.input_sin_svf_l.set_res(res_l);
+                self.input_sin_svf_r.set_res(res_r);
+                self.input_sin_svf_l.set_cutoff(cutoff_l);
+                self.input_sin_svf_r.set_cutoff(cutoff_r);
+                self.input_sin_svf_l.set_mode(mode_l);
+                self.input_sin_svf_r.set_mode(mode_r);
             }
         }
 
@@ -448,8 +473,7 @@ impl Delax {
                 let mode = self.params.filter_params.svf_filter_mode_l.value();
                 self.sin_svf_l.set_res(res);
                 self.sin_svf_r.set_res(res);
-                self.input_sin_svf_l.set_res(res);
-                self.input_sin_svf_r.set_res(res);
+
                 self.sin_svf_l.set_cutoff(cutoff);
                 self.sin_svf_r.set_cutoff(cutoff);
                 self.input_sin_svf_l.set_cutoff(cutoff);

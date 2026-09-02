@@ -1,0 +1,28 @@
+import { ParamBus } from "../events.slint";
+import { Palette } from "./global.slint";
+
+export component IconButton inherits Rectangle {
+    in property <string> text: "Button";
+        in property <bool> checked: false;
+        callback clicked();
+
+    // Style properties
+    border-radius: 6px;
+
+    // Dynamic styling based on interaction state
+    background: checked ? Palette.primary-muted : Palette.secondary-muted;
+    border-width: 1px;
+    border-color: touch.pressed ? #002d8a : #0041c2;
+    HorizontalLayout {
+         width: 100%;
+         height: 100%;
+         padding: 4px;
+         @children
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+
+    }
+
+}
