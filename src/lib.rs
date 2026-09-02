@@ -60,9 +60,11 @@ pub struct Delax {
 
 impl Default for Delax {
     fn default() -> Self {
-        let mut left_delay_engine = DelayEngine::new(44100*20, 44100.);
+        // 20 seconds buffer to accommodate long BPM-synced delays (e.g. 32 1/4 notes at 60 BPM = 8s, 32 half notes = 64s clamped to 20s covers most musical use)
+        let default_buf = 44100 * 20;
+        let mut left_delay_engine = DelayEngine::new(default_buf, 44100.);
         left_delay_engine.set_delay_amount(0.);
-        let mut right_delay_engine = DelayEngine::new(44100*20, 44100.);
+        let mut right_delay_engine = DelayEngine::new(default_buf, 44100.);
         right_delay_engine.set_delay_amount(0.);
 
         let mut fft_planner = FftPlanner::new();
@@ -275,9 +277,10 @@ impl Plugin for Delax {
         // function if you do not need it.
         self.sample_rate = buffer_config.sample_rate;
 
-        let mut left_delay_engine = DelayEngine::new(self.sample_rate as usize, self.sample_rate);
+        let buffer_size = (self.sample_rate * 20.0) as usize;
+        let mut left_delay_engine = DelayEngine::new(buffer_size, self.sample_rate);
         left_delay_engine.set_delay_amount(0.);
-        let mut right_delay_engine = DelayEngine::new(self.sample_rate as usize, self.sample_rate);
+        let mut right_delay_engine = DelayEngine::new(buffer_size, self.sample_rate);
         right_delay_engine.set_delay_amount(0.);
 
         self.left_delay_engine = left_delay_engine;
