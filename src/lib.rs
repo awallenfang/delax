@@ -60,9 +60,9 @@ pub struct Delax {
 
 impl Default for Delax {
     fn default() -> Self {
-        let mut left_delay_engine = DelayEngine::new(44100, 44100.);
+        let mut left_delay_engine = DelayEngine::new(44100*20, 44100.);
         left_delay_engine.set_delay_amount(0.);
-        let mut right_delay_engine = DelayEngine::new(44100, 44100.);
+        let mut right_delay_engine = DelayEngine::new(44100*20, 44100.);
         right_delay_engine.set_delay_amount(0.);
 
         let mut fft_planner = FftPlanner::new();
