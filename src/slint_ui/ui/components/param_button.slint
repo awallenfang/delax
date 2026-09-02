@@ -6,9 +6,6 @@ export component ParamButton inherits Rectangle {
     in-out property <bool> checked;
     in property <bool> enabled: true;
 
-    // Style properties
-    border-radius: 6px;
-
     // Dynamic styling based on interaction state
     background: checked ? Palette.primary-muted : Palette.secondary-muted;
     border-width: 1px;
