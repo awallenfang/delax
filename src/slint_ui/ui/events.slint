@@ -2,6 +2,8 @@
 export global ParamBus {
     in-out property <int> version: 0; // Variable to force redraws
     callback param_changed(string, float);
+    callback set_div(string, string, float);
+    callback set_time_mode(string);
     pure callback get_val_by_key(key: string, version: int) -> float;
     public pure function read_val(key: string) -> float {
         return get_val_by_key(key, version);
