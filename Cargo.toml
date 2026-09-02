@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 authors = ["Ava Wallenfang <ava@wallenfang.de>"]
 license = "MIT"
-homepage = "https://ritzin.dev"
+homepage = "https://windsonix.com"
 description = "A delay plugin with a few bells and whistles"
 
 [workspace]
