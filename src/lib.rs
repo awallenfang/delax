@@ -148,39 +148,48 @@ impl InputData {
     }
 
     fn poll_spectrum(&self, app: &slint_ui::AppWindow) {
-        let Ok(mut guard) = self.spectrum_consumer.try_lock() else {
-            return;
-        };
-        let Some(cons) = guard.as_mut() else {
-            return;
-        };
-        let Ok(mut pending) = self.spectrum_pending.try_lock() else {
-            return;
-        };
-        while let Ok(v) = cons.pop() {
-            pending.push(v);
-        }
-        if pending.len() < 64 {
-            if pending.len() > 256 {
-                let excess = pending.len() - 128;
+        let mut samples = [0.0f32; 64];
+        let mut have_samples = false;
+        {
+            let Ok(mut guard) = self.spectrum_consumer.try_lock() else {
+                return;
+            };
+            let Some(cons) = guard.as_mut() else {
+                return;
+            };
+            let Ok(mut pending) = self.spectrum_pending.try_lock() else {
+                return;
+            };
+            while let Ok(v) = cons.pop() {
+                pending.push(v);
+            }
+            if pending.len() < 64 {
+                if pending.len() > 256 {
+                    let excess = pending.len() - 128;
+                    pending.drain(0..excess);
+                }
+                return;
+            }
+            if pending.len() > 64 {
+                let excess = pending.len() - 64;
                 pending.drain(0..excess);
             }
+            debug_assert_eq!(pending.len(), 64);
+            samples.copy_from_slice(&pending[..64]);
+            pending.clear();
+            have_samples = true;
+        }
+        if !have_samples {
             return;
         }
-        if pending.len() > 64 {
-            let excess = pending.len() - 64;
-            pending.drain(0..excess);
-        }
-        let mut samples: Vec<f32> = pending.drain(..).collect();
-        debug_assert_eq!(samples.len(), 64);
         for (s, w) in samples.iter_mut().zip(self.hann_window.iter()) {
             *s *= *w;
         }
 
-        let mut complex: Vec<Complex32> = samples
-            .into_iter()
-            .map(|s| Complex32::new(s, 0.0))
-            .collect();
+        let mut complex = [Complex32::new(0.0, 0.0); 64];
+        for (c, s) in complex.iter_mut().zip(samples.iter()) {
+            *c = Complex32::new(*s, 0.0);
+        }
         if let Ok(mut scratch) = self.fft_scratch.try_lock() {
             if scratch.len() == self.out_fft.get_inplace_scratch_len() {
                 self.out_fft
@@ -191,31 +200,28 @@ impl InputData {
         } else {
             self.out_fft.process(&mut complex);
         }
-        let spectrum: Vec<f32> = complex[0..32]
-            .iter()
-            .map(|c| {
-                let mag = c.norm();
-                let db = util::gain_to_db_fast((mag * 2.0).max(1e-5));
-                ((db + 80.0) / 80.0).clamp(0.0, 1.0)
-            })
-            .collect();
-        app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum)));
+        let mut spectrum = [0.0f32; 32];
+        for (out, c) in spectrum.iter_mut().zip(complex[0..32].iter()) {
+            let mag = c.norm();
+            let db = util::gain_to_db_fast((mag * 2.0).max(1e-5));
+            *out = ((db + 80.0) / 80.0).clamp(0.0, 1.0);
+        }
+        app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum.to_vec())));
     }
 
     fn poll_waveforms(&self, app: &slint_ui::AppWindow) {
         let dry_pos = self.dry_pos.load(Relaxed) % self.dry_buffer.len();
         let wet_pos = self.wet_pos.load(Relaxed) % self.wet_buffer.len();
-        // TODO: No allocations
-        let mut dry = Vec::with_capacity(100);
-        let mut wet = Vec::with_capacity(100);
+        let mut dry = [0.0f32; 100];
+        let mut wet = [0.0f32; 100];
         for i in 0..self.wet_buffer.len().min(self.dry_buffer.len()) {
             let idx = (dry_pos + 1 + i) % self.dry_buffer.len();
-            dry.push(self.dry_buffer[idx].load(Relaxed));
+            dry[i] = self.dry_buffer[idx].load(Relaxed);
             let idx = (wet_pos + 1 + i) % self.wet_buffer.len();
-            wet.push(self.wet_buffer[idx].load(Relaxed));
+            wet[i] = self.wet_buffer[idx].load(Relaxed);
         }
-        app.set_dry_buffer(slint::ModelRc::new(slint::VecModel::from(dry)));
-        app.set_wet_buffer(slint::ModelRc::new(slint::VecModel::from(wet)));
+        app.set_dry_buffer(slint::ModelRc::new(slint::VecModel::from(dry.to_vec())));
+        app.set_wet_buffer(slint::ModelRc::new(slint::VecModel::from(wet.to_vec())));
     }
 }
 
