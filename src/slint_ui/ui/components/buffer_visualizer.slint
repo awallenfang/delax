@@ -1,0 +1,25 @@
+import { VerticalBox, Slider } from "std-widgets.slint";
+import { ParamBus } from "../events.slint";
+import { Palette } from "./global.slint";
+
+export component BufferVisualizer inherits Rectangle {
+    in-out property <[float]> dry_buffer;
+    in-out property <[float]> wet_buffer;
+
+    for sample[index] in dry_buffer:
+    Rectangle {
+        width: 5px;
+        height: root.height * sample;
+        x: index * (root.width / 100.0);
+        opacity: 0.5;
+        background: Palette.primary-muted;
+    }
+    for sample[index] in wet_buffer:
+    Rectangle {
+        width: 5px;
+        height: root.height * sample;
+        x: index * (root.width / 100.0);
+        opacity: 0.5;
+        background: Palette.secondary-muted;
+    }
+}

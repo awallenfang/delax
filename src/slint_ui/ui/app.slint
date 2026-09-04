@@ -36,6 +36,8 @@ export component AppWindow inherits Window {
     in-out property <float> out_level_l: 0.0;
     in-out property <float> out_level_r: 0.0;
     in-out property <[float]> out_spectrum;
+    in-out property <[float]> dry_buffer;
+    in-out property <[float]> wet_buffer;
     in-out property <string> version;
     in-out property <float> bpm;
 
@@ -149,6 +151,8 @@ export component AppWindow inherits Window {
                 timing-factor-l <=> root.timing_factor_l;
                 timing-factor-r <=> root.timing_factor_r;
                 bpm <=> root.bpm;
+                dry_buffer <=> dry_buffer;
+                wet_buffer <=> wet_buffer;
             }
             if tab == 1:
                 FilterPage {
