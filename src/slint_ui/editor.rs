@@ -16,9 +16,18 @@ pub const DEFAULT_WIDTH: u32 = 550;
 pub const DEFAULT_HEIGHT: u32 = 350;
 
 pub enum UiEvent {
-    ParamChanged { id: String, value: f32 },
-    SetDiv { div_id: String, bpm_id: String, factor: f32 },
-    SetTimeMode { bpm_id: String },
+    ParamChanged {
+        id: String,
+        value: f32,
+    },
+    SetDiv {
+        div_id: String,
+        bpm_id: String,
+        factor: f32,
+    },
+    SetTimeMode {
+        bpm_id: String,
+    },
 }
 #[derive(Deserialize, Serialize)]
 pub struct EditorState {
