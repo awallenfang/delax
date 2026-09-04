@@ -30,8 +30,8 @@ export component DecayVisualizer inherits Rectangle {
     property <float> time_s_r: time_ms_r / 1000.0;
 
     // notes to seconds via BPM: delay_time_from_bpm_and_16th(total_16th,bpm) = total_16th*60/bpm/4*1000
-    property <float> note_plain_l: time_note_l * 32.0;
-    property <float> note_plain_r: time_note_r * 32.0;
+    property <float> note_plain_l: time_note_l * 16.0;
+    property <float> note_plain_r: time_note_r * 16.0;
     property <float> div_factor_l: time_div_l < 0.166 ? 1.0 : (time_div_l < 0.5 ? 2.0 : (time_div_l < 0.833 ? 4.0 : 8.0));
     property <float> div_factor_r: time_div_r < 0.166 ? 1.0 : (time_div_r < 0.5 ? 2.0 : (time_div_r < 0.833 ? 4.0 : 8.0));
     property <float> total_16th_l: note_plain_l * div_factor_l;
