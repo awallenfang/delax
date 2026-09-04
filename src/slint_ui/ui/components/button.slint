@@ -4,15 +4,7 @@ export component Button inherits Rectangle {
     in property <bool> checked: false;
     callback clicked();
 
-    // Style properties
-    width: 60px;
-    height: 30px;
-
-
-    // Dynamic styling based on interaction state
     background: checked ? Palette.primary-muted : Palette.secondary-muted;
-    border-width: 1px;
-    border-color: touch.pressed ? #002d8a : #0041c2;
 
     touch := TouchArea {
         mouse-cursor: pointer;

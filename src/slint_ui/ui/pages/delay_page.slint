@@ -26,6 +26,7 @@ export component DelayPage inherits Rectangle {
     in-out property <string> timing_display_r: "2 16th";
     in-out property <float> timing_factor_l: 1.0;
     in-out property <float> timing_factor_r: 1.0;
+    in-out property <float> bpm: 120.0;
     property <int> open_page: 0;
 
     clip: true;
@@ -49,6 +50,7 @@ export component DelayPage inherits Rectangle {
             bpm_bound_l: root.is_bpm_bound_l;
             bpm_bound_r: root.is_bpm_bound_r;
             is_stereo: root.is_stereo;
+            bpm: root.bpm;
         }
         // Placeholder for buffer
         Rectangle {
