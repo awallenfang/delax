@@ -55,198 +55,75 @@ export component DelayPage inherits Rectangle {
             is_stereo: root.is_stereo;
             bpm: root.bpm;
         }
+
         BufferVisualizer {
             width: 100%;
             height: 50%;
             dry_buffer: dry_buffer;
             wet_buffer: wet_buffer;
+            wetness: ParamBus.read_val("wetness");
         }
     }
 
     HorizontalLayout {
         alignment: end;
-        VerticalLayout {
+        Rectangle {
             width: 50%;
             height: 100%;
-            padding: 6px;
-            spacing: 4px;
-            HorizontalLayout {
-                height: 22px;
-                alignment: LayoutAlignment.center;
-                spacing: 10px;
-                Text {
-                    text: "Mono";
-                    color: Palette.text;
-                    vertical-alignment: center;
-                }
 
-                ParamSwitch {
-                    param_name: "stereo";
-                    checked <=> root.is_stereo;
-                }
-
-                Text {
-                    text: "Stereo";
-                    color: Palette.text;
-                    vertical-alignment: center;
-                }
-            }
-
-            if !root.is_stereo:
-                    VerticalLayout {
-                vertical-stretch: 1;
+            background: Palette.background-light;
+            opacity: 0.8;
+            border-width: 1px;
+            border-color: Palette.secondary-muted;
+            VerticalLayout {
+                width: 50%;
+                height: 100%;
+                padding: 6px;
                 spacing: 4px;
-                padding-left: 8px;
-                padding-right: 8px;
-
                 HorizontalLayout {
-                    vertical-stretch: 1;
-                    min-height: 45px;
-                    alignment: LayoutAlignment.space-between;
-                    Text {
-                        text: "EQ";
-                        color: Palette.text;
-                        vertical-alignment: center;
-                    }
-
-                    ParamKnob {
-                        param_name: "input_svf_cutoff_l";
-                        label: "Cutoff";
-                        val: ParamBus.read_val("input_svf_cutoff_l");
-                        display_val: ParamBus.read_display_val("input_svf_cutoff_l");
-                    }
-
-                    ParamKnob {
-                        param_name: "input_svf_res_l";
-                        label: "Res";
-                        val: ParamBus.read_val("input_svf_res_l");
-                        display_val: ParamBus.read_display_val("input_svf_res_l");
-                    }
-                }
-
-                HorizontalLayout {
-                    vertical-stretch: 1.6;
-                    min-height: 75px;
-                    alignment: LayoutAlignment.space-between;
-                    Text {
-                        text: "Delay";
-                        color: Palette.text;
-                        vertical-alignment: center;
-                    }
-
-                    Timing {
-                        bpm_param: "bpm_bound_l";
-                        ms_param: "delay_l";
-                        note_param: "delay_note_l";
-                        div_param: "delay_div_l";
-                        selected_factor: root.timing_factor_l;
-                        note_display: root.timing_display_l;
-                        time_ms: ParamBus.read_val("delay_l");
-                        display_time_ms: ParamBus.read_display_val("delay_l");
-                        time_16th: ParamBus.read_val("delay_note_l");
-                        bpm_bound <=> root.is_bpm_bound_l;
-                    }
-                }
-
-                HorizontalLayout {
-                    vertical-stretch: 1;
-                    min-height: 55px;
-                    alignment: LayoutAlignment.space-between;
-                    Text {
-                        text: "Mix";
-                        color: Palette.text;
-                        vertical-alignment: center;
-                    }
-
-                    ParamKnob {
-                        param_name: "feedback_l";
-                        label: "Feedback";
-                        val: ParamBus.read_val("feedback_l");
-                        display_val: ParamBus.read_display_val("feedback_l");
-                    }
-
-                    ParamKnob {
-                        param_name: "wetness";
-                        label: "Wetness";
-                        val: ParamBus.read_val("wetness");
-                        display_val: ParamBus.read_display_val("wetness");
-                    }
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-            }
-
-            if root.is_stereo:
-                    VerticalLayout {
-                vertical-stretch: 1;
-                spacing: 4px;
-                padding-left: 8px;
-                padding-right: 8px;
-
-                HorizontalLayout {
-                    height: 26px;
+                    height: 22px;
                     alignment: LayoutAlignment.center;
-                    spacing: 8px;
-                    IconButton {
-                        width: 25px;
-                        height: 25px;
-                        checked: open_page == 0;
-                        Text {
-                            text: "L";
-                            color: Palette.text;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-
-                        clicked => {
-                            open_page = 0;
-                        }
+                    spacing: 10px;
+                    Text {
+                        text: "Mono";
+                        color: Palette.text;
+                        vertical-alignment: center;
                     }
 
-                    IconButton {
-                        width: 25px;
-                        height: 25px;
-                        checked: open_page == 1;
-                        Text {
-                            text: "R";
-                            color: Palette.text;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
+                    ParamSwitch {
+                        param_name: "stereo";
+                        checked <=> root.is_stereo;
+                    }
 
-                        clicked => {
-                            open_page = 1;
-                        }
+                    Text {
+                        text: "Stereo";
+                        color: Palette.text;
+                        vertical-alignment: center;
                     }
                 }
 
-                if open_page == 0:
-                        VerticalLayout {
+                if !root.is_stereo:
+                    VerticalLayout {
                     vertical-stretch: 1;
                     spacing: 4px;
+                    padding-left: 8px;
+                    padding-right: 8px;
 
                     HorizontalLayout {
                         vertical-stretch: 1;
                         min-height: 45px;
                         alignment: LayoutAlignment.space-between;
-                        Text {
-                            text: "EQ";
-                            color: Palette.text;
-                            vertical-alignment: center;
-                        }
 
                         ParamKnob {
                             param_name: "input_svf_cutoff_l";
-                            label: "Cutoff L";
+                            label: "Cutoff";
                             val: ParamBus.read_val("input_svf_cutoff_l");
                             display_val: ParamBus.read_display_val("input_svf_cutoff_l");
                         }
 
                         ParamKnob {
                             param_name: "input_svf_res_l";
-                            label: "Res L";
+                            label: "Res";
                             val: ParamBus.read_val("input_svf_res_l");
                             display_val: ParamBus.read_display_val("input_svf_res_l");
                         }
@@ -256,11 +133,6 @@ export component DelayPage inherits Rectangle {
                         vertical-stretch: 1.6;
                         min-height: 75px;
                         alignment: LayoutAlignment.space-between;
-                        Text {
-                            text: "Delay";
-                            color: Palette.text;
-                            vertical-alignment: center;
-                        }
 
                         Timing {
                             bpm_param: "bpm_bound_l";
@@ -280,15 +152,10 @@ export component DelayPage inherits Rectangle {
                         vertical-stretch: 1;
                         min-height: 55px;
                         alignment: LayoutAlignment.space-between;
-                        Text {
-                            text: "Mix";
-                            color: Palette.text;
-                            vertical-alignment: center;
-                        }
 
                         ParamKnob {
                             param_name: "feedback_l";
-                            label: "Feedback L";
+                            label: "Feedback";
                             val: ParamBus.read_val("feedback_l");
                             display_val: ParamBus.read_display_val("feedback_l");
                         }
@@ -300,84 +167,213 @@ export component DelayPage inherits Rectangle {
                             display_val: ParamBus.read_display_val("wetness");
                         }
                     }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
                 }
 
-                if open_page == 1:
-                        VerticalLayout {
+                if root.is_stereo:
+                    VerticalLayout {
                     vertical-stretch: 1;
                     spacing: 4px;
+                    padding-left: 8px;
+                    padding-right: 8px;
 
                     HorizontalLayout {
-                        vertical-stretch: 1;
-                        min-height: 45px;
-                        alignment: LayoutAlignment.space-between;
-                        Text {
-                            text: "EQ";
-                            color: Palette.text;
-                            vertical-alignment: center;
+                        height: 26px;
+                        alignment: LayoutAlignment.center;
+                        spacing: 8px;
+                        IconButton {
+                            width: 25px;
+                            height: 25px;
+                            checked: open_page == 0;
+                            Text {
+                                text: "L";
+                                color: Palette.text;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            clicked => {
+                                open_page = 0;
+                            }
                         }
 
-                        ParamKnob {
-                            param_name: "input_svf_cutoff_r";
-                            label: "Cutoff R";
-                            val: ParamBus.read_val("input_svf_cutoff_r");
-                            display_val: ParamBus.read_display_val("input_svf_cutoff_r");
-                        }
+                        IconButton {
+                            width: 25px;
+                            height: 25px;
+                            checked: open_page == 1;
+                            Text {
+                                text: "R";
+                                color: Palette.text;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
 
-                        ParamKnob {
-                            param_name: "input_svf_res_r";
-                            label: "Res R";
-                            val: ParamBus.read_val("input_svf_res_r");
-                            display_val: ParamBus.read_display_val("input_svf_res_r");
+                            clicked => {
+                                open_page = 1;
+                            }
                         }
                     }
 
-                    HorizontalLayout {
-                        vertical-stretch: 1.6;
-                        min-height: 75px;
-                        alignment: LayoutAlignment.space-between;
-                        Text {
-                            text: "Delay";
-                            color: Palette.text;
-                            vertical-alignment: center;
+                    if open_page == 0:
+                        VerticalLayout {
+                        vertical-stretch: 1;
+                        spacing: 4px;
+
+                        HorizontalLayout {
+                            vertical-stretch: 1;
+                            min-height: 45px;
+                            alignment: LayoutAlignment.space-between;
+                            Text {
+                                text: "EQ";
+                                color: Palette.text;
+                                vertical-alignment: center;
+                            }
+
+                            ParamKnob {
+                                param_name: "input_svf_cutoff_l";
+                                label: "Cutoff L";
+                                val: ParamBus.read_val("input_svf_cutoff_l");
+                                display_val: ParamBus.read_display_val("input_svf_cutoff_l");
+                            }
+
+                            ParamKnob {
+                                param_name: "input_svf_res_l";
+                                label: "Res L";
+                                val: ParamBus.read_val("input_svf_res_l");
+                                display_val: ParamBus.read_display_val("input_svf_res_l");
+                            }
                         }
 
-                        Timing {
-                            bpm_param: "bpm_bound_r";
-                            ms_param: "delay_r";
-                            note_param: "delay_note_r";
-                            div_param: "delay_div_r";
-                            selected_factor: root.timing_factor_r;
-                            note_display: root.timing_display_r;
-                            time_ms: ParamBus.read_val("delay_r");
-                            display_time_ms: ParamBus.read_display_val("delay_r");
-                            time_16th: ParamBus.read_val("delay_note_r");
-                            bpm_bound <=> root.is_bpm_bound_r;
+                        HorizontalLayout {
+                            vertical-stretch: 1.6;
+                            min-height: 75px;
+                            alignment: LayoutAlignment.space-between;
+                            Text {
+                                text: "Delay";
+                                color: Palette.text;
+                                vertical-alignment: center;
+                            }
+
+                            Timing {
+                                bpm_param: "bpm_bound_l";
+                                ms_param: "delay_l";
+                                note_param: "delay_note_l";
+                                div_param: "delay_div_l";
+                                selected_factor: root.timing_factor_l;
+                                note_display: root.timing_display_l;
+                                time_ms: ParamBus.read_val("delay_l");
+                                display_time_ms: ParamBus.read_display_val("delay_l");
+                                time_16th: ParamBus.read_val("delay_note_l");
+                                bpm_bound <=> root.is_bpm_bound_l;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            vertical-stretch: 1;
+                            min-height: 55px;
+                            alignment: LayoutAlignment.space-between;
+                            Text {
+                                text: "Mix";
+                                color: Palette.text;
+                                vertical-alignment: center;
+                            }
+
+                            ParamKnob {
+                                param_name: "feedback_l";
+                                label: "Feedback L";
+                                val: ParamBus.read_val("feedback_l");
+                                display_val: ParamBus.read_display_val("feedback_l");
+                            }
+
+                            ParamKnob {
+                                param_name: "wetness";
+                                label: "Wetness";
+                                val: ParamBus.read_val("wetness");
+                                display_val: ParamBus.read_display_val("wetness");
+                            }
                         }
                     }
 
-                    HorizontalLayout {
+                    if open_page == 1:
+                        VerticalLayout {
                         vertical-stretch: 1;
-                        min-height: 55px;
-                        alignment: LayoutAlignment.space-between;
-                        Text {
-                            text: "Mix";
-                            color: Palette.text;
-                            vertical-alignment: center;
+                        spacing: 4px;
+
+                        HorizontalLayout {
+                            vertical-stretch: 1;
+                            min-height: 45px;
+                            alignment: LayoutAlignment.space-between;
+                            Text {
+                                text: "EQ";
+                                color: Palette.text;
+                                vertical-alignment: center;
+                            }
+
+                            ParamKnob {
+                                param_name: "input_svf_cutoff_r";
+                                label: "Cutoff R";
+                                val: ParamBus.read_val("input_svf_cutoff_r");
+                                display_val: ParamBus.read_display_val("input_svf_cutoff_r");
+                            }
+
+                            ParamKnob {
+                                param_name: "input_svf_res_r";
+                                label: "Res R";
+                                val: ParamBus.read_val("input_svf_res_r");
+                                display_val: ParamBus.read_display_val("input_svf_res_r");
+                            }
                         }
 
-                        ParamKnob {
-                            param_name: "feedback_r";
-                            label: "Feedback R";
-                            val: ParamBus.read_val("feedback_r");
-                            display_val: ParamBus.read_display_val("feedback_r");
+                        HorizontalLayout {
+                            vertical-stretch: 1.6;
+                            min-height: 75px;
+                            alignment: LayoutAlignment.space-between;
+                            Text {
+                                text: "Delay";
+                                color: Palette.text;
+                                vertical-alignment: center;
+                            }
+
+                            Timing {
+                                bpm_param: "bpm_bound_r";
+                                ms_param: "delay_r";
+                                note_param: "delay_note_r";
+                                div_param: "delay_div_r";
+                                selected_factor: root.timing_factor_r;
+                                note_display: root.timing_display_r;
+                                time_ms: ParamBus.read_val("delay_r");
+                                display_time_ms: ParamBus.read_display_val("delay_r");
+                                time_16th: ParamBus.read_val("delay_note_r");
+                                bpm_bound <=> root.is_bpm_bound_r;
+                            }
                         }
 
-                        ParamKnob {
-                            param_name: "wetness";
-                            label: "Wetness";
-                            val: ParamBus.read_val("wetness");
-                            display_val: ParamBus.read_display_val("wetness");
+                        HorizontalLayout {
+                            vertical-stretch: 1;
+                            min-height: 55px;
+                            alignment: LayoutAlignment.space-between;
+                            Text {
+                                text: "Mix";
+                                color: Palette.text;
+                                vertical-alignment: center;
+                            }
+
+                            ParamKnob {
+                                param_name: "feedback_r";
+                                label: "Feedback R";
+                                val: ParamBus.read_val("feedback_r");
+                                display_val: ParamBus.read_display_val("feedback_r");
+                            }
+
+                            ParamKnob {
+                                param_name: "wetness";
+                                label: "Wetness";
+                                val: ParamBus.read_val("wetness");
+                                display_val: ParamBus.read_display_val("wetness");
+                            }
                         }
                     }
                 }

@@ -5,20 +5,21 @@ import { Palette } from "./global.slint";
 export component BufferVisualizer inherits Rectangle {
     in-out property <[float]> dry_buffer;
     in-out property <[float]> wet_buffer;
+    in-out property <float> wetness;
 
     for sample[index] in dry_buffer:
     Rectangle {
         width: 5px;
-        height: root.height * sample;
-        x: index * (root.width / 100.0);
+        height: root.height * sample * (1.0 - wetness);
+        x: index * (root.width / dry_buffer.length);
         opacity: 0.5;
         background: Palette.primary-muted;
     }
     for sample[index] in wet_buffer:
     Rectangle {
         width: 5px;
-        height: root.height * sample;
-        x: index * (root.width / 100.0);
+        height: root.height * sample * wetness;
+        x: index * (root.width / wet_buffer.length);
         opacity: 0.5;
         background: Palette.secondary-muted;
     }

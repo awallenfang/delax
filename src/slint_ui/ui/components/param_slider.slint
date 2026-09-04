@@ -40,9 +40,12 @@ export component ParamSlider inherits VerticalLayout {
             }
 
             moved => {
-                let v = clamp(self.mouse-x / slider_rect.width, 0.0, 1.0);
-                ParamBus.param_changed(root.param_name, v);
-                root.val=v;
+                if (self.enabled && self.pressed) {
+                    let v = clamp(self.mouse-x / slider_rect.width, 0.0, 1.0);
+                    ParamBus.param_changed(root.param_name, v);
+                    root.val=v;
+
+                }
             }
         }
     }

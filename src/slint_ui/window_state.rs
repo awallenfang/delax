@@ -16,6 +16,8 @@ use std::fmt::{Debug, Formatter};
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Arc;
+use baseview::EventStatus::Ignored;
+use slint::private_unstable_api::re_exports::ApproxEq;
 
 struct SlintPlatform {
     current: RefCell<Option<Rc<dyn WindowAdapter>>>,
@@ -339,8 +341,12 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
                 let slint_event = match mouse_event {
                     MouseEvent::CursorMoved { position, .. } => {
                         let log_pos = LogicalPosition::new(position.x as f32, position.y as f32);
-                        *self.last_pos.borrow_mut() = log_pos;
-                        Some(platform::WindowEvent::PointerMoved { position: log_pos })
+                        if self.last_pos.borrow().x.approx_eq(&log_pos.x) &&  self.last_pos.borrow().y.approx_eq(&log_pos.y) {
+                            None
+                        } else {
+                            *self.last_pos.borrow_mut() = log_pos;
+                            Some(platform::WindowEvent::PointerMoved { position: log_pos })
+                        }
                     }
                     MouseEvent::ButtonPressed { button, .. } => {
                         let Some(slint_button) = map_button(button) else {
