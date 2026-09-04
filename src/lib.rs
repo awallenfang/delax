@@ -6,12 +6,14 @@ use delay_engine::{
 use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
 use nice_plug::prelude::*;
+use nice_plug::util::window::hann;
 use params::DelaxParams;
 use rustfft::num_complex::Complex32;
 use rustfft::{Fft, FftPlanner};
 use slint::SharedString;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::{AtomicU8, AtomicU16, AtomicUsize};
 
 mod delay_engine;
 mod filter_pipeline;
@@ -26,10 +28,30 @@ pub struct InputData {
     pub out_r: AtomicF32,
     pub out_spectrum: [AtomicF32; 32],
     pub bpm: AtomicF32,
+    pub dry_buffer: [AtomicF32; 100],
+    pub wet_buffer: [AtomicF32; 100],
+    dry_skip_counter: AtomicU16,
+    wet_skip_counter: AtomicU16,
+    skip: u16,
+
+    dry_pos: AtomicUsize,
+    wet_pos: AtomicUsize,
+
+    out_fft: Arc<dyn Fft<f32>>,
+    spectrum_producer: std::sync::Mutex<Option<rtrb::Producer<f32>>>,
+    spectrum_consumer: Arc<std::sync::Mutex<Option<rtrb::Consumer<f32>>>>,
+    fft_scratch: std::sync::Mutex<Vec<Complex32>>,
+    hann_window: Vec<f32>,
+    spectrum_pending: std::sync::Mutex<Vec<f32>>,
 }
 
 impl Default for InputData {
     fn default() -> Self {
+        let mut fft_planner = FftPlanner::new();
+        let fft_plan = fft_planner.plan_fft_forward(64);
+        let (spec_prod, spec_cons) = rtrb::RingBuffer::new(4096);
+        let hann_window: Vec<f32> = hann(64);
+        let scratch_len = fft_plan.get_inplace_scratch_len();
         Self {
             in_l: AtomicF32::new(0.),
             in_r: AtomicF32::new(0.),
@@ -37,7 +59,169 @@ impl Default for InputData {
             out_r: AtomicF32::new(0.),
             out_spectrum: [const { AtomicF32::new(0.) }; 32],
             bpm: AtomicF32::new(120.),
+            dry_buffer: [const { AtomicF32::new(0.) }; 100],
+            wet_buffer: [const { AtomicF32::new(0.) }; 100],
+            dry_skip_counter: AtomicU16::new(0),
+            wet_skip_counter: AtomicU16::new(0),
+            skip: 1024,
+            dry_pos: AtomicUsize::new(0),
+            wet_pos: AtomicUsize::new(0),
+            out_fft: fft_plan,
+            spectrum_producer: std::sync::Mutex::new(Some(spec_prod)),
+            spectrum_consumer: Arc::new(std::sync::Mutex::new(Some(spec_cons))),
+            fft_scratch: std::sync::Mutex::new(vec![Complex32::new(0.0, 0.0); scratch_len]),
+            hann_window,
+            spectrum_pending: std::sync::Mutex::new(Vec::with_capacity(128)),
         }
+    }
+}
+
+impl InputData {
+    pub fn push_spectrum(&self, mono: f32) {
+        if let Ok(mut guard) = self.spectrum_producer.try_lock() {
+            if let Some(prod) = guard.as_mut() {
+                let _ = prod.push(mono);
+            }
+        }
+    }
+
+    pub fn push_dry(&self, l: f32, r: f32) {
+        // Skip a lot of data to slow down the display
+        let dry_skip = self.dry_skip_counter.fetch_add(1, Relaxed);
+        if dry_skip % self.skip != 0 {
+            return;
+        }
+        // Loop around
+        if dry_skip == self.skip {
+            self.dry_skip_counter.store(0, Relaxed);
+        }
+        let mono = (l + r) * 0.5;
+        let pos = self.dry_pos.fetch_add(1, Relaxed) % self.dry_buffer.len();
+        self.dry_buffer[pos].store(mono, Relaxed);
+    }
+
+    pub fn push_wet(&self, l: f32, r: f32) {
+        // Skip a lot of data to slow down the display
+        let wet_skip = self.wet_skip_counter.fetch_add(1, Relaxed);
+        if wet_skip % self.skip != 0 {
+            return;
+        }
+        // Loop around
+        if wet_skip == self.skip {
+            self.wet_skip_counter.store(0, Relaxed);
+        }
+        self.wet_skip_counter.store(0, Relaxed);
+        let mono = (l + r) * 0.5;
+        let pos = self.wet_pos.fetch_add(1, Relaxed) % self.wet_buffer.len();
+        self.wet_buffer[pos].store(mono, Relaxed);
+    }
+
+    pub fn set_bpm(&self, bpm: f32) {
+        self.bpm.store(bpm, Relaxed);
+    }
+
+    pub fn reset(&self) {
+        self.in_l.store(0., Relaxed);
+        self.in_r.store(0., Relaxed);
+        self.out_l.store(0., Relaxed);
+        self.out_r.store(0., Relaxed);
+        for buf in [&self.dry_buffer, &self.wet_buffer] {
+            for cell in buf.iter() {
+                cell.store(0., Relaxed);
+            }
+        }
+        self.dry_pos.store(0, Relaxed);
+        self.wet_pos.store(0, Relaxed);
+        if let Ok(mut guard) = self.spectrum_consumer.try_lock() {
+            if let Some(cons) = guard.as_mut() {
+                while cons.pop().is_ok() {}
+            }
+        }
+        if let Ok(mut pending) = self.spectrum_pending.try_lock() {
+            pending.clear();
+        }
+    }
+
+    pub fn update_ui(&self, app: &slint_ui::AppWindow) {
+        app.set_in_level_l(self.in_l.load(Relaxed));
+        app.set_in_level_r(self.in_r.load(Relaxed));
+        app.set_out_level_l(self.out_l.load(Relaxed));
+        app.set_out_level_r(self.out_r.load(Relaxed));
+        app.set_bpm(self.bpm.load(Relaxed));
+
+        self.poll_spectrum(app);
+        self.poll_waveforms(app);
+    }
+
+    fn poll_spectrum(&self, app: &slint_ui::AppWindow) {
+        let Ok(mut guard) = self.spectrum_consumer.try_lock() else {
+            return;
+        };
+        let Some(cons) = guard.as_mut() else {
+            return;
+        };
+        let Ok(mut pending) = self.spectrum_pending.try_lock() else {
+            return;
+        };
+        while let Ok(v) = cons.pop() {
+            pending.push(v);
+        }
+        if pending.len() < 64 {
+            if pending.len() > 256 {
+                let excess = pending.len() - 128;
+                pending.drain(0..excess);
+            }
+            return;
+        }
+        if pending.len() > 64 {
+            let excess = pending.len() - 64;
+            pending.drain(0..excess);
+        }
+        let mut samples: Vec<f32> = pending.drain(..).collect();
+        debug_assert_eq!(samples.len(), 64);
+        for (s, w) in samples.iter_mut().zip(self.hann_window.iter()) {
+            *s *= *w;
+        }
+
+        let mut complex: Vec<Complex32> = samples
+            .into_iter()
+            .map(|s| Complex32::new(s, 0.0))
+            .collect();
+        if let Ok(mut scratch) = self.fft_scratch.try_lock() {
+            if scratch.len() == self.out_fft.get_inplace_scratch_len() {
+                self.out_fft
+                    .process_with_scratch(&mut complex, &mut scratch);
+            } else {
+                self.out_fft.process(&mut complex);
+            }
+        } else {
+            self.out_fft.process(&mut complex);
+        }
+        let spectrum: Vec<f32> = complex[0..32]
+            .iter()
+            .map(|c| {
+                let mag = c.norm();
+                let db = util::gain_to_db_fast((mag * 2.0).max(1e-5));
+                ((db + 80.0) / 80.0).clamp(0.0, 1.0)
+            })
+            .collect();
+        app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum)));
+    }
+
+    fn poll_waveforms(&self, app: &slint_ui::AppWindow) {
+        let dry_pos = self.dry_pos.load(Relaxed) % self.dry_buffer.len();
+        let wet_pos = self.wet_pos.load(Relaxed) % self.wet_buffer.len();
+        // TODO: No allocations
+        let mut dry = Vec::with_capacity(100);
+        let mut wet = Vec::with_capacity(100);
+        for i in 0..self.wet_buffer.len().min(self.dry_buffer.len()) {
+            let idx = (dry_pos + 1 + i) % self.dry_buffer.len();
+            dry.push(self.dry_buffer[idx].load(Relaxed));
+            let idx = (wet_pos + 1 + i) % self.wet_buffer.len();
+            wet.push(self.wet_buffer[idx].load(Relaxed));
+        }
+        app.set_dry_buffer(slint::ModelRc::new(slint::VecModel::from(dry)));
+        app.set_wet_buffer(slint::ModelRc::new(slint::VecModel::from(wet)));
     }
 }
 
@@ -55,9 +239,6 @@ pub struct Delax {
     peak_in_r: PeakFollower,
     peak_out_l: PeakFollower,
     peak_out_r: PeakFollower,
-    out_fft: Arc<dyn Fft<f32>>,
-    spectrum_producer: Option<rtrb::Producer<f32>>,
-    spectrum_consumer: Arc<std::sync::Mutex<Option<rtrb::Consumer<f32>>>>,
 }
 
 impl Default for Delax {
@@ -69,9 +250,6 @@ impl Default for Delax {
         let mut right_delay_engine = DelayEngine::new(default_buf, 44100.);
         right_delay_engine.set_delay_amount(0.);
 
-        let mut fft_planner = FftPlanner::new();
-        let fft_plan = fft_planner.plan_fft_forward(64);
-        let (prod, cons) = rtrb::RingBuffer::new(4096);
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
@@ -86,11 +264,51 @@ impl Default for Delax {
             peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
-            out_fft: fft_plan,
-            spectrum_producer: Some(prod),
-            spectrum_consumer: Arc::new(std::sync::Mutex::new(Some(cons))),
         }
     }
+}
+
+fn sync_params_to_ui(params: &DelaxParams, app: &slint_ui::AppWindow) {
+    use slint_ui::param_component::ParamComponent;
+    for (p_id, param_ptr, _) in params.param_map().iter() {
+        let val = unsafe { param_ptr.unmodulated_normalized_value() };
+        let display_val = unsafe { param_ptr.normalized_value_to_string(val, true) };
+        <slint_ui::AppWindow as ParamComponent<DelaxParams>>::set_param_from_host(
+            app,
+            p_id,
+            val,
+            SharedString::from(display_val),
+        );
+    }
+    // TODO: Very dirty way of generating the labels. This should be done together somewhere with the params
+    let count_l = params.delay_params.delay_note_l.value();
+    let div_l = params.delay_params.delay_div_l.value();
+    let factor_l = div_l.factor();
+    let suffix_l = div_l.suffix();
+    let display_l = {
+        let c = (count_l * 10.0).round() / 10.0;
+        if c.fract().abs() < 0.0005 {
+            format!("{} {}", c as i32, suffix_l)
+        } else {
+            format!("{:.1} {}", c, suffix_l)
+        }
+    };
+    app.set_timing_display_l(display_l.into());
+    app.set_timing_factor_l(factor_l);
+    let count_r = params.delay_params.delay_note_r.value();
+    let div_r = params.delay_params.delay_div_r.value();
+    let factor_r = div_r.factor();
+    let suffix_r = div_r.suffix();
+    let display_r = {
+        let c = (count_r * 10.0).round() / 10.0;
+        if c.fract().abs() < 0.0005 {
+            format!("{} {}", c as i32, suffix_r)
+        } else {
+            format!("{:.1} {}", c, suffix_r)
+        }
+    };
+    app.set_timing_display_r(display_r.into());
+    app.set_timing_factor_r(factor_r);
 }
 
 impl Plugin for Delax {
@@ -137,133 +355,27 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        use slint_ui::param_component::ParamComponent;
-
+        use crate::slint_ui::param_component::ParamComponent;
         Some(
             slint_ui::editor::UIEditor::new(
                 self.params.editor_state.clone(),
-                Arc::new({
+                {
                     let params = self.params.clone();
-                    move |event_tx| {
+                    Arc::new(move |event_tx| {
                         let app = slint_ui::AppWindow::new()?;
                         app.set_version(env!("CARGO_PKG_VERSION").into());
                         app.bind_param_changed(event_tx, params.clone());
                         Ok(app)
-                    }
-                }),
+                    })
+                },
                 self.params.clone(),
             )
             .on_frame({
                 let params = self.params.clone();
                 let input = self.input_data.clone();
-                let spectrum_consumer = self.spectrum_consumer.clone();
-                let fft = self.out_fft.clone();
-                let fft_scratch = std::sync::Arc::new(std::sync::Mutex::new(vec![
-                    Complex32::new(0.0, 0.0);
-                    fft.get_inplace_scratch_len()
-                ]));
-                let hann_window: Vec<f32> = (0..64)
-                    .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / 63.0).cos()))
-                    .collect();
-                let hann_window = std::sync::Arc::new(hann_window);
-                let spectrum_buffer =
-                    std::sync::Arc::new(std::sync::Mutex::new(Vec::<f32>::with_capacity(128)));
-                let spectrum_buffer_clone = spectrum_buffer.clone();
                 move |app| {
-                    for (p_id, param_ptr, _) in params.param_map().iter() {
-                        let val = unsafe { param_ptr.unmodulated_normalized_value() };
-                        let display_val =
-                            unsafe { param_ptr.normalized_value_to_string(val, true) };
-                        <slint_ui::AppWindow as ParamComponent<DelaxParams>>::set_param_from_host(
-                            app,
-                            p_id,
-                            val,
-                            SharedString::from(display_val),
-                        );
-                    }
-                    // TODO: Very dirty way if generating the labels. This should be done together somewhere with the params
-                    {
-                        let count_l = params.delay_params.delay_note_l.value();
-                        let div_l = params.delay_params.delay_div_l.value();
-                        let factor_l = div_l.factor();
-                        let suffix_l = div_l.suffix();
-                        let display_l = {
-                            let c = (count_l * 10.0).round() / 10.0;
-                            if c.fract().abs() < 0.0005 {
-                                format!("{} {}", c as i32, suffix_l)
-                            } else {
-                                format!("{:.1} {}", c, suffix_l)
-                            }
-                        };
-                        app.set_timing_display_l(display_l.into());
-                        app.set_timing_factor_l(factor_l);
-                        let count_r = params.delay_params.delay_note_r.value();
-                        let div_r = params.delay_params.delay_div_r.value();
-                        let factor_r = div_r.factor();
-                        let suffix_r = div_r.suffix();
-                        let display_r = {
-                            let c = (count_r * 10.0).round() / 10.0;
-                            if c.fract().abs() < 0.0005 {
-                                format!("{} {}", c as i32, suffix_r)
-                            } else {
-                                format!("{:.1} {}", c, suffix_r)
-                            }
-                        };
-                        app.set_timing_display_r(display_r.into());
-                        app.set_timing_factor_r(factor_r);
-                    }
-                    app.set_in_level_l(input.in_l.load(Relaxed));
-                    app.set_in_level_r(input.in_r.load(Relaxed));
-                    app.set_out_level_l(input.out_l.load(Relaxed));
-                    app.set_out_level_r(input.out_r.load(Relaxed));
-                    app.set_bpm(input.bpm.load(Relaxed));
-
-                    if let Ok(mut guard) = spectrum_consumer.try_lock() {
-                        if let Some(cons) = guard.as_mut() {
-                            if let Ok(mut buf) = spectrum_buffer_clone.try_lock() {
-                                while let Ok(v) = cons.pop() {
-                                    buf.push(v);
-                                }
-                                while buf.len() >= 64 {
-                                    let mut samples: Vec<f32> = buf.drain(0..64).collect();
-                                    for (s, w) in samples.iter_mut().zip(hann_window.iter()) {
-                                        *s *= *w;
-                                    }
-                                    let mut complex: Vec<Complex32> = samples
-                                        .into_iter()
-                                        .map(|s| Complex32::new(s, 0.0))
-                                        .collect();
-                                    if let Ok(mut scratch) = fft_scratch.try_lock() {
-                                        if scratch.len() == fft.get_inplace_scratch_len() {
-                                            fft.process_with_scratch(&mut complex, &mut scratch);
-                                        } else {
-                                            fft.process(&mut complex);
-                                        }
-                                    } else {
-                                        fft.process(&mut complex);
-                                    }
-                                    let spectrum: Vec<f32> = complex[0..32]
-                                        .iter()
-                                        .map(|c| {
-                                            let mag = c.norm();
-                                            let db = (1.0
-                                                + util::gain_to_db_fast(mag.max(1e-5)) / 100.0)
-                                                .clamp(0.0, 1.0);
-                                            db
-                                        })
-                                        .collect();
-                                    app.set_out_spectrum(slint::ModelRc::new(
-                                        slint::VecModel::from(spectrum),
-                                    ));
-                                }
-                                // Keep buffer bounded: drop oldest if host produced too fast
-                                if buf.len() > 256 {
-                                    let excess = buf.len() - 128;
-                                    buf.drain(0..excess);
-                                }
-                            }
-                        }
-                    }
+                    sync_params_to_ui(&params, app);
+                    input.update_ui(app);
                 }
             }),
         )
@@ -317,18 +429,7 @@ impl Plugin for Delax {
         self.peak_in_r.hold_counter = 0.;
         self.peak_out_l.hold_counter = 0.;
         self.peak_out_r.hold_counter = 0.;
-        self.input_data.in_l.store(0., Relaxed);
-        self.input_data.in_r.store(0., Relaxed);
-        self.input_data.out_l.store(0., Relaxed);
-        self.input_data.out_r.store(0., Relaxed);
-        for i in 0..32 {
-            self.input_data.out_spectrum[i].store(0., Relaxed);
-        }
-        if let Ok(mut guard) = self.spectrum_consumer.try_lock() {
-            if let Some(cons) = guard.as_mut() {
-                while cons.pop().is_ok() {}
-            }
-        }
+        self.input_data.reset();
     }
 
     fn process(
@@ -348,7 +449,10 @@ impl Plugin for Delax {
             let left_sample = channel_iter.next().unwrap();
             let right_sample = channel_iter.next().unwrap();
 
-            self.input_ui_send(*left_sample, *right_sample);
+            let dry_l = *left_sample;
+            let dry_r = *right_sample;
+            self.input_data.push_dry(dry_l, dry_r);
+            self.input_ui_send(dry_l, dry_r);
 
             // The output of the banks
             let pop_left = self
@@ -415,12 +519,12 @@ impl Plugin for Delax {
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
 
-            if let Some(prod) = self.spectrum_producer.as_mut() {
-                let mono = (*left_sample + *right_sample) * 0.5;
-                let _ = prod.push(mono); // drop if full — UI is slower (~60Hz vs 44.1kHz), backpressure is expected
-            }
+            let wet_l = *left_sample;
+            let wet_r = *right_sample;
+            self.input_data.push_wet(wet_l, wet_r);
+            self.input_data.push_spectrum((wet_l + wet_r) * 0.5);
 
-            self.output_ui_send(*left_sample, *right_sample);
+            self.output_ui_send(wet_l, wet_r);
         }
 
         ProcessStatus::Normal
@@ -429,7 +533,8 @@ impl Plugin for Delax {
 
 impl Delax {
     fn update_params(&mut self, transport: &Transport) {
-        self.input_data.bpm.store(transport.tempo.unwrap_or(120.) as f32, Relaxed);
+        self.input_data
+            .set_bpm(transport.tempo.unwrap_or(120.) as f32);
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
                 // Advance all smoothers so they stay in sync when switching modes.
@@ -573,7 +678,6 @@ impl Delax {
         let r_db = (1. + util::gain_to_db(r.abs()) / 100.).clamp(0., 1.5);
         let l = self.peak_in_l.process(l_db).clamp(0., 1.5);
         let r = self.peak_in_r.process(r_db).clamp(0., 1.5);
-
         self.input_data.in_l.store(l, Relaxed);
         self.input_data.in_r.store(r, Relaxed);
     }
@@ -583,7 +687,6 @@ impl Delax {
         let r_db = (1. + util::gain_to_db_fast(r.abs()) / 100.).clamp(0., 1.5);
         let l = self.peak_out_l.process(l_db).clamp(0., 1.5);
         let r = self.peak_out_r.process(r_db).clamp(0., 1.5);
-
         self.input_data.out_l.store(l, Relaxed);
         self.input_data.out_r.store(r, Relaxed);
     }
