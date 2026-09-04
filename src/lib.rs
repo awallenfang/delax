@@ -91,13 +91,11 @@ impl InputData {
         if dry_skip % self.skip != 0 {
             return;
         }
-        // Loop around
-        if dry_skip == self.skip {
-            self.dry_skip_counter.store(0, Relaxed);
-        }
         let mono = (l + r) * 0.5;
+        let db = (1. + util::gain_to_db(mono.abs()) / 100.).clamp(0., 1.5);
+
         let pos = self.dry_pos.fetch_add(1, Relaxed) % self.dry_buffer.len();
-        self.dry_buffer[pos].store(mono, Relaxed);
+        self.dry_buffer[pos].store(db, Relaxed);
     }
 
     pub fn push_wet(&self, l: f32, r: f32) {
@@ -106,14 +104,10 @@ impl InputData {
         if wet_skip % self.skip != 0 {
             return;
         }
-        // Loop around
-        if wet_skip == self.skip {
-            self.wet_skip_counter.store(0, Relaxed);
-        }
-        self.wet_skip_counter.store(0, Relaxed);
         let mono = (l + r) * 0.5;
+        let db = (1. + util::gain_to_db(mono.abs()) / 100.).clamp(0., 1.5);
         let pos = self.wet_pos.fetch_add(1, Relaxed) % self.wet_buffer.len();
-        self.wet_buffer[pos].store(mono, Relaxed);
+        self.wet_buffer[pos].store(db, Relaxed);
     }
 
     pub fn set_bpm(&self, bpm: f32) {
@@ -521,8 +515,8 @@ impl Plugin for Delax {
 
             let wet_l = *left_sample;
             let wet_r = *right_sample;
-            self.input_data.push_wet(wet_l, wet_r);
-            self.input_data.push_spectrum((wet_l + wet_r) * 0.5);
+            self.input_data.push_wet(pop_left, pop_right);
+            self.input_data.push_spectrum((pop_left * wetness + pop_right * wetness) * 0.5);
 
             self.output_ui_send(wet_l, wet_r);
         }

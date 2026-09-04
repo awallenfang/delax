@@ -124,7 +124,7 @@ impl Default for EngineParams {
             delay_note_l: FloatParam::new(
                 "Delay Note L",
                 2.,
-                FloatRange::Linear { min: 0., max: 32. },
+                FloatRange::Linear { min: 0., max: 16. },
             )
             .with_step_size(0.5)
             .with_smoother(SmoothingStyle::Linear(50.0))
@@ -134,7 +134,7 @@ impl Default for EngineParams {
             delay_note_r: FloatParam::new(
                 "Delay Note R",
                 2.,
-                FloatRange::Linear { min: 0., max: 32. },
+                FloatRange::Linear { min: 0., max: 16. },
             )
             .with_step_size(0.5)
             .with_smoother(SmoothingStyle::Linear(50.0))
