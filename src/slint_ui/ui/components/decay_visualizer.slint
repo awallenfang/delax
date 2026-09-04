@@ -6,17 +6,18 @@ export component DecayVisualizer inherits Rectangle {
     in-out property <bool> is_stereo: false;
     in-out property <float> feedback_l: 0.5;
     in-out property <float> feedback_r: 0.9;
-    in-out property <float> time_l: 0.1;
-    in-out property <float> time_r: 0.2;
-    height: 80px;
-    width: 200px;
+    // in fraction of 10000ms
+    in-out property <float> time_l: 0.01 * 10000.0;
+    in-out property <float> time_r: 0.02 * 10000.0;
+    in-out property <bool> bpm_bound: false;
+    property <length> second_width: 200px;
     background: Palette.background;
     for i in 32:
     Rectangle {
         // L
         Rectangle {
             property <length> h: pow(feedback_l, i) * root.height/2;
-            x: (root.width / 32) * i + time_l * i * 10px;
+            x: time_l / 1000.0 * i * second_width;
             y: root.height /2 - (root.height /2) * pow(feedback_l, i);
             width: 5px;
             height: h > 1px ? h : 0;
@@ -28,7 +29,7 @@ export component DecayVisualizer inherits Rectangle {
         if is_stereo:
         Rectangle {
             property <length> h: pow(feedback_r, i) * root.height/2;
-            x: (root.width / 32) * i + time_r * i * 10px;
+            x: (root.width / 32) * i + time_r / 1000.0 * i * second_width;
             y: root.height /2 ;
             width: 5px;
             height: h > 1px ? h : 0;
@@ -39,7 +40,7 @@ export component DecayVisualizer inherits Rectangle {
         if !is_stereo:
         Rectangle {
             property <length> h: pow(feedback_l, i) * root.height/2;
-            x: (root.width / 32) * i + time_l * i * 10px;
+            x: (root.width / 32) * i + time_l / 1000.0 * i * second_width;
             y: root.height /2 ;
             width: 5px;
             height: h > 1px ? h : 0;
