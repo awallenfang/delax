@@ -100,7 +100,7 @@ impl Default for EngineParams {
                 500.,
                 FloatRange::Skewed {
                     min: 0.,
-                    max: 10000.,
+                    max: 5000.,
                     factor: 0.5,
                 },
             )
@@ -113,7 +113,7 @@ impl Default for EngineParams {
                 500.,
                 FloatRange::Skewed {
                     min: 0.,
-                    max: 10000.,
+                    max: 5000.,
                     factor: 0.5,
                 },
             )
