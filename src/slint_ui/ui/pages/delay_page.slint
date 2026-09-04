@@ -42,6 +42,12 @@ export component DelayPage inherits Rectangle {
             feedback_r: ParamBus.read_val("feedback_r");
             time_l: ParamBus.read_val("delay_l");
             time_r: ParamBus.read_val("delay_r");
+            time_note_l: ParamBus.read_val("delay_note_l");
+            time_note_r: ParamBus.read_val("delay_note_r");
+            time_div_l: ParamBus.read_val("delay_div_l");
+            time_div_r: ParamBus.read_val("delay_div_r");
+            bpm_bound_l: root.is_bpm_bound_l;
+            bpm_bound_r: root.is_bpm_bound_r;
             is_stereo: root.is_stereo;
         }
         // Placeholder for buffer
