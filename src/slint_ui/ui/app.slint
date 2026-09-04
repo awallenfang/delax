@@ -3,7 +3,9 @@ import {
     VerticalBox,
     AboutSlint,
     CheckBox,
-    Switch, Spinner, HorizontalBox
+    Switch,
+    Spinner,
+    HorizontalBox,
 } from "std-widgets.slint";
 import { ParamKnob } from "components/param_knob.slint";
 import { ParamBus } from "events.slint";
@@ -17,8 +19,6 @@ import { EditorPage } from "pages/editor_page.slint";
 import { FilterPage } from "pages/filter_page.slint";
 import { DelayPage } from "pages/delay_page.slint";
 export { ParamBus }
-
-
 
 export component AppWindow inherits Window {
     in-out property <bool> is_stereo: false;
@@ -40,88 +40,106 @@ export component AppWindow inherits Window {
 
     private property <int> tab: 0;
 
-    background: Palette.background-light;
+    background: Palette.background;
     width: 550px;
     height: 350px;
     title: "Delax";
-    VerticalLayout {
-        alignment: LayoutAlignment.space-between;
 
-        VerticalLayout {
-            padding: 0px;
-            padding-left: 5px;
-            padding-right: 5px;
-            padding-top: 5px;
-            spacing: 10px;
-            alignment: LayoutAlignment.stretch;
+    main-content := VerticalLayout {
+        padding: 0px;
+        spacing: 4px;
+        vertical-stretch: 1;
+        alignment: stretch;
+
+        top-bar := HorizontalLayout {
+            padding: 5px;
+            spacing: 6px;
+            alignment: LayoutAlignment.space-between;
+
+            Image {
+                source: @image-url("assets/logo.svg");
+                width: 60px;
+                height: 22px;
+                horizontal-alignment: ImageHorizontalAlignment.left;
+                image-fit: ImageFit.contain;
+            }
+
             HorizontalLayout {
-                alignment: LayoutAlignment.space-between;
-                height: 30px;
-                padding: 0px;
-                Image {
-                    source: @image-url("assets/logo.svg");
-                    width: 60px;
-                    height: 30px;
-                    horizontal-alignment: ImageHorizontalAlignment.left;
-                    image-fit: ImageFit.contain;
-                }
-                HorizontalLayout {
-                    spacing: 5px;
-                    Button {
-                        checked: tab == 0;
-                        text: "Delay";
-                        clicked => {
-                            tab = 0;
-                        }
-                    }
-                    Button {
-                        checked: tab == 1;
-                        text: "Filter";
-                        clicked => {
-                            tab = 1;
-                        }
-                    }
-                    Button {
-                        checked: tab == 2;
-                        text: "Editor";
-                        clicked => {
-                            tab = 2;
-                        }
+                spacing: 5px;
+                alignment: LayoutAlignment.center;
+                Button {
+                    checked: tab == 0;
+                    text: "Delay";
+                    width: 52px;
+                    height: 24px;
+                    clicked => {
+                        tab = 0;
                     }
                 }
 
-                HorizontalLayout {
-                    spacing: 5px;
-                    VerticalLayout {
-                        VerticalLayout {
-                            PeakMeter {
-                                val <=> in_level_l;
-                            }
-                            PeakMeter {
-                                val <=> in_level_r;
-                            }
-                            spacing: 2px;
-                        }
-                        VerticalLayout {
-                            PeakMeter {
-                                val <=> out_level_l;
-                            }
-                            PeakMeter {
-                                val <=> out_level_r;
-                            }
-                            spacing: 2px;
-                        }
-                        alignment: space-between;
+                Button {
+                    checked: tab == 1;
+                    text: "Filter";
+                    width: 52px;
+                    height: 24px;
+                    clicked => {
+                        tab = 1;
                     }
-                    SpectrumAnalyzer {
-                        bins <=> root.out_spectrum;
-                        width: 100px;
+                }
+
+                Button {
+                    checked: tab == 2;
+                    text: "Editor";
+                    width: 52px;
+                    height: 24px;
+                    clicked => {
+                        tab = 2;
                     }
                 }
             }
 
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: LayoutAlignment.end;
+                VerticalLayout {
+                    spacing: 2px;
+                    alignment: LayoutAlignment.center;
+                    VerticalLayout {
+                        spacing: 2px;
+                        PeakMeter {
+                            val <=> in_level_l;
+                        }
+
+                        PeakMeter {
+                            val <=> in_level_r;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 2px;
+                        PeakMeter {
+                            val <=> out_level_l;
+                        }
+
+                        PeakMeter {
+                            val <=> out_level_r;
+                        }
+                    }
+                }
+
+                SpectrumAnalyzer {
+                    bins <=> root.out_spectrum;
+                    width: 100px;
+                }
+            }
+        }
+        pages := VerticalLayout {
+            padding: 0px;
+            vertical-stretch: 1;
+
             if tab == 0:
-            DelayPage {
+                DelayPage {
+                vertical-stretch: 1;
                 is-stereo <=> root.is_stereo;
                 is-bpm-bound-l <=> root.is_bpm_bound_l;
                 is-bpm-bound-r <=> root.is_bpm_bound_r;
@@ -130,51 +148,51 @@ export component AppWindow inherits Window {
                 timing-factor-l <=> root.timing_factor_l;
                 timing-factor-r <=> root.timing_factor_r;
             }
-
             if tab == 1:
-            FilterPage {
+                FilterPage {
+                vertical-stretch: 1;
                 is-filter-stereo <=> root.is_filter_stereo;
             }
-
             if tab == 2:
-            EditorPage {}
+                EditorPage {
+                vertical-stretch: 1;
+            }
             if tab == 3:
-            AboutPage {
+                AboutPage {
+                vertical-stretch: 1;
                 version <=> root.version;
             }
         }
-        HorizontalLayout {
+        bottom-bar := HorizontalLayout {
+            max-height: 20px;
+            spacing: 5px;
+            padding-left: 2px;
+            padding-right: 2px;
             alignment: LayoutAlignment.space-between;
-            padding-left: 5px;
+
             TouchArea {
-                Text  {
+                width: about-text.preferred-width;
+                about-text := Text {
                     text: "About";
-                    font-size: 10pt;
+                    font-size: 8pt;
+                    vertical-alignment: TextVerticalAlignment.center;
                     color: Palette.text-muted;
                 }
+
                 clicked => {
                     tab = 3;
                 }
                 mouse-cursor: pointer;
             }
-            HorizontalLayout {
-                alignment: LayoutAlignment.space-between;
-                Image {
-                    source: @image-url("assets/handle.svg");
-                    height: 20px;
-                    horizontal-alignment: ImageHorizontalAlignment.right;
-                    image-fit: ImageFit.contain;
-                }
-                /*
-                Image {
-                    source: @image-url("assets/resize_handle.svg");
-                    height: 20px;
-                    width: 20px;
-                    horizontal-alignment: ImageHorizontalAlignment.right;
-                    image-fit: ImageFit.contain;
-                }
-                */
+
+            Image {
+                source: @image-url("assets/handle.svg");
+                height: 20px;
+                width: 100px;
+                horizontal-alignment: ImageHorizontalAlignment.right;
+                image-fit: ImageFit.contain;
             }
         }
+
     }
 }
