@@ -37,6 +37,7 @@ export component AppWindow inherits Window {
     in-out property <float> out_level_r: 0.0;
     in-out property <[float]> out_spectrum;
     in-out property <string> version;
+    in-out property <float> bpm;
 
     private property <int> tab: 0;
 
@@ -147,6 +148,7 @@ export component AppWindow inherits Window {
                 timing-display-r <=> root.timing_display_r;
                 timing-factor-l <=> root.timing_factor_l;
                 timing-factor-r <=> root.timing_factor_r;
+                bpm <=> root.bpm;
             }
             if tab == 1:
                 FilterPage {

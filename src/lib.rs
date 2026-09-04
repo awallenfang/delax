@@ -25,6 +25,7 @@ pub struct InputData {
     pub out_l: AtomicF32,
     pub out_r: AtomicF32,
     pub out_spectrum: [AtomicF32; 32],
+    pub bpm: AtomicF32,
 }
 
 impl Default for InputData {
@@ -35,6 +36,7 @@ impl Default for InputData {
             out_l: AtomicF32::new(0.),
             out_r: AtomicF32::new(0.),
             out_spectrum: [const { AtomicF32::new(0.) }; 32],
+            bpm: AtomicF32::new(120.),
         }
     }
 }
@@ -214,6 +216,7 @@ impl Plugin for Delax {
                     app.set_in_level_r(input.in_r.load(Relaxed));
                     app.set_out_level_l(input.out_l.load(Relaxed));
                     app.set_out_level_r(input.out_r.load(Relaxed));
+                    app.set_bpm(input.bpm.load(Relaxed));
 
                     if let Ok(mut guard) = spectrum_consumer.try_lock() {
                         if let Some(cons) = guard.as_mut() {
@@ -426,6 +429,7 @@ impl Plugin for Delax {
 
 impl Delax {
     fn update_params(&mut self, transport: &Transport) {
+        self.input_data.bpm.store(transport.tempo.unwrap_or(120.) as f32, Relaxed);
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
                 // Advance all smoothers so they stay in sync when switching modes.
