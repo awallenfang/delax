@@ -1,6 +1,7 @@
 pub mod editor;
 pub mod param_component;
 mod window_state;
+pub mod connection;
 
 use crate::slint_ui::editor::UiEvent;
 use crate::slint_ui::param_component::ParamComponent;

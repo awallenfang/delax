@@ -11,6 +11,10 @@ use nice_plug::params::persist::PersistentField;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::sync::Arc;
+use nice_plug::prelude::AsyncExecutor;
+use crate::{slint_ui, sync_params_to_ui};
+use crate::params::DelaxParams;
+use crate::slint_ui::connection::InputData;
 
 pub const DEFAULT_WIDTH: u32 = 550;
 pub const DEFAULT_HEIGHT: u32 = 350;
@@ -254,4 +258,31 @@ impl<T: slint::ComponentHandle + ParamComponent<P> + 'static, P: Params> Editor 
     fn size(&self) -> PhysicalSize<u32> {
         self.state.physical_size()
     }
+}
+
+pub fn editor(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Option<UIEditor<slint_ui::AppWindow, DelaxParams>> {
+    use crate::slint_ui::param_component::ParamComponent;
+    Some(
+        UIEditor::new(
+            params.editor_state.clone(),
+            {
+                let params = params.clone();
+                Arc::new(move |event_tx| {
+                    let app = slint_ui::AppWindow::new()?;
+                    app.set_version(env!("CARGO_PKG_VERSION").into());
+                    app.bind_param_changed(event_tx, params.clone());
+                    Ok(app)
+                })
+            },
+            params.clone(),
+        )
+        .on_frame({
+            let params = params.clone();
+            let input = input_data.clone();
+            move |app| {
+                sync_params_to_ui(&params, app);
+                input.update_ui(app);
+            }
+        }),
+    )
 }

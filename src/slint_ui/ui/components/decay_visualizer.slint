@@ -23,9 +23,9 @@ export component DecayVisualizer inherits Rectangle {
     property <length> second_width: 100px;
     property <float> bpm_clamped: bpm < 0.1 ? 0.1 : (bpm > 10000.0 ? 10000.0 : bpm);
 
-    // ms skew to linear time: FloatRange::Skewed{0,10000,0.5} -> plain = pow(norm,2)*10000
-    property <float> time_ms_l: pow(time_l, 2.0) * 10000.0;
-    property <float> time_ms_r: pow(time_r, 2.0) * 10000.0;
+    // ms skew to linear time: FloatRange::Skewed{0,5000,0.5} -> plain = pow(norm,2)*10000
+    property <float> time_ms_l: pow(time_l, 2.0) * 5000.0;
+    property <float> time_ms_r: pow(time_r, 2.0) * 5000.0;
     property <float> time_s_l: time_ms_l / 1000.0;
     property <float> time_s_r: time_ms_r / 1000.0;
 
