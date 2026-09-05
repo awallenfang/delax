@@ -4,6 +4,10 @@ impl StereoFilter for DattorroReverb {
     fn process_stereo(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
         self.process_stereo(input_l, input_r)
     }
+
+    fn set_param(&mut self, param_id: &'static str, val: (f32, f32)) {
+        todo!()
+    }
 }
 
 /// A reverb network implemented from the Dattorro Reverb design paper:

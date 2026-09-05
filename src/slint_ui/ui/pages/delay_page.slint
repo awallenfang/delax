@@ -21,6 +21,7 @@ import { BufferVisualizer } from "../components/buffer_visualizer.slint";
 
 export component DelayPage inherits Rectangle {
     in-out property <bool> is_stereo: false;
+    in-out property <bool> is_ping_pong: false;
     in-out property <bool> is_bpm_bound_l: false;
     in-out property <bool> is_bpm_bound_r: false;
     in-out property <string> timing_display_l: "2 16th";
@@ -53,6 +54,7 @@ export component DelayPage inherits Rectangle {
             bpm_bound_l: root.is_bpm_bound_l;
             bpm_bound_r: root.is_bpm_bound_r;
             is_stereo: root.is_stereo;
+            is_ping_pong: root.is_ping_pong;
             bpm: root.bpm;
         }
 
@@ -93,7 +95,7 @@ export component DelayPage inherits Rectangle {
                         checked: open_page == 0;
                         Text {
                             text: "L";
-                            color: Palette.text;
+                            color: parent.checked ? Palette.text-dark : Palette.text;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -102,22 +104,47 @@ export component DelayPage inherits Rectangle {
                             open_page = 0;
                         }
                     }
+                    IconButton {
+                        width: 25px;
+                        height: 25px;
+                        checked: !root.is_stereo;
+                        Image {
+                            source: @image-url("../assets/mono.svg");
+                            image-fit: contain;
+                            colorize: parent.checked ? Palette.text-dark : Palette.text;
+                        }
 
-                    Text {
-                        text: "Mono";
-                        color: Palette.text;
-                        vertical-alignment: center;
+                        clicked => {
+                            ParamBus.param_changed("stereo", 0.0);
+                        }
                     }
+                    IconButton {
+                        width: 25px;
+                        height: 25px;
+                        checked: root.is_stereo && !is_ping_pong;
+                        Image {
+                            source: @image-url("../assets/stereo.svg");
+                            image-fit: contain;
+                            colorize: parent.checked ? Palette.text-dark : Palette.text;
+                        }
 
-                    ParamSwitch {
-                        param_name: "stereo";
-                        checked <=> root.is_stereo;
+                        clicked => {
+                            ParamBus.param_changed("stereo", 0.5);
+                        }
                     }
+                    IconButton {
+                        width: 25px;
+                        height: 25px;
+                        checked: root.is_ping_pong;
+                        Image {
+                            source: @image-url("../assets/pingpong.svg");
+                            image-fit: contain;
+                            colorize: parent.checked ? Palette.text-dark : Palette.text;
+                        }
 
-                    Text {
-                        text: "Stereo";
-                        color: Palette.text;
-                        vertical-alignment: center;
+                        clicked => {
+                            ParamBus.param_changed("stereo", 1.0);
+                        }
                     }
                     if is_stereo:
                     IconButton {
@@ -126,7 +153,7 @@ export component DelayPage inherits Rectangle {
                         checked: open_page == 1;
                         Text {
                             text: "R";
-                            color: Palette.text;
+                            color: parent.checked ? Palette.text-dark : Palette.text;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }

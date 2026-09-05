@@ -99,9 +99,13 @@ where
 
         // Keep boolean switch properties in sync with host (EnumParam normalizes to 0.0 / 1.0)
         if param_id == "stereo" {
-            let b = value > 0.5;
+            let b = value > 0.3;
+            let ping_pong = value > 0.8;
             if self.get_is_stereo() != b {
                 self.set_is_stereo(b);
+            }
+            if self.get_is_ping_pong() != ping_pong {
+                self.set_is_ping_pong(ping_pong);
             }
         } else if param_id == "svf_stereo_mode" {
             let b = value > 0.5;
