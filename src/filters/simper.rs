@@ -179,6 +179,7 @@ pub struct SimperSinSVF {
     g2: f32,
 
     mode: SVFFilterMode,
+    mix: f32,
 }
 
 impl SimperSinSVF {
@@ -223,6 +224,7 @@ impl SimperSinSVF {
             g1,
             g2,
             mode: SVFFilterMode::Low,
+            mix: 1.,
         }
     }
 
@@ -242,6 +244,10 @@ impl SimperSinSVF {
     pub fn set_res(&mut self, res: f32) {
         self.res = res;
         self.reinit();
+    }
+    /// Set the mixvalue
+    pub fn set_mix(&mut self, mix: f32) {
+        self.mix = mix;
     }
 
     pub fn set_mode(&mut self, mode: SVFFilterMode) {
@@ -331,7 +337,18 @@ impl SimperSinSVF {
 
 impl Filter for SimperSinSVF {
     fn process(&mut self, input: f32) -> f32 {
-        self.tick_sample(input)
+        self.tick_sample(input) * self.mix + input * (1. - self.mix)
+    }
+
+    fn set_param(&mut self, param: &'static str, val: f32) {
+        match param {
+            "cutoff" => self.set_cutoff(val),
+            "sample_rate" => self.set_sample_rate(val),
+            "res" => self.set_res(val),
+            "mix" => self.set_mix(val),
+            // "mode" => self.set_mode(val),
+            _ => {}
+        }
     }
 }
 

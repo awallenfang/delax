@@ -15,6 +15,8 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU8, AtomicU16, AtomicUsize};
 use slint_ui::connection::InputData;
+use crate::filter_pipeline::pipeline::FilterPipeline;
+
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
@@ -30,8 +32,6 @@ pub struct Delax {
     left_delay_engine: DelayEngine,
     right_delay_engine: DelayEngine,
     sample_rate: f32,
-    sin_svf_l: SimperSinSVF,
-    sin_svf_r: SimperSinSVF,
     input_sin_svf_l: SimperSinSVF,
     input_sin_svf_r: SimperSinSVF,
     input_data: Arc<InputData>,
@@ -39,6 +39,7 @@ pub struct Delax {
     peak_in_r: PeakFollower,
     peak_out_l: PeakFollower,
     peak_out_r: PeakFollower,
+    filter_pipeline: FilterPipeline,
 }
 
 impl Default for Delax {
@@ -50,13 +51,14 @@ impl Default for Delax {
         let mut right_delay_engine = DelayEngine::new(default_buf, 44100.);
         right_delay_engine.set_delay_amount(0.);
 
+        let mut filter_pipeline = FilterPipeline::new();
+        filter_pipeline.register_stereo_pair(Box::new(SimperSinSVF::new(44100.)), Box::new(SimperSinSVF::new(44100.)), "svf_filter");
+
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
             right_delay_engine,
             sample_rate: 44100.,
-            sin_svf_l: SimperSinSVF::new(44100.),
-            sin_svf_r: SimperSinSVF::new(44100.),
             input_sin_svf_l: SimperSinSVF::new(44100.),
             input_sin_svf_r: SimperSinSVF::new(44100.),
             input_data: Arc::new(InputData::default()),
@@ -64,6 +66,7 @@ impl Default for Delax {
             peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
+            filter_pipeline
         }
     }
 }
@@ -179,8 +182,7 @@ impl Plugin for Delax {
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
 
-        self.sin_svf_l.set_sample_rate(self.sample_rate);
-        self.sin_svf_r.set_sample_rate(self.sample_rate);
+        self.filter_pipeline.set_param("svf_filter", "sample_rate", self.sample_rate);
         self.input_sin_svf_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_r.set_sample_rate(self.sample_rate);
 
@@ -257,38 +259,28 @@ impl Plugin for Delax {
                     feedbacked_left = feedback_l * pop_left;
                     feedbacked_right = feedback_r * pop_right;
                 }
+                DelayMode::PingPong => {
+                    let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
+                    let feedback_r = self.params.delay_params.feedback_r.smoothed.next();
+                    feedbacked_left = feedback_r * pop_left;
+                    feedbacked_right = feedback_l * pop_right;
+                }
             }
 
             // ############ Filtering ###############
 
             // Run the signal through the filters
             let (filtered_output_l, filtered_output_r) =
-                self.run_filters(feedbacked_left, feedbacked_right);
-
-            // ########### Mixing #######
-            // Get the mix amount
-            let mix_left;
-            let mix_right;
-            match self.params.filter_params.svf_stereo_mode.value() {
-                filters::params::SVFStereoMode::Mono => {
-                    let mix = self.params.filter_params.svf_mix_l.smoothed.next();
-                    mix_left = mix;
-                    mix_right = mix;
-                }
-                filters::params::SVFStereoMode::Stereo => {
-                    mix_left = self.params.filter_params.svf_mix_l.smoothed.next();
-                    mix_right = self.params.filter_params.svf_mix_r.smoothed.next();
-                }
-            }
+                self.run_bank_filters(feedbacked_left, feedbacked_right);
 
             // Mix the feedback and filtered signal together
             // Make the filtered output more stable by using the feedback param as well
             let (input_left, input_right) = self.run_input_filters(*left_sample, *right_sample);
             self.left_delay_engine.write_sample(
-                input_left + (feedbacked_left * (1. - mix_left) + filtered_output_l * mix_left),
+                input_left + filtered_output_l,
             );
             self.right_delay_engine.write_sample(
-                input_right + (feedbacked_right * (1. - mix_right) + filtered_output_r * mix_right),
+                input_right + filtered_output_r,
             );
 
             // ########### Output ##########
@@ -348,7 +340,7 @@ impl Delax {
                 self.input_sin_svf_l.set_mode(mode);
                 self.input_sin_svf_r.set_mode(mode);
             }
-            DelayMode::Stereo => {
+            DelayMode::Stereo | DelayMode::PingPong => {
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
                 let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
                 let count_l = self.params.delay_params.delay_note_l.smoothed.next();
@@ -392,42 +384,39 @@ impl Delax {
             }
         }
 
-        // Plugin owns SVFs directly – no pipeline indirection.
         match self.params.filter_params.svf_stereo_mode.value() {
             filters::params::SVFStereoMode::Mono => {
                 // `smoothed.next()` once for mono – keeps L/R smoothers in sync.
                 let res = self.params.filter_params.svf_res_l.smoothed.next();
                 let cutoff = self.params.filter_params.svf_cutoff_l.smoothed.next();
                 let mode = self.params.filter_params.svf_filter_mode_l.value();
-                self.sin_svf_l.set_res(res);
-                self.sin_svf_r.set_res(res);
+                let mix = self.params.filter_params.svf_mix_l.value();
+                self.filter_pipeline.set_param("svf_filter", "res", res);
+                self.filter_pipeline.set_param("svf_filter", "cutoff", cutoff);
+                self.filter_pipeline.set_param("svf_filter", "mix", mix);
 
-                self.sin_svf_l.set_cutoff(cutoff);
-                self.sin_svf_r.set_cutoff(cutoff);
                 self.input_sin_svf_l.set_cutoff(cutoff);
                 self.input_sin_svf_r.set_cutoff(cutoff);
-                self.sin_svf_l.set_mode(mode);
-                self.sin_svf_r.set_mode(mode);
                 self.input_sin_svf_l.set_mode(mode);
                 self.input_sin_svf_r.set_mode(mode);
             }
             filters::params::SVFStereoMode::Stereo => {
                 let res_l = self.params.filter_params.svf_res_l.smoothed.next();
                 let res_r = self.params.filter_params.svf_res_r.smoothed.next();
-                self.sin_svf_l.set_res(res_l);
-                self.sin_svf_r.set_res(res_r);
-                self.input_sin_svf_l.set_res(res_l);
-                self.input_sin_svf_r.set_res(res_r);
                 let cutoff_l = self.params.filter_params.svf_cutoff_l.smoothed.next();
                 let cutoff_r = self.params.filter_params.svf_cutoff_r.smoothed.next();
-                self.sin_svf_l.set_cutoff(cutoff_l);
-                self.sin_svf_r.set_cutoff(cutoff_r);
-                self.input_sin_svf_l.set_cutoff(cutoff_l);
-                self.input_sin_svf_r.set_cutoff(cutoff_r);
+                let mix_l = self.params.filter_params.svf_mix_l.smoothed.next();
+                let mix_r = self.params.filter_params.svf_mix_r.smoothed.next();
                 let mode_l = self.params.filter_params.svf_filter_mode_l.value();
                 let mode_r = self.params.filter_params.svf_filter_mode_r.value();
-                self.sin_svf_l.set_mode(mode_l);
-                self.sin_svf_r.set_mode(mode_r);
+                self.filter_pipeline.set_param_stereo("svf_filter", "res", (res_l ,res_r));
+                self.filter_pipeline.set_param_stereo("svf_filter", "cutoff", (cutoff_l, cutoff_r));
+                self.filter_pipeline.set_param_stereo("svf_filter", "mix", (mix_l, mix_r));
+
+                self.input_sin_svf_l.set_res(res_l);
+                self.input_sin_svf_r.set_res(res_r);
+                self.input_sin_svf_l.set_cutoff(cutoff_l);
+                self.input_sin_svf_r.set_cutoff(cutoff_r);
                 self.input_sin_svf_l.set_mode(mode_l);
                 self.input_sin_svf_r.set_mode(mode_r);
             }
@@ -435,11 +424,8 @@ impl Delax {
     }
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.
-    fn run_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
-        use filters::Filter;
-        let l = self.sin_svf_l.process(input_l);
-        let r = self.sin_svf_r.process(input_r);
-        (l, r)
+    fn run_bank_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
+        self.filter_pipeline.process_stereo(input_l, input_r)
     }
 
     /// Run the filter chain on the input signal. This can probably be refactored out down the line. But for now it doesn't work correctly without

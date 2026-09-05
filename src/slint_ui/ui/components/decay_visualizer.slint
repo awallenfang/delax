@@ -3,46 +3,46 @@ import { ParamBus } from "../events.slint";
 import { Palette } from "./global.slint";
 
 export component DecayVisualizer inherits Rectangle {
+    in-out property <float> bpm: 120.0;
     in-out property <bool> is_stereo: false;
+    in-out property <bool> is_ping_pong: false;
     in-out property <float> feedback_l: 0.5;
     in-out property <float> feedback_r: 0.9;
+
     // Skewed [0,1] of 10s
     in-out property <float> time_l: 0.1;
     in-out property <float> time_r: 0.14142136;
+
     // [0,1] -> [0,32]
     in-out property <float> time_note_l: 0.0625;
     in-out property <float> time_note_r: 0.0625;
+
     // 0,0.333,0.666,1 -> factors 1,2,4,8
     in-out property <float> time_div_l: 0.0;
     in-out property <float> time_div_r: 0.0;
+
     in-out property <bool> bpm_bound_l: false;
     in-out property <bool> bpm_bound_r: false;
-    in-out property <float> bpm: 120.0;
 
-    // 100px = 1 second (canonical). 4 quarter notes = 240/bpm seconds -> 240/bpm * second_width
     property <length> second_width: 100px;
-    property <float> bpm_clamped: bpm < 0.1 ? 0.1 : (bpm > 10000.0 ? 10000.0 : bpm);
 
     // ms skew to linear time: FloatRange::Skewed{0,5000,0.5} -> plain = pow(norm,2)*10000
-    property <float> time_ms_l: pow(time_l, 2.0) * 5000.0;
-    property <float> time_ms_r: pow(time_r, 2.0) * 5000.0;
-    property <float> time_s_l: time_ms_l / 1000.0;
-    property <float> time_s_r: time_ms_r / 1000.0;
+    property <float> time_s_l: pow(time_l, 2.0) * 5.0;
+    property <float> time_s_r: pow(time_r, 2.0) * 5.0;
 
     // notes to seconds via BPM: delay_time_from_bpm_and_16th(total_16th,bpm) = total_16th*60/bpm/4*1000
-    property <float> note_plain_l: time_note_l * 16.0;
-    property <float> note_plain_r: time_note_r * 16.0;
     property <float> div_factor_l: time_div_l < 0.166 ? 1.0 : (time_div_l < 0.5 ? 2.0 : (time_div_l < 0.833 ? 4.0 : 8.0));
     property <float> div_factor_r: time_div_r < 0.166 ? 1.0 : (time_div_r < 0.5 ? 2.0 : (time_div_r < 0.833 ? 4.0 : 8.0));
-    property <float> total_16th_l: note_plain_l * div_factor_l;
-    property <float> total_16th_r: note_plain_r * div_factor_r;
-    property <float> time_ms_beats_l: total_16th_l * 60.0 / bpm_clamped / 4.0 * 1000.0;
-    property <float> time_ms_beats_r: total_16th_r * 60.0 / bpm_clamped / 4.0 * 1000.0;
-    property <float> time_s_beats_l: time_ms_beats_l / 1000.0;
-    property <float> time_s_beats_r: time_ms_beats_r / 1000.0;
 
-    property <length> bar_width: 240.0 / bpm_clamped * second_width;
-    property <length> quarter_width: 60.0 / bpm_clamped * second_width;
+    property <float> total_16th_l: time_note_l * 16.0 * div_factor_l;
+    property <float> total_16th_r: time_note_r * 16.0 * div_factor_r;
+
+    property <float> time_s_beats_l: total_16th_l * 60.0 / bpm / 4.0;
+    property <float> time_s_beats_r: total_16th_r * 60.0 / bpm / 4.0;
+
+    property <length> bar_width: 240.0 / bpm * second_width;
+
+    property <length> pp_double_step: ((bpm_bound_l ? time_s_beats_l : time_s_l) * second_width) + (bpm_bound_r ? time_s_beats_r : time_s_r) * second_width;
 
     background: Palette.background;
     clip: true;
@@ -68,24 +68,20 @@ export component DecayVisualizer inherits Rectangle {
         Rectangle {
             property <length> h: pow(feedback_l, i) * root.height / 2;
             x: (bpm_bound_l ? time_s_beats_l : time_s_l) * i * second_width;
-            y: root.height / 2 - (root.height / 2) * pow(feedback_l, i);
+            y: ((is_ping_pong && mod(i+1, 2) == 0) ? root.height / 2.0 : root.height / 2.0 - h) ;
             width: 5px;
             height: h > 1px ? h : 0;
             background: Palette.primary;
-            // border-top-left-radius: 2px;
-            // border-top-right-radius: 2px;
         }
 
         if is_stereo:
         Rectangle {
             property <length> h: pow(feedback_r, i) * root.height / 2;
             x: (bpm_bound_r ? time_s_beats_r : time_s_r) * i * second_width;
-            y: root.height / 2;
+            y: (is_ping_pong && mod(i+1, 2) == 0) ? root.height / 2.0 - h : root.height / 2.0;
             width: 5px;
             height: h > 1px ? h : 0;
             background: Palette.secondary;
-            // border-bottom-left-radius: 2px;
-            // border-bottom-right-radius: 2px;
         }
         if !is_stereo:
         Rectangle {
@@ -95,8 +91,6 @@ export component DecayVisualizer inherits Rectangle {
             width: 5px;
             height: h > 1px ? h : 0;
             background: Palette.secondary;
-            // border-bottom-left-radius: 2px;
-            // border-bottom-right-radius: 2px;
         }
     }
 }

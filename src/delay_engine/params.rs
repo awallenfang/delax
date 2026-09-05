@@ -4,6 +4,7 @@ use nice_plug::prelude::*;
 pub enum DelayMode {
     Mono,
     Stereo,
+    PingPong
 }
 
 #[derive(Enum, PartialEq, Clone, Copy)]

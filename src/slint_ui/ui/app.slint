@@ -22,6 +22,7 @@ export { ParamBus }
 
 export component AppWindow inherits Window {
     in-out property <bool> is_stereo: false;
+    in-out property <bool> is_ping_pong: false;
     in-out property <bool> is_filter_stereo: false;
     in-out property <bool> is_bpm_bound_l: false;
     in-out property <bool> is_bpm_bound_r: false;
@@ -58,7 +59,6 @@ export component AppWindow inherits Window {
             padding: 5px;
             spacing: 6px;
             alignment: LayoutAlignment.space-between;
-
             Image {
                 source: @image-url("assets/logo.svg");
                 width: 60px;
@@ -144,6 +144,7 @@ export component AppWindow inherits Window {
                 DelayPage {
                 vertical-stretch: 1;
                 is-stereo <=> root.is_stereo;
+                is-ping-pong <=> root.is_ping_pong;
                 is-bpm-bound-l <=> root.is_bpm_bound_l;
                 is-bpm-bound-r <=> root.is_bpm_bound_r;
                 timing-display-l <=> root.timing_display_l;
