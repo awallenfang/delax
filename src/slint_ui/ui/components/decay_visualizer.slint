@@ -65,25 +65,26 @@ export component DecayVisualizer inherits Rectangle {
         }
     }
     for i in 64: Rectangle {
+        if !is_ping_pong:
         Rectangle {
             property <length> h: pow(feedback_l, i) * root.height / 2;
             x: (bpm_bound_l ? time_s_beats_l : time_s_l) * i * second_width;
-            y: ((is_ping_pong && mod(i+1, 2) == 0) ? root.height / 2.0 : root.height / 2.0 - h) ;
+            y: root.height / 2.0 - h;
             width: 5px;
             height: h > 1px ? h : 0;
             background: Palette.primary;
         }
 
-        if is_stereo:
+        if !is_ping_pong && is_stereo:
         Rectangle {
             property <length> h: pow(feedback_r, i) * root.height / 2;
             x: (bpm_bound_r ? time_s_beats_r : time_s_r) * i * second_width;
-            y: (is_ping_pong && mod(i+1, 2) == 0) ? root.height / 2.0 - h : root.height / 2.0;
+            y: root.height / 2.0;
             width: 5px;
             height: h > 1px ? h : 0;
             background: Palette.secondary;
         }
-        if !is_stereo:
+        if !is_ping_pong && !is_stereo:
         Rectangle {
             property <length> h: pow(feedback_l, i) * root.height / 2;
             x: (bpm_bound_l ? time_s_beats_l : time_s_l) * i * second_width;
@@ -91,6 +92,49 @@ export component DecayVisualizer inherits Rectangle {
             width: 5px;
             height: h > 1px ? h : 0;
             background: Palette.secondary;
+        }
+
+        // Ping pong gets four lines of decays
+        for i in 16:
+        Rectangle {
+            // primary
+            if is_ping_pong:
+            Rectangle {
+                property <length> h: pow(feedback_l, i * 2) * root.height / 2;
+                background: Palette.primary;
+                width: 5px;
+                height: h > 1px ? h : 0;
+                y: root.height / 2.0;
+                x: i * pp_double_step;
+            }
+            if is_ping_pong:
+            Rectangle {
+                property <length> h: pow(feedback_l, i * 2 + 1) * root.height / 2;
+                background: Palette.primary;
+                width: 5px;
+                height: h > 1px ? h : 0;
+                y: root.height / 2.0 - h;
+                x: i * pp_double_step + (bpm_bound_l ? time_s_beats_l : time_s_l) * second_width;
+            }
+            // secondary
+            if is_ping_pong:
+            Rectangle {
+                property <length> h: pow(feedback_r, i * 2) * root.height / 2;
+                background: Palette.secondary;
+                width: 5px;
+                height: h > 1px ? h : 0;
+                y: root.height / 2.0 - h;
+                x: i * pp_double_step;
+            }
+            if is_ping_pong:
+            Rectangle {
+                property <length> h: pow(feedback_r, i * 2 + 1) * root.height / 2;
+                background: Palette.secondary;
+                width: 5px;
+                height: h > 1px ? h : 0;
+                y: root.height / 2.0;
+                x: i * pp_double_step + (bpm_bound_l ? time_s_beats_r : time_s_r) * second_width;
+            }
         }
     }
 }
