@@ -7,6 +7,8 @@ use nice_plug::util::window::hann;
 use rustfft::{Fft, FftPlanner};
 use rustfft::num_complex::Complex32;
 use crate::slint_ui;
+use crate::slint_ui::elements::{ElementId, GpuElementData};
+use crate::slint_ui::uniforms::SpectrumUniforms;
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -130,7 +132,7 @@ impl InputData {
         app.set_out_level_r(self.out_r.load(Relaxed));
         app.set_bpm(self.bpm.load(Relaxed));
 
-        self.poll_spectrum(app);
+        // self.poll_spectrum(app);
         self.poll_waveforms(app);
     }
 
@@ -193,6 +195,9 @@ impl InputData {
             let db = util::gain_to_db_fast((mag * 2.0).max(1e-5));
             *out = ((db + 80.0) / 80.0).clamp(0.0, 1.0);
         }
+        for i in 0..32 {
+            self.out_spectrum[i].store(spectrum[i], Relaxed);
+        }
         app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum.to_vec())));
     }
 
@@ -209,5 +214,29 @@ impl InputData {
         }
         app.set_dry_buffer(slint::ModelRc::new(slint::VecModel::from(dry.to_vec())));
         app.set_wet_buffer(slint::ModelRc::new(slint::VecModel::from(wet.to_vec())));
+    }
+
+    pub fn spectrum_uniform(&self) -> Option<SpectrumUniforms> {
+        let mut spectrum = [0.0f32; 32];
+        for i in 0..32 {
+            spectrum[i] = self.out_spectrum[i].load(Relaxed);
+        }
+        Some(SpectrumUniforms {
+            levels: spectrum,
+            // #ffd60a
+            primary_col: [1.0, 0.6724, 0.003, 1.0],
+        })
+    }
+}
+
+impl GpuElementData for InputData {
+    fn element_uniform(&self, element: ElementId) -> Option<Vec<u8>> {
+        match element {
+            ElementId::Spectrum => {
+                let uniforms = self.spectrum_uniform()?;
+                Some(bytemuck::bytes_of(&uniforms).to_vec())
+            }
+            _ => None,
+        }
     }
 }

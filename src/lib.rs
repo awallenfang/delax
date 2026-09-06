@@ -142,7 +142,7 @@ impl Plugin for Delax {
 
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
-    type Editor = slint_ui::editor::UIEditor<slint_ui::AppWindow, DelaxParams>;
+    type Editor = slint_ui::editor::UIEditor<slint_ui::AppWindow, DelaxParams, InputData>;
     // If the plugin can send or receive SysEx messages, it can define a type to wrap around those
     // messages here. The type implements the `SysExMessage` trait, which allows conversion to and
     // from plain byte buffers.

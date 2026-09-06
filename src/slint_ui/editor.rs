@@ -1,3 +1,4 @@
+use crate::slint_ui::elements::{GpuElementData, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::window_state::WindowState;
 use baseview::Window;
@@ -80,7 +81,7 @@ impl<'a> PersistentField<'a, EditorState> for Arc<EditorState> {
     }
 }
 
-pub struct UIEditor<T: slint::ComponentHandle + ParamComponent<P>, P: Params> {
+pub struct UIEditor<T: slint::ComponentHandle + ParamComponent<P>, P: Params, D> {
     state: Arc<EditorState>,
     builder: Arc<
         dyn Fn(crossbeam::channel::Sender<UiEvent>) -> Result<T, slint::PlatformError>
@@ -88,10 +89,11 @@ pub struct UIEditor<T: slint::ComponentHandle + ParamComponent<P>, P: Params> {
             + Sync,
     >,
     params: Arc<P>,
+    data: Arc<D>,
     frame_callback: Arc<dyn Fn(&T) + Send + Sync>,
 }
 
-impl<T: slint::ComponentHandle + ParamComponent<P>, P: Params> UIEditor<T, P> {
+impl<T: slint::ComponentHandle + ParamComponent<P>, P: Params, D: Send + Sync> UIEditor<T, P, D> {
     pub fn new(
         editor_state: Arc<EditorState>,
         builder: Arc<
@@ -100,12 +102,14 @@ impl<T: slint::ComponentHandle + ParamComponent<P>, P: Params> UIEditor<T, P> {
                 + Sync,
         >,
         params: Arc<P>,
+        data: Arc<D>
     ) -> Self {
         Self {
             state: editor_state,
             builder,
             params: params.clone(),
             frame_callback: Arc::new(|_| {}),
+            data: data.clone(),
         }
     }
 
@@ -162,7 +166,11 @@ impl EditorHandle for UIEditorHandle {
     fn param_modulation_changed(&self, _id: &str, _modulation_offset: f32) {}
 }
 
-impl<T: slint::ComponentHandle + ParamComponent<P> + 'static, P: Params> Editor for UIEditor<T, P> {
+impl<
+    T: slint::ComponentHandle + ParamComponent<P> + GpuImageSink + 'static,
+    P: Params,
+    D: GpuElementData + 'static,
+> Editor for UIEditor<T, P, D> {
     type Handle = UIEditorHandle;
 
     fn spawn(
@@ -216,6 +224,7 @@ impl<T: slint::ComponentHandle + ParamComponent<P> + 'static, P: Params> Editor 
         let state_ref = self.state.clone();
         let params_clone = self.params.clone();
         let callback_clone = self.frame_callback.clone();
+        let data_clone = self.data.clone();
 
         let window = Window::create_with_host(
             baseview::WindowSettings::new()
@@ -241,6 +250,7 @@ impl<T: slint::ComponentHandle + ParamComponent<P> + 'static, P: Params> Editor 
                     },
                     event_rx,
                     params_clone.clone(),
+                    data_clone.clone(),
                     callback_clone.clone(),
                 )?)
             },
@@ -260,7 +270,7 @@ impl<T: slint::ComponentHandle + ParamComponent<P> + 'static, P: Params> Editor 
     }
 }
 
-pub fn editor(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Option<UIEditor<slint_ui::AppWindow, DelaxParams>> {
+pub fn editor(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Option<UIEditor<slint_ui::AppWindow, DelaxParams, InputData>> {
     use crate::slint_ui::param_component::ParamComponent;
     Some(
         UIEditor::new(
@@ -275,6 +285,7 @@ pub fn editor(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Option<UI
                 })
             },
             params.clone(),
+            input_data.clone()
         )
         .on_frame({
             let params = params.clone();

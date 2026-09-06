@@ -18,6 +18,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use baseview::EventStatus::Ignored;
 use slint::private_unstable_api::re_exports::ApproxEq;
+use crate::slint_ui::elements::{GpuElementData, GpuImageSink};
+use crate::slint_ui::gpu_context::GpuContext;
+use crate::slint_ui::renderer::{ElementId, WgpuRegistry};
 
 struct SlintPlatform {
     current: RefCell<Option<Rc<dyn WindowAdapter>>>,
@@ -159,7 +162,7 @@ impl WindowAdapter for SlintAdapter {
 
 /// `WindowState` hosts Slint inside a `baseview` window.
 /// It is `!Send` / `!Sync` by design (contains `Rc`/`RefCell`) and must stay on the window thread.
-pub struct WindowState<T: slint::ComponentHandle, P: Params> {
+pub struct WindowState<T: slint::ComponentHandle, P: Params, D: Send+Sync> {
     gui_context: GuiContext,
     pub editor_state: Arc<EditorState>,
     adapter: Rc<SlintAdapter>,
@@ -167,8 +170,10 @@ pub struct WindowState<T: slint::ComponentHandle, P: Params> {
     window_context: baseview::WindowContext,
     event_rx: Receiver<UiEvent>,
     params: Arc<P>,
+    data: Arc<D>,
     last_pos: RefCell<LogicalPosition>,
     frame_callback: Arc<dyn Fn(&T) + Send + Sync>,
+    wgpu_registry: RefCell<WgpuRegistry>,
 }
 
 fn map_button(button: baseview::MouseButton) -> Option<platform::PointerEventButton> {
@@ -180,7 +185,7 @@ fn map_button(button: baseview::MouseButton) -> Option<platform::PointerEventBut
     }
 }
 
-impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
+impl<T: slint::ComponentHandle, P: Params, D: Send+Sync> WindowState<T, P, D> {
     pub fn new<F>(
         gui_context: GuiContext,
         editor_state: Arc<EditorState>,
@@ -190,6 +195,7 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
         builder: F,
         event_rx: Receiver<UiEvent>,
         params: Arc<P>,
+        data: Arc<D>,
         frame_callback: Arc<dyn Fn(&T) + Send + Sync>,
     ) -> Result<Self, PlatformError>
     where
@@ -216,7 +222,7 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
             .map_err(|e| PlatformError::Other(format!("Failed to build Slint component: {e}")))?;
         root.show()
             .map_err(|e| PlatformError::Other(format!("Failed to show Slint component: {e}")))?;
-
+        let gpu_context = GpuContext::ensure_initialized()?;
         Ok(Self {
             gui_context,
             editor_state,
@@ -227,15 +233,44 @@ impl<T: slint::ComponentHandle, P: Params> WindowState<T, P> {
             params,
             last_pos: RefCell::new(LogicalPosition::new(0.0, 0.0)),
             frame_callback,
+            wgpu_registry: RefCell::new(WgpuRegistry::new(gpu_context.clone())),
+            data,
         })
     }
 
     pub fn window(&self) -> &Window {
         &self.adapter.window
     }
+
+    fn render_gpu_elements(&self)
+    where
+        T: GpuImageSink,
+        D: GpuElementData,
+    {
+        let mut registry = self.wgpu_registry.borrow_mut();
+        let root = self.root.borrow();
+        for &element in ElementId::ALL {
+            let Some(spec) = element.spec() else {
+                continue;
+            };
+            registry.register(element, spec);
+            let Some(uniforms) = self.data.element_uniform(element) else {
+                continue;
+            };
+            let (w, h) = element.default_size();
+            let Some(image) = registry.render_to_image(element, w, h, &uniforms) else {
+                continue;
+            };
+            root.set_element_image(element, image);
+        }
+    }
 }
 
-impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for WindowState<T, P> {
+impl<
+    T: slint::ComponentHandle + GpuImageSink + 'static,
+    P: Params + 'static,
+    D: GpuElementData + 'static,
+> WindowHandler for WindowState<T, P, D> {
     fn on_frame(&self) -> Result<(), HandlerError> {
         if let Some(gl_ctx) = self.window_context.gl_context() {
             unsafe { gl_ctx.make_current()? };
@@ -300,7 +335,7 @@ impl<T: slint::ComponentHandle + 'static, P: Params + 'static> WindowHandler for
             let root = self.root.borrow();
             (self.frame_callback)(&root);
         }
-
+        self.render_gpu_elements();
         platform::update_timers_and_animations();
         self.window().request_redraw();
 
