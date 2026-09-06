@@ -2,8 +2,13 @@ pub mod editor;
 pub mod param_component;
 mod window_state;
 pub mod connection;
+pub mod elements;
+pub mod gpu_context;
+pub mod renderer;
+pub mod uniforms;
 
 use crate::slint_ui::editor::UiEvent;
+use crate::slint_ui::elements::{ElementId, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
 use nice_plug::params::Params;
 use slint::SharedString;
@@ -11,6 +16,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
 slint::include_modules!();
+
+impl GpuImageSink for AppWindow {
+    fn set_element_image(&self, element: ElementId, image: slint::Image) {
+        match element {
+            ElementId::Spectrum => self.set_spectrum_tex(image),
+            _ => {}
+        }
+    }
+}
 
 static PARAM_STORE: OnceLock<RwLock<HashMap<String, (f32, SharedString)>>> = OnceLock::new();
 
