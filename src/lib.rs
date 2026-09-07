@@ -1,4 +1,7 @@
 use crate::delay_engine::delay_time_from_bpm_and_16th;
+use crate::filter_pipeline::pipeline::FilterPipeline;
+use crate::slint_ui::editor::DelaxSlintHost;
+use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
     engine::{DelayEngine, DelayInterpolationMode},
     params::DelayMode,
@@ -6,28 +9,17 @@ use delay_engine::{
 use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
 use nice_plug::prelude::*;
-use nice_plug::util::window::hann;
 use params::DelaxParams;
-use rustfft::num_complex::Complex32;
-use rustfft::{Fft, FftPlanner};
-use slint::{PhysicalSize, SharedString};
+use slint::SharedString;
+use slint_ui::connection::InputData;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
-use std::sync::atomic::{AtomicU8, AtomicU16, AtomicUsize};
-use slint_ui::connection::InputData;
-use crate::filter_pipeline::pipeline::FilterPipeline;
-use crate::slint_ui::editor::DelaxSlintHost;
-use crate::slint_ui::plug_con::editor::SlintEditor;
 
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
 mod slint_ui;
-
-
-
-
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -54,7 +46,11 @@ impl Default for Delax {
         right_delay_engine.set_delay_amount(0.);
 
         let mut filter_pipeline = FilterPipeline::new();
-        filter_pipeline.register_stereo_pair(Box::new(SimperSinSVF::new(44100.)), Box::new(SimperSinSVF::new(44100.)), "svf_filter");
+        filter_pipeline.register_stereo_pair(
+            Box::new(SimperSinSVF::new(44100.)),
+            Box::new(SimperSinSVF::new(44100.)),
+            "svf_filter",
+        );
 
         Self {
             params: Arc::new(DelaxParams::default()),
@@ -68,53 +64,12 @@ impl Default for Delax {
             peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
-            filter_pipeline
+            filter_pipeline,
         }
     }
 }
 
-fn sync_params_to_ui(params: &DelaxParams, app: &slint_ui::AppWindow) {
-    use slint_ui::param_component::ParamComponent;
-    for (p_id, param_ptr, _) in params.param_map().iter() {
-        let val = unsafe { param_ptr.unmodulated_normalized_value() };
-        let display_val = unsafe { param_ptr.normalized_value_to_string(val, true) };
-        <slint_ui::AppWindow as ParamComponent<DelaxParams>>::set_param_from_host(
-            app,
-            p_id,
-            val,
-            SharedString::from(display_val),
-        );
-    }
-    // TODO: Very dirty way of generating the labels. This should be done together somewhere with the params
-    let count_l = params.delay_params.delay_note_l.value();
-    let div_l = params.delay_params.delay_div_l.value();
-    let factor_l = div_l.factor();
-    let suffix_l = div_l.suffix();
-    let display_l = {
-        let c = (count_l * 10.0).round() / 10.0;
-        if c.fract().abs() < 0.0005 {
-            format!("{} {}", c as i32, suffix_l)
-        } else {
-            format!("{:.1} {}", c, suffix_l)
-        }
-    };
-    app.set_timing_display_l(display_l.into());
-    app.set_timing_factor_l(factor_l);
-    let count_r = params.delay_params.delay_note_r.value();
-    let div_r = params.delay_params.delay_div_r.value();
-    let factor_r = div_r.factor();
-    let suffix_r = div_r.suffix();
-    let display_r = {
-        let c = (count_r * 10.0).round() / 10.0;
-        if c.fract().abs() < 0.0005 {
-            format!("{} {}", c as i32, suffix_r)
-        } else {
-            format!("{:.1} {}", c, suffix_r)
-        }
-    };
-    app.set_timing_display_r(display_r.into());
-    app.set_timing_factor_r(factor_r);
-}
+
 
 impl Plugin for Delax {
     const NAME: &'static str = "Delax";
@@ -160,9 +115,16 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        let host = Arc::new(DelaxSlintHost::new(self.params.clone(), self.input_data.clone()));
+        let host = Arc::new(DelaxSlintHost::new(
+            self.params.clone(),
+            self.input_data.clone(),
+        ));
         let (w, h) = self.params.editor_state.size();
-        Some(SlintEditor::new(host, baseview::dpi::PhysicalSize::new(w,h), self.params.editor_state.title.clone()))
+        Some(SlintEditor::new(
+            host,
+            baseview::dpi::PhysicalSize::new(w, h),
+            self.params.editor_state.title.clone(),
+        ))
     }
 
     fn activate(
@@ -185,7 +147,8 @@ impl Plugin for Delax {
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
 
-        self.filter_pipeline.set_param("svf_filter", "sample_rate", self.sample_rate);
+        self.filter_pipeline
+            .set_param("svf_filter", "sample_rate", self.sample_rate);
         self.input_sin_svf_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_r.set_sample_rate(self.sample_rate);
 
@@ -279,12 +242,10 @@ impl Plugin for Delax {
             // Mix the feedback and filtered signal together
             // Make the filtered output more stable by using the feedback param as well
             let (input_left, input_right) = self.run_input_filters(*left_sample, *right_sample);
-            self.left_delay_engine.write_sample(
-                input_left + filtered_output_l,
-            );
-            self.right_delay_engine.write_sample(
-                input_right + filtered_output_r,
-            );
+            self.left_delay_engine
+                .write_sample(input_left + filtered_output_l);
+            self.right_delay_engine
+                .write_sample(input_right + filtered_output_r);
 
             // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
@@ -295,7 +256,8 @@ impl Plugin for Delax {
             let wet_l = *left_sample;
             let wet_r = *right_sample;
             self.input_data.push_wet(pop_left, pop_right);
-            self.input_data.push_spectrum((pop_left * wetness + pop_right * wetness) * 0.5);
+            self.input_data
+                .push_spectrum((pop_left * wetness + pop_right * wetness) * 0.5);
 
             self.output_ui_send(wet_l, wet_r);
         }
@@ -395,7 +357,8 @@ impl Delax {
                 let mode = self.params.filter_params.svf_filter_mode_l.value();
                 let mix = self.params.filter_params.svf_mix_l.value();
                 self.filter_pipeline.set_param("svf_filter", "res", res);
-                self.filter_pipeline.set_param("svf_filter", "cutoff", cutoff);
+                self.filter_pipeline
+                    .set_param("svf_filter", "cutoff", cutoff);
                 self.filter_pipeline.set_param("svf_filter", "mix", mix);
 
                 self.input_sin_svf_l.set_cutoff(cutoff);
@@ -412,9 +375,12 @@ impl Delax {
                 let mix_r = self.params.filter_params.svf_mix_r.smoothed.next();
                 let mode_l = self.params.filter_params.svf_filter_mode_l.value();
                 let mode_r = self.params.filter_params.svf_filter_mode_r.value();
-                self.filter_pipeline.set_param_stereo("svf_filter", "res", (res_l ,res_r));
-                self.filter_pipeline.set_param_stereo("svf_filter", "cutoff", (cutoff_l, cutoff_r));
-                self.filter_pipeline.set_param_stereo("svf_filter", "mix", (mix_l, mix_r));
+                self.filter_pipeline
+                    .set_param_stereo("svf_filter", "res", (res_l, res_r));
+                self.filter_pipeline
+                    .set_param_stereo("svf_filter", "cutoff", (cutoff_l, cutoff_r));
+                self.filter_pipeline
+                    .set_param_stereo("svf_filter", "mix", (mix_l, mix_r));
 
                 self.input_sin_svf_l.set_res(res_l);
                 self.input_sin_svf_r.set_res(res_r);

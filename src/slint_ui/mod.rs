@@ -31,7 +31,7 @@ impl GpuImageSink for AppWindow {
 
 static PARAM_STORE: OnceLock<RwLock<HashMap<String, (f32, SharedString)>>> = OnceLock::new();
 
-fn param_store() -> &'static RwLock<HashMap<String, (f32, SharedString)>> {
+pub fn param_store() -> &'static RwLock<HashMap<String, (f32, SharedString)>> {
     PARAM_STORE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 

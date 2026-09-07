@@ -1,4 +1,3 @@
-use std::sync::{Arc, Mutex};
 
 use crate::filters::{Filter, StereoFilter};
 
