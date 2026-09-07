@@ -150,7 +150,7 @@ impl EditorHandle for SlintEditorHandle {
         new_size: PhysicalSize<u32>,
         window: &Self::Window,
     ) -> Option<PhysicalSize<u32>> {
-        todo!()
+        None
     }
 
     fn on_virtual_key_from_host(

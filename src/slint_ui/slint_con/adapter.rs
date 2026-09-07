@@ -2,6 +2,7 @@ use slint::platform::femtovg_renderer::{FemtoVGRenderer, OpenGLInterface};
 use slint::platform::{Renderer, WindowAdapter};
 use slint::{PhysicalSize, Window, WindowSize};
 use std::cell::{OnceCell, RefCell};
+use std::num::NonZeroU32;
 use std::rc::Rc;
 use baseview::WindowContext;
 use crate::slint_ui::slint_con::gl_interface::SlintOpenGLInterface;
@@ -26,6 +27,13 @@ impl SlintAdapter {
                 size: RefCell::new(PhysicalSize::new(width, height)),
             }
         })
+    }
+}
+
+impl SlintAdapter {
+    pub(crate) fn resize(&self, width: u32, height: u32) {
+        *self.size.borrow_mut() = PhysicalSize::new(width, height);
+        self.window.request_redraw();
     }
 }
 
