@@ -6,9 +6,10 @@ use nice_plug::util;
 use nice_plug::util::window::hann;
 use rustfft::{Fft, FftPlanner};
 use rustfft::num_complex::Complex32;
+use wgpu::Buffer;
 use crate::slint_ui;
 use crate::slint_ui::elements::{ElementId, GpuElementData};
-use crate::slint_ui::uniforms::SpectrumUniforms;
+use crate::slint_ui::uniforms::{BufferUniforms, SpectrumUniforms};
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -17,8 +18,8 @@ pub struct InputData {
     pub out_r: AtomicF32,
     pub out_spectrum: [AtomicF32; 32],
     pub bpm: AtomicF32,
-    pub dry_buffer: [AtomicF32; 100],
-    pub wet_buffer: [AtomicF32; 100],
+    pub dry_buffer: [AtomicF32; 128],
+    pub wet_buffer: [AtomicF32; 128],
     dry_skip_counter: AtomicU16,
     wet_skip_counter: AtomicU16,
     skip: u16,
@@ -48,8 +49,8 @@ impl Default for InputData {
             out_r: AtomicF32::new(0.),
             out_spectrum: [const { AtomicF32::new(0.) }; 32],
             bpm: AtomicF32::new(120.),
-            dry_buffer: [const { AtomicF32::new(0.) }; 100],
-            wet_buffer: [const { AtomicF32::new(0.) }; 100],
+            dry_buffer: [const { AtomicF32::new(0.) }; 128],
+            wet_buffer: [const { AtomicF32::new(0.) }; 128],
             dry_skip_counter: AtomicU16::new(0),
             wet_skip_counter: AtomicU16::new(0),
             skip: 1024,
@@ -204,8 +205,8 @@ impl InputData {
     fn poll_waveforms(&self, app: &slint_ui::AppWindow) {
         let dry_pos = self.dry_pos.load(Relaxed) % self.dry_buffer.len();
         let wet_pos = self.wet_pos.load(Relaxed) % self.wet_buffer.len();
-        let mut dry = [0.0f32; 100];
-        let mut wet = [0.0f32; 100];
+        let mut dry = [0.0f32; 128];
+        let mut wet = [0.0f32; 128];
         for i in 0..self.wet_buffer.len().min(self.dry_buffer.len()) {
             let idx = (dry_pos + 1 + i) % self.dry_buffer.len();
             dry[i] = self.dry_buffer[idx].load(Relaxed);
@@ -227,6 +228,22 @@ impl InputData {
             primary_col: [1.0, 0.6724, 0.003, 1.0],
         })
     }
+
+    pub fn buffer_uniform(&self) -> Option<BufferUniforms> {
+        let mut dry = [0.0f32; 128];
+        let mut wet = [0.0f32; 128];
+        for i in 0..128 {
+            dry[i] = self.dry_buffer[i].load(Relaxed);
+            wet[i] = self.wet_buffer[i].load(Relaxed);
+        }
+        Some(BufferUniforms {
+            levels_dry: dry,
+            levels_wet: wet,
+            // #ffd60a
+            primary_col: [1.0, 0.6724, 0.003, 1.0],
+            secondary_col: [0.0, 0.56, 0.73, 1.0],
+        })
+    }
 }
 
 impl GpuElementData for InputData {
@@ -234,6 +251,10 @@ impl GpuElementData for InputData {
         match element {
             ElementId::Spectrum => {
                 let uniforms = self.spectrum_uniform()?;
+                Some(bytemuck::bytes_of(&uniforms).to_vec())
+            },
+            ElementId::Buffer => {
+                let uniforms = self.buffer_uniform()?;
                 Some(bytemuck::bytes_of(&uniforms).to_vec())
             }
             _ => None,

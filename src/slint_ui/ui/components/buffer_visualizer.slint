@@ -3,6 +3,13 @@ import { ParamBus } from "../events.slint";
 import { Palette } from "./global.slint";
 
 export component BufferVisualizer inherits Rectangle {
+    in-out property <image> texture;
+    Image {
+        source:  root.texture;
+        width: 100%;
+        height: 100%;
+    }
+    /*
     in-out property <[float]> dry_buffer;
     in-out property <[float]> wet_buffer;
     in-out property <float> wetness;
@@ -22,5 +29,5 @@ export component BufferVisualizer inherits Rectangle {
         x: index * (root.width / wet_buffer.length);
         opacity: 0.5;
         background: Palette.secondary-muted;
-    }
+    }*/
 }
