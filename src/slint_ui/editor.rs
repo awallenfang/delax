@@ -184,7 +184,7 @@ impl SlintHost for DelaxSlintHost {
             match event {
                 UiEvent::ParamChanged { id, value } => {
                     let normalized = value.clamp(0.0, 1.0);
-                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                    for (param_id, ptr) in self.param_index.iter() {
                         if param_id == &id {
                             unsafe {
                                 gui_context.raw_begin_set_parameter(*ptr);
@@ -202,7 +202,7 @@ impl SlintHost for DelaxSlintHost {
                 } => {
                     use crate::delay_engine::params::NoteDiv;
                     let norm = NoteDiv::from_factor(factor).to_norm();
-                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                    for (param_id, ptr) in self.param_index.iter() {
                         if param_id == &div_id {
                             unsafe {
                                 gui_context.raw_begin_set_parameter(*ptr);
@@ -220,7 +220,7 @@ impl SlintHost for DelaxSlintHost {
                     }
                 }
                 UiEvent::SetTimeMode { bpm_id } => {
-                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                    for (param_id, ptr) in self.param_index.iter() {
                         if param_id == &bpm_id {
                             unsafe {
                                 gui_context.raw_begin_set_parameter(*ptr);

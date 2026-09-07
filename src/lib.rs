@@ -10,7 +10,6 @@ use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
 use nice_plug::prelude::*;
 use params::DelaxParams;
-use slint::SharedString;
 use slint_ui::connection::InputData;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;

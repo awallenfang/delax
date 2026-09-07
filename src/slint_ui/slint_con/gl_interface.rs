@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use slint::platform::femtovg_renderer::OpenGLInterface;
 use std::error::Error;
 use std::ffi::{c_void, CStr};
