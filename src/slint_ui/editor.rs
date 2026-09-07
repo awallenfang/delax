@@ -1,5 +1,5 @@
 use crate::params::DelaxParams;
-use crate::{slint_ui, sync_params_to_ui};
+use crate::slint_ui;
 use crate::slint_ui::connection::InputData;
 use crate::slint_ui::elements::{ElementId, GpuElementData, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
@@ -12,9 +12,14 @@ use nice_plug::context::gui::GuiContext;
 use nice_plug::params::Params;
 use nice_plug::params::persist::PersistentField;
 use serde::{Deserialize, Serialize};
-use slint::{ComponentHandle, PlatformError};
+use slint::{PlatformError, SharedString};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
+use nice_plug::prelude::ParamPtr;
+use crate::slint_ui::param_store;
+use slint::private_unstable_api::re_exports::ApproxEq;
+
 pub enum UiEvent {
     ParamChanged {
         id: String,
@@ -81,17 +86,84 @@ pub struct DelaxSlintHost {
     data: Arc<InputData>,
     event_tx: Sender<UiEvent>,
     event_rx: Receiver<UiEvent>,
+    param_index: HashMap<String, ParamPtr>
 }
 
 impl DelaxSlintHost {
     pub fn new(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Self {
         let (event_tx, event_rx) = unbounded();
+        let param_index = params.param_map().into_iter().map(|(id, ptr, _)| (id, ptr)).collect();
+
+        // Build param cache once on creation
+        for (p_id, param_ptr, _) in params.param_map().iter() {
+            let val = unsafe { param_ptr.unmodulated_normalized_value() };
+            let display_val =
+                unsafe {
+                    SharedString::from(param_ptr.normalized_value_to_string(val, true))
+                };
+
+            param_store().write().unwrap().insert(p_id.clone(), (val, display_val));
+        }
         Self {
             params,
             data: input_data,
             event_tx,
             event_rx,
+            param_index
         }
+    }
+
+    fn sync_params_to_ui(&self, app: &slint_ui::AppWindow) {
+        use slint_ui::param_component::ParamComponent;
+
+        for (p_id, param_ptr) in self.param_index.iter() {
+            let val = unsafe { param_ptr.unmodulated_normalized_value() };
+
+            // Check the cache before doing string stuff, set_param_from_host updates the cache
+            let cached = param_store().read().unwrap().get(p_id).cloned();
+            let display_val = match cached {
+                Some((cache_val, cache_display)) if cache_val.approx_eq(&val) => cache_display,
+                _ => unsafe {
+                    SharedString::from(param_ptr.normalized_value_to_string(val, true))
+                }
+            };
+            <slint_ui::AppWindow as ParamComponent<DelaxParams>>::set_param_from_host(
+                app,
+                p_id,
+                val,
+                display_val,
+            );
+        }
+
+        // TODO: Very dirty way of generating the labels. This should be done together somewhere with the params
+        let count_l = self.params.delay_params.delay_note_l.value();
+        let div_l = self.params.delay_params.delay_div_l.value();
+        let factor_l = div_l.factor();
+        let suffix_l = div_l.suffix();
+        let display_l = {
+            let c = (count_l * 10.0).round() / 10.0;
+            if c.fract().abs() < 0.0005 {
+                format!("{} {}", c as i32, suffix_l)
+            } else {
+                format!("{:.1} {}", c, suffix_l)
+            }
+        };
+        app.set_timing_display_l(display_l.into());
+        app.set_timing_factor_l(factor_l);
+        let count_r = self.params.delay_params.delay_note_r.value();
+        let div_r = self.params.delay_params.delay_div_r.value();
+        let factor_r = div_r.factor();
+        let suffix_r = div_r.suffix();
+        let display_r = {
+            let c = (count_r * 10.0).round() / 10.0;
+            if c.fract().abs() < 0.0005 {
+                format!("{} {}", c as i32, suffix_r)
+            } else {
+                format!("{:.1} {}", c, suffix_r)
+            }
+        };
+        app.set_timing_display_r(display_r.into());
+        app.set_timing_factor_r(factor_r);
     }
 }
 
@@ -164,7 +236,7 @@ impl SlintHost for DelaxSlintHost {
     }
 
     fn on_frame(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>) {
-        sync_params_to_ui(&self.params, app);
+        self.sync_params_to_ui(app);
         self.data.update_ui(app);
 
         let mut registry = wgpu.borrow_mut();

@@ -1,8 +1,7 @@
-use slint::platform::femtovg_renderer::{FemtoVGRenderer, OpenGLInterface};
+use slint::platform::femtovg_renderer::FemtoVGRenderer;
 use slint::platform::{Renderer, WindowAdapter};
-use slint::{PhysicalSize, Window, WindowSize};
+use slint::{PhysicalSize, Window};
 use std::cell::{OnceCell, RefCell};
-use std::num::NonZeroU32;
 use std::rc::Rc;
 use baseview::WindowContext;
 use crate::slint_ui::slint_con::gl_interface::SlintOpenGLInterface;
