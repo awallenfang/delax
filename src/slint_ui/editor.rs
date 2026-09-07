@@ -1,4 +1,4 @@
-use crate::slint_ui::elements::{GpuElementData, GpuImageSink};
+/*use crate::slint_ui::elements::{GpuElementData, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::window_state::WindowState;
 use baseview::Window;
@@ -296,4 +296,4 @@ pub fn editor(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Option<UI
             }
         }),
     )
-}
+}*/

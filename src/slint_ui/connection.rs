@@ -132,7 +132,7 @@ impl InputData {
         app.set_out_level_r(self.out_r.load(Relaxed));
         app.set_bpm(self.bpm.load(Relaxed));
 
-        // self.poll_spectrum(app);
+        self.poll_spectrum(app);
         self.poll_waveforms(app);
     }
 

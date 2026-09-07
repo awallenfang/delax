@@ -18,13 +18,12 @@ nice-plug = { git = "https://codeberg.org/RustAudio/nice-plug.git", default-feat
 crossbeam = "0.8.4"
 serde = { version = "1.0.228", features = ["derive"] }
 slint = { version="1.16.1" }
-baseview = { version = "0.3.1", features = ["opengl"] }
+baseview = { version = "0.3.1", features = ["opengl"]}
 rustfft = "6.4.1"
 rtrb = "0.4.0"
 wgpu = "30.0.1"
 bytemuck = "1.25.2"
 pollster = "0.4"
-
 [build-dependencies]
 slint-build = "1.16.1"
 
