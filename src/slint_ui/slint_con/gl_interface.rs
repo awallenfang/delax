@@ -11,9 +11,13 @@ pub(crate) struct SlintOpenGLInterface {
 
 impl SlintOpenGLInterface {
     pub(crate) fn new(window_context: WindowContext, width: u32, height: u32) -> Result<Self, String> {
-        Ok(Self {
+        let this = Self {
             ctx: RefCell::new(window_context)
-        })
+        };
+        unsafe {
+            this.ctx.borrow().gl_context().ok_or_else(|| "Failed to initialize window context")?.make_current().map_err(|e| e.to_string())?;
+        }
+        Ok(this)
     }
 }
 

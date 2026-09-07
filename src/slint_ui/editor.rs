@@ -1,25 +1,20 @@
-/*use crate::slint_ui::elements::{GpuElementData, GpuImageSink};
+use crate::params::DelaxParams;
+use crate::{slint_ui, sync_params_to_ui};
+use crate::slint_ui::connection::InputData;
+use crate::slint_ui::elements::{ElementId, GpuElementData, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
-use crate::slint_ui::window_state::WindowState;
-use baseview::Window;
+use crate::slint_ui::plug_con::host::SlintHost;
+use crate::slint_ui::renderer::WgpuRegistry;
 use baseview::dpi::PhysicalSize;
 use crossbeam::atomic::AtomicCell;
-use crossbeam::channel::unbounded;
+use crossbeam::channel::{Receiver, Sender, unbounded};
 use nice_plug::context::gui::GuiContext;
-use nice_plug::editor::{Editor, EditorHandle, HostMethods, ParentWindowHandle, SpawnedEditor};
 use nice_plug::params::Params;
 use nice_plug::params::persist::PersistentField;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use slint::{ComponentHandle, PlatformError};
+use std::cell::RefCell;
 use std::sync::Arc;
-use nice_plug::prelude::AsyncExecutor;
-use crate::{slint_ui, sync_params_to_ui};
-use crate::params::DelaxParams;
-use crate::slint_ui::connection::InputData;
-
-pub const DEFAULT_WIDTH: u32 = 550;
-pub const DEFAULT_HEIGHT: u32 = 350;
-
 pub enum UiEvent {
     ParamChanged {
         id: String,
@@ -44,7 +39,7 @@ pub struct EditorState {
 impl Default for EditorState {
     fn default() -> Self {
         Self {
-            editor_size: AtomicCell::new((DEFAULT_WIDTH, DEFAULT_HEIGHT)),
+            editor_size: AtomicCell::new((550, 350)),
             title: String::from("Audio Plugin"),
         }
     }
@@ -81,219 +76,109 @@ impl<'a> PersistentField<'a, EditorState> for Arc<EditorState> {
     }
 }
 
-pub struct UIEditor<T: slint::ComponentHandle + ParamComponent<P>, P: Params, D> {
-    state: Arc<EditorState>,
-    builder: Arc<
-        dyn Fn(crossbeam::channel::Sender<UiEvent>) -> Result<T, slint::PlatformError>
-            + Send
-            + Sync,
-    >,
-    params: Arc<P>,
-    data: Arc<D>,
-    frame_callback: Arc<dyn Fn(&T) + Send + Sync>,
+pub struct DelaxSlintHost {
+    params: Arc<DelaxParams>,
+    data: Arc<InputData>,
+    event_tx: Sender<UiEvent>,
+    event_rx: Receiver<UiEvent>,
 }
 
-impl<T: slint::ComponentHandle + ParamComponent<P>, P: Params, D: Send + Sync> UIEditor<T, P, D> {
-    pub fn new(
-        editor_state: Arc<EditorState>,
-        builder: Arc<
-            dyn Fn(crossbeam::channel::Sender<UiEvent>) -> Result<T, slint::PlatformError>
-                + Send
-                + Sync,
-        >,
-        params: Arc<P>,
-        data: Arc<D>
-    ) -> Self {
+impl DelaxSlintHost {
+    pub fn new(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Self {
+        let (event_tx, event_rx) = unbounded();
         Self {
-            state: editor_state,
-            builder,
-            params: params.clone(),
-            frame_callback: Arc::new(|_| {}),
-            data: data.clone(),
+            params,
+            data: input_data,
+            event_tx,
+            event_rx,
+        }
+    }
+}
+
+impl SlintHost for DelaxSlintHost {
+    type Component = slint_ui::AppWindow;
+
+    fn build(&self) -> Result<Self::Component, PlatformError> {
+        let app = slint_ui::AppWindow::new()?;
+        app.set_version(env!("CARGO_PKG_VERSION").into());
+        app.bind_param_changed(self.event_tx.clone(), self.params.clone());
+        //app.window().set_rendering_notifier(|state, api| {
+        //})
+        Ok(app)
+    }
+
+    fn on_event(&self, app: &Self::Component, gui_context: &GuiContext) {
+        while let Ok(event) = self.event_rx.try_recv() {
+            match event {
+                UiEvent::ParamChanged { id, value } => {
+                    let normalized = value.clamp(0.0, 1.0);
+                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                        if param_id == &id {
+                            unsafe {
+                                gui_context.raw_begin_set_parameter(*ptr);
+                                gui_context.raw_set_parameter_normalized(*ptr, normalized);
+                                gui_context.raw_end_set_parameter(*ptr);
+                            }
+                            break;
+                        }
+                    }
+                }
+                UiEvent::SetDiv {
+                    div_id,
+                    bpm_id,
+                    factor,
+                } => {
+                    use crate::delay_engine::params::NoteDiv;
+                    let norm = NoteDiv::from_factor(factor).to_norm();
+                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                        if param_id == &div_id {
+                            unsafe {
+                                gui_context.raw_begin_set_parameter(*ptr);
+                                gui_context.raw_set_parameter_normalized(*ptr, norm);
+                                gui_context.raw_end_set_parameter(*ptr);
+                            }
+                        }
+                        if param_id == &bpm_id {
+                            unsafe {
+                                gui_context.raw_begin_set_parameter(*ptr);
+                                gui_context.raw_set_parameter_normalized(*ptr, 1.0);
+                                gui_context.raw_end_set_parameter(*ptr);
+                            }
+                        }
+                    }
+                }
+                UiEvent::SetTimeMode { bpm_id } => {
+                    for (param_id, ptr, _) in self.params.param_map().iter() {
+                        if param_id == &bpm_id {
+                            unsafe {
+                                gui_context.raw_begin_set_parameter(*ptr);
+                                gui_context.raw_set_parameter_normalized(*ptr, 0.0);
+                                gui_context.raw_end_set_parameter(*ptr);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
-    pub fn on_frame<F>(mut self, callback: F) -> Self
-    where
-        F: Fn(&T) + 'static + Send + Sync,
-    {
-        self.frame_callback = Arc::new(callback);
-        self
+    fn on_frame(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>) {
+        sync_params_to_ui(&self.params, app);
+        self.data.update_ui(app);
+
+        let mut registry = wgpu.borrow_mut();
+        for &element in ElementId::ALL {
+            let Some(spec) = element.spec() else { continue; };
+            registry.register(element, spec);
+            let Some(uniforms) = self.data.element_uniform(element) else { continue; };
+            let (w, h) = element.default_size();
+            let Some(image) = registry.render_to_image(element, w, h, &uniforms) else { continue; };
+            app.set_element_image(element, image);
+        }
+    }
+
+    fn on_resized(&self, width: u32, height: u32) {
+        self.params.editor_state.editor_size.store((width, height));
     }
 }
-
-pub struct UIEditorHandle {
-    state: Arc<EditorState>,
-}
-
-impl EditorHandle for UIEditorHandle {
-    type Window = Window;
-    type Error = baseview::Error;
-
-    fn run_until_closed(window: Self::Window) -> Result<(), Self::Error> {
-        window.run_until_closed()
-    }
-
-    fn set_parent(
-        &self,
-        parent: ParentWindowHandle,
-        window: &Self::Window,
-    ) -> Result<(), Self::Error> {
-        window.set_parent(&parent)
-    }
-
-    fn show(&self, _window: &Self::Window) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn hide(&self, _window: &Self::Window) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn set_size(
-        &self,
-        new_size: PhysicalSize<u32>,
-        window: &Self::Window,
-    ) -> Result<(), Self::Error> {
-        window.resize(new_size)
-    }
-
-    fn host_main_thread_callback(&self, window: &Self::Window) {
-        window.host_main_thread_callback();
-    }
-
-    fn param_value_changed(&self, _id: &str, _normalized_value: f32) {}
-    fn param_modulation_changed(&self, _id: &str, _modulation_offset: f32) {}
-}
-
-impl<
-    T: slint::ComponentHandle + ParamComponent<P> + GpuImageSink + 'static,
-    P: Params,
-    D: GpuElementData + 'static,
-> Editor for UIEditor<T, P, D> {
-    type Handle = UIEditorHandle;
-
-    fn spawn(
-        &self,
-        parent: Option<ParentWindowHandle>,
-        wait_for_parent: bool,
-        fallback_scale_factor: Option<f64>,
-        gui_context: GuiContext,
-        host: Option<HostMethods>,
-    ) -> Result<SpawnedEditor<Self::Handle>, Box<dyn Error>> {
-        let (w, h) = self.state.size();
-
-        let host = {
-            struct HostCallbackAdapter {
-                host: Box<dyn nice_plug::editor::HostCallbacks>,
-            }
-            impl baseview::host::HostCallbacks for HostCallbackAdapter {
-                fn request_resize(
-                    &mut self,
-                    new_size: baseview::WindowSize,
-                ) -> Result<(), baseview::HandlerError> {
-                    self.host
-                        .request_resize(new_size.physical.into(), new_size.scale_factor)
-                        .map_err(baseview::HandlerError::from_boxed)
-                }
-                fn destroyed(&mut self) {
-                    self.host.destroyed();
-                }
-            }
-            struct HostMainThreadCallerAdapter {
-                host: Box<dyn nice_plug::editor::HostMainThreadCaller>,
-            }
-            impl baseview::host::HostMainThreadCaller for HostMainThreadCallerAdapter {
-                fn call_main_thread(&mut self) {
-                    self.host.call_main_thread();
-                }
-            }
-            host.map(|host| {
-                baseview::host::Host::new()
-                    .with_callbacks(HostCallbackAdapter {
-                        host: host.callbacks,
-                    })
-                    .with_main_thread(HostMainThreadCallerAdapter {
-                        host: host.main_thread_caller,
-                    })
-            })
-        };
-
-        let (event_tx, event_rx) = unbounded::<UiEvent>();
-        let builder = self.builder.clone();
-        let state_ref = self.state.clone();
-        let params_clone = self.params.clone();
-        let callback_clone = self.frame_callback.clone();
-        let data_clone = self.data.clone();
-
-        let window = Window::create_with_host(
-            baseview::WindowSettings::new()
-                .with_title(self.state.title.clone())
-                .with_size(PhysicalSize::new(w, h))
-                .with_parent(parent.as_ref())
-                .with_wait_for_parent(wait_for_parent)
-                .with_fallback_scale_factor(fallback_scale_factor)
-                .with_gl_config(Some(baseview::gl::GlConfig {
-                    version: (3, 2),
-                    ..Default::default()
-                })),
-            move |window_context: baseview::WindowContext| {
-                Ok(WindowState::new(
-                    gui_context,
-                    state_ref,
-                    window_context,
-                    w,
-                    h,
-                    {
-                        let builder = builder.clone();
-                        move || builder(event_tx.clone())
-                    },
-                    event_rx,
-                    params_clone.clone(),
-                    data_clone.clone(),
-                    callback_clone.clone(),
-                )?)
-            },
-            host,
-        )?;
-
-        Ok(SpawnedEditor {
-            handle: UIEditorHandle {
-                state: self.state.clone(),
-            },
-            window,
-        })
-    }
-
-    fn size(&self) -> PhysicalSize<u32> {
-        self.state.physical_size()
-    }
-}
-
-pub fn editor(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Option<UIEditor<slint_ui::AppWindow, DelaxParams, InputData>> {
-    use crate::slint_ui::param_component::ParamComponent;
-    Some(
-        UIEditor::new(
-            params.editor_state.clone(),
-            {
-                let params = params.clone();
-                Arc::new(move |event_tx| {
-                    let app = slint_ui::AppWindow::new()?;
-                    app.set_version(env!("CARGO_PKG_VERSION").into());
-                    app.bind_param_changed(event_tx, params.clone());
-                    Ok(app)
-                })
-            },
-            params.clone(),
-            input_data.clone()
-        )
-        .on_frame({
-            let params = params.clone();
-            let input = input_data.clone();
-            move |app| {
-                sync_params_to_ui(&params, app);
-                input.update_ui(app);
-            }
-        }),
-    )
-}*/
