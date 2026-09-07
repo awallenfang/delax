@@ -13,10 +13,9 @@ impl SlintOpenGLInterface {
         unsafe {
             gl.make_current().map_err(|e| e.to_string())?;
         }
-        let this = Self {
+        Ok(Self {
             gl
-        };
-        Ok(this)
+        })
     }
 }
 
