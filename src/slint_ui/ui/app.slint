@@ -38,6 +38,7 @@ export component AppWindow inherits Window {
     in-out property <float> out_level_r: 0.0;
     in-out property <[float]> out_spectrum;
     in-out property <image> spectrum_tex;
+    in-out property <image> buffer_tex;
     in-out property <[float]> dry_buffer;
     in-out property <[float]> wet_buffer;
     in-out property <string> version;
@@ -73,7 +74,7 @@ export component AppWindow inherits Window {
                 alignment: LayoutAlignment.center;
                 Button {
                     checked: tab == 0;
-                    text: "Delay";
+                    text: "hello";
                     width: 52px;
                     height: 24px;
                     clicked => {
@@ -132,7 +133,6 @@ export component AppWindow inherits Window {
                 }
 
                 SpectrumAnalyzer {
-                    bins <=> root.out_spectrum;
                     texture <=> root.spectrum_tex;
                     width: 100px;
                 }
@@ -144,6 +144,7 @@ export component AppWindow inherits Window {
 
             if tab == 0:
                 DelayPage {
+                buffer_tex: buffer_tex;
                 vertical-stretch: 1;
                 is-stereo <=> root.is_stereo;
                 is-ping-pong <=> root.is_ping_pong;

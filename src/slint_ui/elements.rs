@@ -1,5 +1,5 @@
 pub use crate::slint_ui::renderer::{ElementId, ElementSpec};
-use crate::slint_ui::uniforms::SpectrumUniforms;
+use crate::slint_ui::uniforms::{BufferUniforms, SpectrumUniforms};
 
 pub const SPECTRUM_SHADER: &str = include_str!("ui/shaders/spectrum.wgsl");
 
@@ -12,6 +12,10 @@ impl ElementId {
             ElementId::Spectrum => Some(ElementSpec {
                 shader: SPECTRUM_SHADER,
                 uniform_size: std::mem::size_of::<SpectrumUniforms>() as u32,
+            }),
+            ElementId::Buffer => Some(ElementSpec {
+                shader: SPECTRUM_SHADER,
+                uniform_size: std::mem::size_of::<BufferUniforms>() as u32,
             }),
             _ => None,
         }
