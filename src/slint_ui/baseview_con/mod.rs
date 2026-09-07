@@ -89,6 +89,7 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
         let h = new_size.physical.height;
         let root = self.root.borrow();
         (self.on_resize_closure)(&root, &self.wgpu_registry, w, h);
+        self.adapter.resize(w,h);
         Ok(())
     }
 
