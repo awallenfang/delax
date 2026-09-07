@@ -1,5 +1,4 @@
 pub mod param_component;
-mod window_state;
 pub mod connection;
 pub mod elements;
 pub mod gpu_context;
@@ -8,7 +7,7 @@ pub mod uniforms;
 mod baseview_con;
 mod slint_con;
 pub mod plug_con;
-pub mod editor_new;
+pub mod editor;
 
 use crate::slint_ui::elements::{ElementId, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
@@ -16,10 +15,11 @@ use nice_plug::params::Params;
 use slint::SharedString;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
-use crate::slint_ui::editor_new::UiEvent;
+use crate::slint_ui::editor::UiEvent;
 
 slint::include_modules!();
 
+// Impls on the slint window
 impl GpuImageSink for AppWindow {
     fn set_element_image(&self, element: ElementId, image: slint::Image) {
         match element {

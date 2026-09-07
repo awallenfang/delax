@@ -1,4 +1,4 @@
-use slint::platform::femtovg_renderer::{FemtoVGRenderer,};
+use slint::platform::femtovg_renderer::{FemtoVGRenderer, OpenGLInterface};
 use slint::platform::{Renderer, WindowAdapter};
 use slint::{PhysicalSize, Window, WindowSize};
 use std::cell::{OnceCell, RefCell};

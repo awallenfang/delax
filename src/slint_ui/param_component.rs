@@ -5,7 +5,7 @@ use std::sync::Arc;
 pub trait ParamComponent<P: Params + 'static> {
     fn bind_param_changed(
         &self,
-        tx: crossbeam::channel::Sender<crate::slint_ui::editor_new::UiEvent>,
+        tx: crossbeam::channel::Sender<crate::slint_ui::editor::UiEvent>,
         params: Arc<P>,
     );
 
