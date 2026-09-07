@@ -1,4 +1,4 @@
-use crate::slint_ui::editor::{EditorState, UiEvent};
+/*use crate::slint_ui::editor::{EditorState, UiEvent};
 use baseview::{
     Event, EventStatus, HandlerError, MouseEvent, ScrollDelta, WindowEvent, WindowHandler,
     WindowSize,
@@ -18,6 +18,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use baseview::EventStatus::Ignored;
 use slint::private_unstable_api::re_exports::ApproxEq;
+use crate::slint_ui::baseview_con::map_button;
 use crate::slint_ui::elements::{GpuElementData, GpuImageSink};
 use crate::slint_ui::gpu_context::GpuContext;
 use crate::slint_ui::renderer::{ElementId, WgpuRegistry};
@@ -33,7 +34,7 @@ impl SlintPlatform {
         }
     }
 
-    fn set_current(&self, adapter: Rc<dyn WindowAdapter>) {
+    pub fn set_current(&self, adapter: Rc<dyn WindowAdapter>) {
         *self.current.borrow_mut() = Some(adapter);
     }
 }
@@ -176,14 +177,7 @@ pub struct WindowState<T: slint::ComponentHandle, P: Params, D: Send+Sync> {
     wgpu_registry: RefCell<WgpuRegistry>,
 }
 
-fn map_button(button: baseview::MouseButton) -> Option<platform::PointerEventButton> {
-    match button {
-        baseview::MouseButton::Left => Some(platform::PointerEventButton::Left),
-        baseview::MouseButton::Right => Some(platform::PointerEventButton::Right),
-        baseview::MouseButton::Middle => Some(platform::PointerEventButton::Middle),
-        _ => None,
-    }
-}
+
 
 impl<T: slint::ComponentHandle, P: Params, D: Send+Sync> WindowState<T, P, D> {
     pub fn new<F>(
@@ -435,3 +429,4 @@ impl<
         }
     }
 }
+*/

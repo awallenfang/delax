@@ -1,4 +1,3 @@
-pub mod editor;
 pub mod param_component;
 mod window_state;
 pub mod connection;
@@ -6,14 +5,18 @@ pub mod elements;
 pub mod gpu_context;
 pub mod renderer;
 pub mod uniforms;
+mod baseview_con;
+mod slint_con;
+pub mod plug_con;
+pub mod editor_new;
 
-use crate::slint_ui::editor::UiEvent;
 use crate::slint_ui::elements::{ElementId, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
 use nice_plug::params::Params;
 use slint::SharedString;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
+use crate::slint_ui::editor_new::UiEvent;
 
 slint::include_modules!();
 

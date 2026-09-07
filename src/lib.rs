@@ -10,12 +10,14 @@ use nice_plug::util::window::hann;
 use params::DelaxParams;
 use rustfft::num_complex::Complex32;
 use rustfft::{Fft, FftPlanner};
-use slint::SharedString;
+use slint::{PhysicalSize, SharedString};
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU8, AtomicU16, AtomicUsize};
 use slint_ui::connection::InputData;
 use crate::filter_pipeline::pipeline::FilterPipeline;
+use crate::slint_ui::editor_new::DelaxSlintHost;
+use crate::slint_ui::plug_con::editor::SlintEditor;
 
 mod delay_engine;
 mod filter_pipeline;
@@ -142,7 +144,7 @@ impl Plugin for Delax {
 
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
-    type Editor = slint_ui::editor::UIEditor<slint_ui::AppWindow, DelaxParams, InputData>;
+    type Editor = SlintEditor<DelaxSlintHost>;
     // If the plugin can send or receive SysEx messages, it can define a type to wrap around those
     // messages here. The type implements the `SysExMessage` trait, which allows conversion to and
     // from plain byte buffers.
@@ -158,8 +160,9 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        use crate::slint_ui::editor::editor;
-        editor(self.params.clone(), self.input_data.clone())
+        let host = Arc::new(DelaxSlintHost::new(self.params.clone(), self.input_data.clone()));
+        let (w, h) = self.params.editor_state.size();
+        Some(SlintEditor::new(host, baseview::dpi::PhysicalSize::new(w,h), self.params.editor_state.title.clone()))
     }
 
     fn activate(

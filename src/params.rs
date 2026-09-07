@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nice_plug::prelude::*;
 
-use crate::slint_ui::editor::EditorState;
+use crate::slint_ui::editor_new::EditorState;
 use crate::{delay_engine::params::EngineParams, filters::params::FilterParams};
 
 #[derive(Params)]
