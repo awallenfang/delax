@@ -16,7 +16,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU8, AtomicU16, AtomicUsize};
 use slint_ui::connection::InputData;
 use crate::filter_pipeline::pipeline::FilterPipeline;
-use crate::slint_ui::editor_new::DelaxSlintHost;
+use crate::slint_ui::editor::DelaxSlintHost;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 
 mod delay_engine;
