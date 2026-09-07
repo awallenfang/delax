@@ -1,4 +1,3 @@
-use nice_plug::prelude::Enum;
 
 pub mod dattorro;
 pub mod params;
