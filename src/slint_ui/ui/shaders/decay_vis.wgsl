@@ -87,27 +87,24 @@ fn fs_main(@location(0) frag_position: vec2<f32>) -> @location(0) vec4<f32> {
     let ts_r = max(imm.time_s.y, 0.0);
 
     if (is_ping_pong) {
-        // Four interleaved decay lines over the double-step pattern.
         let step = ts_l + ts_r;
         for (var i: u32 = 0u; i < 16u; i++) {
             let base = (f32(i) * step) / visible_seconds;
-            if (base + (2.0 * step) / visible_seconds > 1.0) {
+            if (base > 1.0) {
                 break;
             }
-            let x0 = base;
-            let x1 = base + ts_l / visible_seconds;
+            let x_l = base + ts_l / visible_seconds;
+            let x_r = base + ts_r / visible_seconds;
 
             let d0 = pow(fb_l, f32(i * 2u)) * 0.5;
             let d1 = pow(fb_l, f32(i * 2u + 1u)) * 0.5;
             let d2 = pow(fb_r, f32(i * 2u)) * 0.5;
             let d3 = pow(fb_r, f32(i * 2u + 1u)) * 0.5;
 
-            // Alternate up/down around the midline, mirroring the old
-            // DecayVisualizer ping-pong layout.
-            add_bar(uv, x0, 0.5 + d0 * 0.5, half_w, d0, 0.8, imm.color_primary.rgb, &out_rgb, &out_a);
-            add_bar(uv, x1, 0.5 - d1 * 0.5, half_w, d1, 0.8, imm.color_primary.rgb, &out_rgb, &out_a);
-            add_bar(uv, x0, 0.5 - d2 * 0.5, half_w, d2, 0.8, imm.color_secondary.rgb, &out_rgb, &out_a);
-            add_bar(uv, x1, 0.5 + d3 * 0.5, half_w, d3, 0.8, imm.color_secondary.rgb, &out_rgb, &out_a);
+            add_bar(uv, base,     0.5 + d0 * 0.5, half_w, d0, 0.8, imm.color_primary.rgb, &out_rgb, &out_a);
+            add_bar(uv, x_l,      0.5 - d1 * 0.5, half_w, d1, 0.8, imm.color_primary.rgb, &out_rgb, &out_a);
+            add_bar(uv, base,     0.5 - d2 * 0.5, half_w, d2, 0.8, imm.color_secondary.rgb, &out_rgb, &out_a);
+            add_bar(uv, x_r,      0.5 + d3 * 0.5, half_w, d3, 0.8, imm.color_secondary.rgb, &out_rgb, &out_a);
         }
     } else {
         let num_echoes: u32 = 64u;

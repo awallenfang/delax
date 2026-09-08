@@ -22,8 +22,8 @@ fn vs_main(
 }
 
 struct BufferVisUniforms {
-    levels_dry: array<vec4<f32>, 16>,
-    levels_wet: array<vec4<f32>, 16>,
+    levels_dry: array<vec4<f32>, 32>,
+    levels_wet: array<vec4<f32>, 32>,
     primary_col: vec4<f32>,
     secondary_col: vec4<f32>,
     params: vec4<f32>,
@@ -51,7 +51,7 @@ fn sdf_box(p: vec2<f32>, b: vec2<f32>) -> f32 {
 fn fs_main(@location(0) frag_position: vec2<f32>) -> @location(0) vec4<f32> {
     let uv = frag_position * 0.5 + vec2<f32>(0.5);
 
-    let num_bars: f32 = 64.;
+    let num_bars: f32 = 128.;
     let gap_ratio: f32 = 0.2;
 
     let cell_x = uv.x * num_bars;
