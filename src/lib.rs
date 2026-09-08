@@ -13,12 +13,14 @@ use params::DelaxParams;
 use slint_ui::connection::InputData;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
+use crate::filters::dattorro::DattorroReverb;
 
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
 mod slint_ui;
+
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -51,6 +53,10 @@ impl Default for Delax {
             Box::new(SimperSinSVF::new(44100.)),
             Box::new(SimperSinSVF::new(44100.)),
             "svf_filter",
+        );
+        filter_pipeline.register_stereo(
+            Box::new(DattorroReverb::new(44100., 0.1, 0.1, 0.7, 0.8, 0.65, 0.8, 8., 1.1)),
+            "dattorro"
         );
 
         Self {
