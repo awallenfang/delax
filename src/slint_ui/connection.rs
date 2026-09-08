@@ -12,6 +12,8 @@ use crate::slint_ui;
 use crate::slint_ui::elements::{ElementId, GpuElementData};
 use crate::slint_ui::uniforms::{BufferUniforms, DecayUniforms, SpectrumUniforms};
 
+pub const UI_BUFFER_SIZE: usize = 128;
+
 pub struct InputData {
     pub in_l: AtomicF32,
     pub in_r: AtomicF32,
@@ -19,8 +21,8 @@ pub struct InputData {
     pub out_r: AtomicF32,
     pub out_spectrum: [AtomicF32; 32],
     pub bpm: AtomicF32,
-    pub dry_buffer: [AtomicF32; 64],
-    pub wet_buffer: [AtomicF32; 64],
+    pub dry_buffer: [AtomicF32; UI_BUFFER_SIZE],
+    pub wet_buffer: [AtomicF32; UI_BUFFER_SIZE],
     pub wetness: AtomicF32,
 
     // Decay visualizer state (mirrors the old CPU DecayVisualizer params).
@@ -62,8 +64,8 @@ impl Default for InputData {
             out_r: AtomicF32::new(0.),
             out_spectrum: [const { AtomicF32::new(0.) }; 32],
             bpm: AtomicF32::new(120.),
-            dry_buffer: [const { AtomicF32::new(0.) }; 64],
-            wet_buffer: [const { AtomicF32::new(0.) }; 64],
+            dry_buffer: [const { AtomicF32::new(0.) }; UI_BUFFER_SIZE],
+            wet_buffer: [const { AtomicF32::new(0.) }; UI_BUFFER_SIZE],
             dry_skip_counter: AtomicU16::new(0),
             wet_skip_counter: AtomicU16::new(0),
             skip: 1024,
@@ -249,8 +251,8 @@ impl InputData {
     fn poll_waveforms(&self, app: &slint_ui::AppWindow) {
         let dry_pos = self.dry_pos.load(Relaxed) % self.dry_buffer.len();
         let wet_pos = self.wet_pos.load(Relaxed) % self.wet_buffer.len();
-        let mut dry = [0.0f32; 64];
-        let mut wet = [0.0f32; 64];
+        let mut dry = [0.0f32; UI_BUFFER_SIZE];
+        let mut wet = [0.0f32; UI_BUFFER_SIZE];
         for i in 0..self.wet_buffer.len().min(self.dry_buffer.len()) {
             let idx = (dry_pos + 1 + i) % self.dry_buffer.len();
             dry[i] = self.dry_buffer[idx].load(Relaxed);
@@ -277,17 +279,17 @@ impl InputData {
         let dry_pos = self.dry_pos.load(Relaxed);
         let wet_pos = self.wet_pos.load(Relaxed);
 
-        let mut dry_flat = [0.0f32; 64];
-        let mut wet_flat = [0.0f32; 64];
-        for i in 0..64 {
-            dry_flat[i] = self.dry_buffer[(dry_pos + 1 + i) % 64].load(Relaxed);
-            wet_flat[i] = self.wet_buffer[(wet_pos + 1 + i) % 64].load(Relaxed);
+        let mut dry_flat = [0.0f32; UI_BUFFER_SIZE];
+        let mut wet_flat = [0.0f32; UI_BUFFER_SIZE];
+        for i in 0..UI_BUFFER_SIZE {
+            dry_flat[i] = self.dry_buffer[(dry_pos + 1 + i) % UI_BUFFER_SIZE].load(Relaxed);
+            wet_flat[i] = self.wet_buffer[(wet_pos + 1 + i) % UI_BUFFER_SIZE].load(Relaxed);
         }
 
         // Pack 32 flat floats into 8 vec4 chunks (8 * 4 = 32)
-        let mut levels_dry = [[0.0f32; 4]; 16];
-        let mut levels_wet = [[0.0f32; 4]; 16];
-        for i in 0..16 {
+        let mut levels_dry = [[0.0f32; 4]; UI_BUFFER_SIZE / 4];
+        let mut levels_wet = [[0.0f32; 4]; UI_BUFFER_SIZE / 4];
+        for i in 0..UI_BUFFER_SIZE / 4 {
             levels_dry[i] = [
                 dry_flat[i * 4],
                 dry_flat[i * 4 + 1],
