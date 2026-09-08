@@ -444,4 +444,36 @@ mod tests {
             "decay bars should produce visible pixels"
         );
     }
+
+    #[test]
+    fn decay_shader_ping_pong_with_independent_times_renders() {
+        let ctx = GpuContext::ensure_initialized().expect("headless Vulkan device");
+        let spec = ElementSpec {
+            shader: DECAY_SHADER,
+            uniform_size: std::mem::size_of::<DecayUniforms>() as u32,
+        };
+        let uniforms = DecayUniforms {
+            feedback: [0.9, 0.7],
+            // Left/right times differ; the double step alone exceeds the
+            // visible window, which must not suppress the first pair.
+            time_s: [0.6, 0.3],
+            flags: [1.0, 1.0, 0.0, 0.0], // is_stereo + is_ping_pong
+            color_primary: [1.0, 0.839, 0.039, 1.0],
+            color_secondary: [0.0, 0.561, 0.729, 1.0],
+        };
+
+        let mut registry = WgpuRegistry::new(ctx.clone());
+        registry.register(ElementId::Decay, spec);
+        let img = registry
+            .render_to_image(ElementId::Decay, 110, 60, bytemuck::bytes_of(&uniforms))
+            .expect("decay ping-pong render + readback should succeed");
+
+        let pixel_buffer = img.to_rgba8().unwrap();
+        assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (110, 60));
+        let bytes = pixel_buffer.as_bytes();
+        assert!(
+            bytes.chunks_exact(4).any(|px| px[3] > 0),
+            "ping-pong pairs should produce visible pixels"
+        );
+    }
 }
