@@ -1,30 +1,72 @@
 use super::{StereoFilter, flush_denormal};
 
+const INPUT_DIFFUSOR_SIZE_1: usize = 142;
+const INPUT_DIFFUSOR_SIZE_2: usize = 107;
+const INPUT_DIFFUSOR_SIZE_3: usize = 379;
+const INPUT_DIFFUSOR_SIZE_4: usize = 277;
+const INPUT_DIFFUSOR_SIZE_L: usize = 1800;
+const INPUT_DIFFUSOR_SIZE_R: usize = 2656;
+const DECAY_DIFFUSOR_SIZE_L: usize = 672;
+const DECAY_DIFFUSOR_SIZE_R: usize = 908;
+const DELAY_LINE_SIZE_L_1: usize = 4453;
+const DELAY_LINE_SIZE_L_2: usize = 3720;
+const DELAY_LINE_SIZE_R_1: usize = 4217;
+const DELAY_LINE_SIZE_R_2: usize = 3163;
+
+const TAP_LEFT_1: usize = 266;
+const TAP_LEFT_2: usize = 2974;
+const TAP_LEFT_3: usize = 1913;
+const TAP_LEFT_4: usize = 1996;
+const TAP_LEFT_5: usize = 1990;
+const TAP_LEFT_6: usize = 187;
+const TAP_LEFT_7: usize = 1066;
+
+const TAP_RIGHT_1: usize = 353;
+const TAP_RIGHT_2: usize = 3627;
+const TAP_RIGHT_3: usize = 1228;
+const TAP_RIGHT_4: usize = 2673;
+const TAP_RIGHT_5: usize = 2111;
+const TAP_RIGHT_6: usize = 335;
+const TAP_RIGHT_7: usize = 121;
+
+const MAX_SIZE: f32 = 2.;
+
 impl StereoFilter for DattorroReverb {
     fn process_stereo(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
         self.process_stereo(input_l, input_r)
     }
 
     fn set_param(&mut self, param_id: &'static str, val: (f32, f32)) {
-        todo!()
+        match param_id {
+            "sample_rate" => self.set_sample_rate(val.0),
+            "decay" => self.set_decay(val.0),
+            "pre_delay" => self.set_pre_delay(val.0),
+            "damping" => self.set_damping(val.0),
+            "brightness" => self.set_brightness(val.0),
+            "input_smear" => self.set_input_smear(val.0),
+            "tank_smear" => self.set_tank_smear(val.0),
+            "lushness" => self.set_lushness(val.0),
+            "size" => self.set_size(val.0),
+            _ => ()
+        }
     }
 }
-
 /// A reverb network implemented from the Dattorro Reverb design paper:
 /// https://ccrma.stanford.edu/~dattorro/EffectDesignPart1.pdf
 ///
 /// Usage:
 /// ```
-/// use delax::filters::dattorro::DattorroReverb;
+/// use revvex::filters::dattorro::DattorroReverb;
 ///
-/// let mut reverb = DattorroReverb::new(44100., 0.5);
+/// let mut reverb = DattorroReverb::new(44100., 0.5, 0.1, 0.7, 0.8, 0.65, 0.8, 8., 2.);
 /// let (l, r) = reverb.process_stereo(0.5, 0.5);
 ///
 /// ```
 #[derive(Clone)]
 pub struct DattorroReverb {
-    pre_delay: DelayLine,
-    bandwith_damper: Damper,
+    sample_rate: f32,
+    pre_delay_line: DelayLine,
+    bandwidth_damper: Damper,
     input_diffusor_1: InputDiffusor,
     input_diffusor_2: InputDiffusor,
     input_diffusor_3: InputDiffusor,
@@ -39,51 +81,103 @@ pub struct DattorroReverb {
     delay_line_2_l: DelayLine,
     delay_line_1_r: DelayLine,
     delay_line_2_r: DelayLine,
-    recursive_l: f32,
-    recursive_r: f32,
+    // Parameters
+    brightness: f32,
+    pre_delay: f32,
     decay: f32,
-    tap_l_1: DelayLine,
-    tap_l_2: DelayLine,
-    tap_l_3: DelayLine,
-    tap_r_1: DelayLine,
-    tap_r_2: DelayLine,
-    tap_r_3: DelayLine,
-    gain: f32,
+    input_smear: f32,
+    tank_smear: f32,
+    damping: f32,
+    lushness: f32,
+    size: f32,
 }
 
 impl DattorroReverb {
     /// Create a new reverb instance with a sample rate and an initial decay factor
-    pub fn new(sample_rate: f32, decay: f32) -> Self {
-        let mut pre_delay = DelayLine::new(sample_rate as usize);
-        pre_delay.set_delay(0);
+    pub fn new(
+        sample_rate: f32,
+        decay: f32,
+        pre_delay: f32,
+        damping: f32,
+        mut brightness: f32,
+        input_smear: f32,
+        tank_smear: f32,
+        lushness: f32,
+        size: f32,
+    ) -> Self {
+        if brightness > 0.95 {
+            brightness = 0.95;
+        }
+        let mut pre_delay_line =
+            DelayLine::new((sample_rate * MAX_SIZE) as usize, (pre_delay * sample_rate) as usize);
+        pre_delay_line.set_delay(pre_delay, sample_rate);
 
         Self {
+            sample_rate,
+            pre_delay_line,
+            bandwidth_damper: Damper::new(brightness),
+            input_diffusor_1: InputDiffusor::new(
+                (INPUT_DIFFUSOR_SIZE_1 as f32 * size) as usize,
+                input_smear,
+            ),
+            input_diffusor_2: InputDiffusor::new(
+                (INPUT_DIFFUSOR_SIZE_2 as f32 * size) as usize,
+                input_smear,
+            ),
+            input_diffusor_3: InputDiffusor::new(
+                (INPUT_DIFFUSOR_SIZE_3 as f32 * size) as usize,
+                input_smear,
+            ),
+            input_diffusor_4: InputDiffusor::new(
+                (INPUT_DIFFUSOR_SIZE_4 as f32 * size) as usize,
+                input_smear,
+            ),
+            decay_diffusor_l: DecayDiffusor::new(
+                sample_rate,
+                (DECAY_DIFFUSOR_SIZE_L as f32 * size) as usize,
+                tank_smear,
+                lushness,
+            ),
+            decay_diffusor_r: DecayDiffusor::new(
+                sample_rate,
+                (DECAY_DIFFUSOR_SIZE_R as f32 * size) as usize,
+                tank_smear,
+                lushness,
+            ),
+            input_diffusor_l: InputDiffusor::new(
+                (INPUT_DIFFUSOR_SIZE_L as f32 * size) as usize,
+                input_smear,
+            ),
+            input_diffusor_r: InputDiffusor::new(
+                (INPUT_DIFFUSOR_SIZE_R as f32 * size) as usize,
+                input_smear,
+            ),
+            damper_l: Damper::new(damping),
+            damper_r: Damper::new(damping),
+            delay_line_1_l: DelayLine::new(
+                (DELAY_LINE_SIZE_L_1 as f32 * MAX_SIZE) as usize,
+                (DELAY_LINE_SIZE_L_1 as f32 * size) as usize,
+            ),
+            delay_line_2_l: DelayLine::new(
+                (DELAY_LINE_SIZE_L_2 as f32 * MAX_SIZE) as usize,
+                (DELAY_LINE_SIZE_L_2 as f32 * size) as usize,
+            ),
+            delay_line_1_r: DelayLine::new(
+                (DELAY_LINE_SIZE_R_1 as f32 * MAX_SIZE) as usize,
+                (DELAY_LINE_SIZE_R_1 as f32 * size) as usize,
+            ),
+            delay_line_2_r: DelayLine::new(
+                (DELAY_LINE_SIZE_R_2 as f32 * MAX_SIZE) as usize,
+                (DELAY_LINE_SIZE_R_2 as f32 * size) as usize,
+            ),
+            brightness,
             pre_delay,
-            bandwith_damper: Damper::new(0.9995),
-            input_diffusor_1: InputDiffusor::new(142, 0.75),
-            input_diffusor_2: InputDiffusor::new(107, 0.75),
-            input_diffusor_3: InputDiffusor::new(379, 0.625),
-            input_diffusor_4: InputDiffusor::new(277, 0.625),
-            decay_diffusor_l: DecayDiffusor::new(sample_rate, 672, 0.75),
-            decay_diffusor_r: DecayDiffusor::new(sample_rate, 908, 0.75),
-            input_diffusor_l: InputDiffusor::new(1800, 0.625),
-            input_diffusor_r: InputDiffusor::new(2656, 0.625),
-            damper_l: Damper::new(0.0005),
-            damper_r: Damper::new(0.0005),
-            delay_line_1_l: DelayLine::new(4453),
-            delay_line_2_l: DelayLine::new(3720),
-            delay_line_1_r: DelayLine::new(4217),
-            delay_line_2_r: DelayLine::new(3163),
-            recursive_l: 0.,
-            recursive_r: 0.,
             decay,
-            tap_l_1: DelayLine::new(sample_rate as usize / 4),
-            tap_l_2: DelayLine::new(sample_rate as usize / 4),
-            tap_l_3: DelayLine::new(sample_rate as usize / 4),
-            tap_r_1: DelayLine::new(sample_rate as usize / 4),
-            tap_r_2: DelayLine::new(sample_rate as usize / 4),
-            tap_r_3: DelayLine::new(sample_rate as usize / 4),
-            gain: 1.,
+            input_smear,
+            tank_smear,
+            damping,
+            lushness,
+            size,
         }
     }
 
@@ -92,8 +186,8 @@ impl DattorroReverb {
     /// It will return the processed signal as a stereo pair.
     pub fn process_stereo(&mut self, l: f32, r: f32) -> (f32, f32) {
         let input = (l + r) / 2.;
-        let pre_delayed = self.pre_delay.process(input);
-        let bandwith_damped = self.bandwith_damper.process(pre_delayed);
+        let pre_delayed = self.pre_delay_line.process(input);
+        let bandwith_damped = self.bandwidth_damper.process(pre_delayed);
 
         // Mono block
         let mut signal = bandwith_damped;
@@ -103,66 +197,81 @@ impl DattorroReverb {
         signal = self.input_diffusor_4.process(signal);
 
         // Start of stereo tank
-        self.recursive_l += signal + self.recursive_r * self.decay;
-        self.recursive_r += signal + self.recursive_l * self.decay;
+        let feedback_l = self.delay_line_2_r.get();
+        let feedback_r = self.delay_line_2_l.get();
 
-        self.recursive_l = self.decay_diffusor_l.process(self.recursive_l);
-        self.recursive_r = self.decay_diffusor_r.process(self.recursive_r);
+        let mut tank_l = signal + feedback_l;
+        let mut tank_r = signal + feedback_r;
 
-        // First taps
-        let left_init_tap: f32 = self.recursive_l;
-        let right_init_tap: f32 = self.recursive_r;
+        tank_l = self.decay_diffusor_l.process(tank_l);
+        tank_r = self.decay_diffusor_r.process(tank_r);
 
-        self.recursive_l = self.delay_line_1_l.process(self.recursive_l);
-        self.recursive_r = self.delay_line_1_r.process(self.recursive_r);
+        let left_init_tap: f32 = tank_l;
+        let right_init_tap: f32 = tank_r;
 
-        // Second taps
-        self.tap_l_1.insert(self.recursive_l);
-        self.tap_r_1.insert(self.recursive_r);
+        tank_l = self.delay_line_1_l.process(tank_l);
+        tank_r = self.delay_line_1_r.process(tank_r);
 
-        self.recursive_l = self.damper_l.process(self.recursive_l) * self.decay;
-        self.recursive_r = self.damper_r.process(self.recursive_r) * self.decay;
+        tank_l = self.damper_l.process(tank_l) * self.decay;
+        tank_r = self.damper_r.process(tank_r) * self.decay;
 
-        self.recursive_l = self.input_diffusor_l.process(self.recursive_l);
-        self.recursive_r = self.input_diffusor_r.process(self.recursive_r);
+        tank_l = self.input_diffusor_l.process(tank_l);
+        tank_r = self.input_diffusor_r.process(tank_r);
 
-        // Third taps
-        self.tap_l_2.insert(self.input_diffusor_l.tap());
-        self.tap_r_2.insert(self.input_diffusor_r.tap());
-
-        // Fourth taps
-        self.tap_l_3.insert(self.recursive_l);
-        self.tap_r_3.insert(self.recursive_r);
-
-        self.recursive_l = self.delay_line_2_l.process(self.recursive_l);
-        self.recursive_r = self.delay_line_2_r.process(self.recursive_r);
+        self.delay_line_2_l.process(tank_l);
+        self.delay_line_2_r.process(tank_r);
 
         self.output(left_init_tap, right_init_tap)
     }
 
     /// Calculate the output from the taps with two inital taps
-    fn output(&self, left_init: f32, right_init: f32) -> (f32, f32) {
+    pub fn output(&self, left_init: f32, right_init: f32) -> (f32, f32) {
         // The delay lengths are all from the Dattorro paper
-        let mut y_l =
-            left_init + self.tap_r_1.get_with_delay(266) + self.tap_r_1.get_with_delay(2974)
-                - self.tap_r_2.get_with_delay(1913)
-                + self.tap_r_3.get_with_delay(1996)
-                - self.tap_l_1.get_with_delay(1990)
-                - self.tap_l_2.get_with_delay(187)
-                - self.tap_l_3.get_with_delay(1066);
+        let y_l = left_init
+            + self
+            .delay_line_1_r
+            .get_with_delay((TAP_LEFT_1 as f32 * self.size) as usize)
+            + self
+            .delay_line_1_r
+            .get_with_delay((TAP_LEFT_2 as f32 * self.size) as usize)
+            - self
+            .input_diffusor_r
+            .tap_at((TAP_LEFT_3 as f32 * self.size) as usize)
+            + self
+            .delay_line_2_r
+            .get_with_delay((TAP_LEFT_4 as f32 * self.size) as usize)
+            - self
+            .delay_line_1_l
+            .get_with_delay((TAP_LEFT_5 as f32 * self.size) as usize)
+            - self
+            .input_diffusor_l
+            .tap_at((TAP_LEFT_6 as f32 * self.size) as usize)
+            - self
+            .delay_line_2_l
+            .get_with_delay((TAP_LEFT_7 as f32 * self.size) as usize);
 
-        let mut y_r =
-            right_init + self.tap_l_1.get_with_delay(353) + self.tap_l_1.get_with_delay(3627)
-                - self.tap_l_2.get_with_delay(1228)
-                + self.tap_l_3.get_with_delay(2673)
-                - self.tap_r_1.get_with_delay(2111)
-                - self.tap_r_2.get_with_delay(335)
-                - self.tap_r_3.get_with_delay(121);
-
-        // Double the gain, since the wet signal is very quiet without it
-        // TODO: Check if it should be this quiet or if something went wrong
-        y_l *= self.gain * 2.;
-        y_r *= self.gain * 2.;
+        let y_r = right_init
+            + self
+            .delay_line_1_l
+            .get_with_delay((TAP_RIGHT_1 as f32 * self.size) as usize)
+            + self
+            .delay_line_1_l
+            .get_with_delay((TAP_RIGHT_2 as f32 * self.size) as usize)
+            - self
+            .input_diffusor_l
+            .tap_at((TAP_RIGHT_3 as f32 * self.size) as usize)
+            + self
+            .delay_line_2_l
+            .get_with_delay((TAP_RIGHT_4 as f32 * self.size) as usize)
+            - self
+            .delay_line_1_r
+            .get_with_delay((TAP_RIGHT_5 as f32 * self.size) as usize)
+            - self
+            .input_diffusor_r
+            .tap_at((TAP_RIGHT_6 as f32 * self.size) as usize)
+            - self
+            .delay_line_2_r
+            .get_with_delay((TAP_RIGHT_7 as f32 * self.size) as usize);
 
         (y_l, y_r)
     }
@@ -172,54 +281,128 @@ impl DattorroReverb {
         self.decay = decay;
     }
 
+    pub fn set_pre_delay(&mut self, pre_delay: f32) {
+        self.pre_delay = pre_delay;
+        self.pre_delay_line.set_delay(pre_delay, self.sample_rate);
+    }
+
+    pub fn set_damping(&mut self, damping: f32) {
+        self.damping = damping;
+        self.damper_l.set_damping(damping);
+        self.damper_r.set_damping(damping);
+    }
+
+    pub fn set_brightness(&mut self, mut brightness: f32) {
+        if brightness > 0.95 {
+            brightness = 0.95;
+        }
+        self.brightness = brightness;
+        self.bandwidth_damper.set_damping(brightness);
+    }
+
+    pub fn set_input_smear(&mut self, input_smear: f32) {
+        self.input_smear = input_smear;
+        self.input_diffusor_1.set_gain(input_smear);
+        self.input_diffusor_2.set_gain(input_smear);
+        self.input_diffusor_3.set_gain(input_smear);
+        self.input_diffusor_4.set_gain(input_smear);
+        self.input_diffusor_l.set_gain(input_smear);
+        self.input_diffusor_r.set_gain(input_smear);
+    }
+
+    pub fn set_tank_smear(&mut self, tank_smear: f32) {
+        self.tank_smear = tank_smear;
+        self.decay_diffusor_l.set_gain(tank_smear);
+        self.decay_diffusor_r.set_gain(tank_smear);
+    }
+
+    pub fn set_lushness(&mut self, lushness: f32) {
+        self.lushness = lushness;
+        self.decay_diffusor_l.set_excursion_depth(lushness);
+        self.decay_diffusor_r.set_excursion_depth(lushness);
+    }
+
+    pub fn set_size(&mut self, size: f32) {
+        self.size = size;
+        /*self.pre_delay_line
+            .set_size((size * self.sample_rate) as usize);*/
+        self.delay_line_1_l
+            .set_size((DELAY_LINE_SIZE_L_1 as f32 * size) as usize);
+        self.delay_line_1_r
+            .set_size((DELAY_LINE_SIZE_R_1 as f32 * size) as usize);
+        self.delay_line_2_l
+            .set_size((DELAY_LINE_SIZE_L_2 as f32 * size) as usize);
+        self.delay_line_2_r
+            .set_size((DELAY_LINE_SIZE_R_2 as f32 * size) as usize);
+
+        self.input_diffusor_1
+            .set_size((INPUT_DIFFUSOR_SIZE_1 as f32 * size) as usize);
+        self.input_diffusor_2
+            .set_size((INPUT_DIFFUSOR_SIZE_2 as f32 * size) as usize);
+        self.input_diffusor_3
+            .set_size((INPUT_DIFFUSOR_SIZE_3 as f32 * size) as usize);
+        self.input_diffusor_4
+            .set_size((INPUT_DIFFUSOR_SIZE_4 as f32 * size) as usize);
+        self.input_diffusor_l
+            .set_size((INPUT_DIFFUSOR_SIZE_L as f32 * size) as usize);
+        self.input_diffusor_r
+            .set_size((INPUT_DIFFUSOR_SIZE_R as f32 * size) as usize);
+
+        self.decay_diffusor_l
+            .set_size((DECAY_DIFFUSOR_SIZE_L as f32 * size) as usize);
+        self.decay_diffusor_r
+            .set_size((DECAY_DIFFUSOR_SIZE_R as f32 * size) as usize);
+    }
+
     /// Update the sample rate of everything.
     /// Important: This will reset the delay lines, since their maximum size is based on the sample rate.
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
-        self.pre_delay = DelayLine::new(sample_rate as usize);
+        self.sample_rate = sample_rate;
+        self.pre_delay_line =
+            DelayLine::new((sample_rate * MAX_SIZE) as usize, sample_rate as usize);
+        self.pre_delay_line.set_delay(self.pre_delay, sample_rate);
         self.decay_diffusor_l.set_sample_rate(sample_rate);
         self.decay_diffusor_r.set_sample_rate(sample_rate);
-        self.tap_l_1 = DelayLine::new(sample_rate as usize / 4);
-        self.tap_l_2 = DelayLine::new(sample_rate as usize / 4);
-        self.tap_l_3 = DelayLine::new(sample_rate as usize / 4);
-        self.tap_r_1 = DelayLine::new(sample_rate as usize / 4);
-        self.tap_r_2 = DelayLine::new(sample_rate as usize / 4);
-        self.tap_r_3 = DelayLine::new(sample_rate as usize / 4);
     }
 }
 
 #[derive(Debug, Clone)]
 /// A general purpose delay line that only supports delay lengths as samples
-struct DelayLine {
+pub struct DelayLine {
     buffer: Vec<f32>,
-    delay: usize,
+    current_capacity: usize,
     write_index: usize,
+    max_capacity: usize,
 }
 
 impl DelayLine {
     /// Create a new delay line with a maximum delay length
-    fn new(max_delay: usize) -> Self {
+    pub fn new(max_capacity: usize, current_capacity: usize) -> Self {
         Self {
-            buffer: vec![0.0; max_delay],
-            delay: max_delay,
+            buffer: vec![0.0; max_capacity],
+            current_capacity: current_capacity.min(max_capacity),
             write_index: 0,
+            max_capacity,
         }
     }
 
     /// Set the delay length of the delay line
-    fn set_delay(&mut self, delay: usize) {
-        self.delay = delay % self.buffer.len();
+    pub fn set_delay(&mut self, delay_s: f32, sample_rate: f32) {
+        self.current_capacity = ((delay_s * sample_rate) as usize)
+            .min(self.max_capacity)
+            .max(1);
     }
 
     /// Process a sample through the delay line
     ///
     /// This is the same as get() and then insert()
-    fn process(&mut self, input: f32) -> f32 {
-        let delayed_index = (self.write_index as i32 - self.delay as i32)
-            .rem_euclid(self.buffer.len() as i32) as usize;
-        let delayed = self.buffer[delayed_index];
+    pub fn process(&mut self, input: f32) -> f32 {
+        // let delayed_index = (self.write_index as i32 - self.current_capacity as i32)
+        //     .rem_euclid(self.current_capacity as i32) as usize;
+        let delayed = self.buffer[self.write_index];
 
         self.buffer[self.write_index] = input;
-        self.write_index = (self.write_index + 1) % self.buffer.len();
+        self.write_index = (self.write_index + 1) % self.current_capacity;
 
         delayed
     }
@@ -227,44 +410,52 @@ impl DelayLine {
     /// Get the delayed sample at the current delay length
     ///
     /// get() and insert() together are the same as process()
-    fn get(&self) -> f32 {
-        let delayed_index = (self.write_index as i32 - self.delay as i32)
-            .rem_euclid(self.buffer.len() as i32) as usize;
-        self.buffer[delayed_index]
+    pub fn get(&self) -> f32 {
+        // let delayed_index = (self.write_index as i32 - self.current_capacity as i32)
+        //     .rem_euclid(self.current_capacity as i32) as usize;
+        self.buffer[self.write_index]
     }
 
     /// Get the delayed sample at a specific delay length
-    fn get_with_delay(&self, delay: usize) -> f32 {
-        let delayed_index =
-            (self.write_index as i32 - delay as i32).rem_euclid(self.buffer.len() as i32) as usize;
+    pub fn get_with_delay(&self, delay: usize) -> f32 {
+        let delay = delay % self.current_capacity;
+        let delayed_index = (self.write_index as i32 - delay as i32)
+            .rem_euclid(self.current_capacity as i32) as usize;
         self.buffer[delayed_index]
     }
 
     /// Insert a sample into the delay line
-    fn insert(&mut self, input: f32) {
+    pub fn insert(&mut self, input: f32) {
         self.buffer[self.write_index] = input;
-        self.write_index = (self.write_index + 1) % self.buffer.len();
+        self.write_index = (self.write_index + 1) % self.current_capacity;
+    }
+
+    pub fn set_size(&mut self, size: usize) {
+        self.current_capacity = size.min(self.max_capacity).max(1);
+        if self.write_index >= self.current_capacity {
+            self.write_index = 0;
+        }
     }
 }
 
 #[derive(Clone)]
 /// An input diffusor with a structure taken from the Dattorro paper. It acts as an all pass filter.
-struct InputDiffusor {
+pub struct InputDiffusor {
     delay_line: DelayLine,
     gain: f32,
 }
 
 impl InputDiffusor {
     /// Create a new input diffusor with a delay length and gain
-    fn new(delay: usize, gain: f32) -> Self {
+    pub fn new(delay: usize, gain: f32) -> Self {
         Self {
-            delay_line: DelayLine::new(delay),
+            delay_line: DelayLine::new((delay as f32 * MAX_SIZE) as usize, delay),
             gain,
         }
     }
 
     /// Process a sample through the input diffusor
-    fn process(&mut self, input: f32) -> f32 {
+    pub fn process(&mut self, input: f32) -> f32 {
         let delayed = self.delay_line.get();
         let in_changed = input + -(delayed * self.gain);
 
@@ -274,14 +465,27 @@ impl InputDiffusor {
     }
 
     /// Tap the delay line at position 0
-    fn tap(&self) -> f32 {
+    #[allow(dead_code)]
+    pub fn tap(&self) -> f32 {
         self.delay_line.get_with_delay(0)
+    }
+
+    pub fn tap_at(&self, pos: usize) -> f32 {
+        self.delay_line.get_with_delay(pos)
+    }
+
+    pub fn set_gain(&mut self, gain: f32) {
+        self.gain = gain;
+    }
+
+    pub fn set_size(&mut self, size: usize) {
+        self.delay_line.set_size(size);
     }
 }
 
 #[derive(Clone)]
 /// A diffusor that allows modulation of the delay length and has a slightly different structure from [InputDiffusor]
-struct DecayDiffusor {
+pub struct DecayDiffusor {
     delay_line: DelayLine,
     delay: usize,
     gain: f32,
@@ -294,21 +498,21 @@ struct DecayDiffusor {
 
 impl DecayDiffusor {
     /// Create a new decay diffusor with a delay length, gain, and sample rate
-    fn new(sample_rate: f32, delay: usize, gain: f32) -> Self {
+    pub fn new(sample_rate: f32, delay: usize, gain: f32, excursion_depth: f32) -> Self {
         Self {
-            delay_line: DelayLine::new(delay + 16),
+            delay_line: DelayLine::new(((delay + 16) as f32 * MAX_SIZE) as usize, delay + 16),
             delay,
             gain,
             excursion: 0.,
             excursion_tick: 0.,
             excursion_rate: 1.,
-            excursion_depth: 8.,
+            excursion_depth,
             sample_rate,
         }
     }
 
     /// Process a sample through the decay diffusor
-    fn process(&mut self, input: f32) -> f32 {
+    pub fn process(&mut self, input: f32) -> f32 {
         // Update excursion and delay length
         self.modulate_excursion();
 
@@ -323,14 +527,27 @@ impl DecayDiffusor {
     }
 
     /// Modulates the excursion for each sample at a specific rate
-    fn modulate_excursion(&mut self) {
+    pub fn modulate_excursion(&mut self) {
         self.excursion = (self.excursion_tick * self.excursion_rate).sin() * self.excursion_depth;
         self.excursion_tick += 1. / self.sample_rate;
     }
 
     /// Set the sample rate of the decay diffusor
-    fn set_sample_rate(&mut self, sample_rate: f32) {
+    pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
+    }
+
+    pub fn set_gain(&mut self, gain: f32) {
+        self.gain = gain;
+    }
+
+    pub fn set_excursion_depth(&mut self, depth: f32) {
+        self.excursion_depth = depth;
+    }
+
+    pub fn set_size(&mut self, size: usize) {
+        self.delay_line.set_size(size + 16);
+        self.delay = size;
     }
 }
 
@@ -338,14 +555,14 @@ impl DecayDiffusor {
 /// A simple damper that smooths the signal using a damping factor.
 ///
 /// Structure is from the Dattorro paper.
-struct Damper {
+pub struct Damper {
     last_sample: f32,
     damping: f32,
 }
 
 impl Damper {
     /// Create a new damper with a damping factor
-    fn new(damping: f32) -> Self {
+    pub fn new(damping: f32) -> Self {
         Self {
             last_sample: 0.,
             damping,
@@ -353,10 +570,14 @@ impl Damper {
     }
 
     /// Process a sample through the damper
-    fn process(&mut self, input: f32) -> f32 {
-        let out = flush_denormal(input * (1. - self.damping) + self.last_sample * self.damping);
+    pub fn process(&mut self, input: f32) -> f32 {
+        let out = input * (1. - self.damping) + self.last_sample * self.damping;
         self.last_sample = out;
         out
+    }
+
+    pub fn set_damping(&mut self, damping: f32) {
+        self.damping = damping;
     }
 }
 
@@ -365,8 +586,8 @@ mod dattorro_tests {
     use super::*;
     #[test]
     fn delay_line() {
-        let mut delay_line = DelayLine::new(4);
-        delay_line.set_delay(2);
+        let mut delay_line = DelayLine::new((4_f32 * MAX_SIZE) as usize, 4);
+        delay_line.set_delay(2., 1.);
         assert_eq!(delay_line.process(1.), 0.);
         assert_eq!(delay_line.process(2.), 0.);
         assert_eq!(delay_line.process(3.), 1.);
