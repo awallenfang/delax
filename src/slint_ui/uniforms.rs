@@ -17,3 +17,13 @@ pub struct BufferUniforms {
     pub params: [f32; 4],
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct DecayUniforms {
+    pub feedback: [f32; 2],
+    pub time_s: [f32; 2],
+    pub flags: [f32; 4],
+    pub color_primary: [f32; 4],
+    pub color_secondary: [f32; 4],
+}
+
