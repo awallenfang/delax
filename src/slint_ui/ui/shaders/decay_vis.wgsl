@@ -27,10 +27,14 @@ struct DecayVisUniforms {
     flags: vec4<f32>,
     color_primary: vec4<f32>,
     color_secondary: vec4<f32>,
+    grid: vec4<f32>,
 };
 
 @group(0) @binding(0)
 var<uniform> imm: DecayVisUniforms;
+
+const COLOR_PRIMARY_MUTED = vec3<f32>(219.0 / 255.0, 168.0 / 255.0, 0.0);
+const COLOR_SECONDARY_MUTED = vec3<f32>(0.0, 53.0 / 255.0, 102.0 / 255.0);
 
 fn sdf_box(p: vec2<f32>, b: vec2<f32>) -> f32 {
     let d = abs(p) - b;
@@ -71,9 +75,7 @@ fn add_bar(
 fn fs_main(@location(0) frag_position: vec2<f32>) -> @location(0) vec4<f32> {
     let uv = frag_position * 0.5 + vec2<f32>(0.5);
 
-    // Horizontal space we show: keeps the newest echo centered and the
-    // decaying train spreading to the right, regardless of delay time.
-    let visible_seconds: f32 = 2.0;
+    let visible_seconds: f32 = 3.0;
     let half_w: f32 = 0.006;
 
     var out_rgb = vec3<f32>(0.0);
@@ -85,6 +87,41 @@ fn fs_main(@location(0) frag_position: vec2<f32>) -> @location(0) vec4<f32> {
     let fb_r = clamp(imm.feedback.y, 0.0, 1.0);
     let ts_l = max(imm.time_s.x, 0.0);
     let ts_r = max(imm.time_s.y, 0.0);
+
+    let bar_s = max(imm.grid.x, 0.0);
+    let grid_half_w: f32 = 0.0015;
+    let grid_a: f32 = 0.5;
+
+    let grid_top_is_bar = imm.flags.z > 0.5;
+    let grid_bot_is_bar = imm.flags.w > 0.5 || (!is_stereo && imm.flags.z > 0.5);
+
+    var sp_top: f32 = 1.0;
+    var sp_bot: f32 = 1.0;
+    var col_top = COLOR_SECONDARY_MUTED;
+    var col_bot = COLOR_SECONDARY_MUTED;
+    if (grid_top_is_bar) {
+        sp_top = bar_s;
+        col_top = COLOR_PRIMARY_MUTED;
+    }
+    if (grid_bot_is_bar) {
+        sp_bot = bar_s;
+        col_bot = COLOR_PRIMARY_MUTED;
+    }
+
+    for (var k: u32 = 0u; k < 64u; k++) {
+        let x = (f32(k) * sp_top) / visible_seconds;
+        if (x > 1.0) {
+            break;
+        }
+        add_bar(uv, x, 0.25, grid_half_w, 0.5, grid_a, col_top, &out_rgb, &out_a);
+    }
+    for (var k: u32 = 0u; k < 64u; k++) {
+        let x = (f32(k) * sp_bot) / visible_seconds;
+        if (x > 1.0) {
+            break;
+        }
+        add_bar(uv, x, 0.75, grid_half_w, 0.5, grid_a, col_bot, &out_rgb, &out_a);
+    }
 
     if (is_ping_pong) {
         let step = ts_l + ts_r;

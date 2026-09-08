@@ -314,6 +314,7 @@ impl InputData {
     }
 
     pub fn decay_uniform(&self) -> Option<DecayUniforms> {
+        let bpm = self.bpm.load(Relaxed);
         Some(DecayUniforms {
             feedback: [self.feedback_l.load(Relaxed), self.feedback_r.load(Relaxed)],
             time_s: [self.time_s_l.load(Relaxed), self.time_s_r.load(Relaxed)],
@@ -325,6 +326,8 @@ impl InputData {
             ],
             color_primary: [1.0, 214. / 255., 10. / 255., 0.5],
             color_secondary: [0.0, 143. / 255., 186. / 255., 0.5],
+            // One whole bar of 4 beats = 240 / bpm seconds.
+            grid: [240.0 / bpm.max(1.0), 0.0, 0.0, 0.0],
         })
     }
 }
