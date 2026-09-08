@@ -1,8 +1,9 @@
 pub use crate::slint_ui::renderer::{ElementId, ElementSpec};
-use crate::slint_ui::uniforms::{BufferUniforms, SpectrumUniforms};
+use crate::slint_ui::uniforms::{BufferUniforms, DecayUniforms, SpectrumUniforms};
 
 pub const SPECTRUM_SHADER: &str = include_str!("ui/shaders/spectrum.wgsl");
 pub const BUFFER_SHADER: &str = include_str!("ui/shaders/buffer_vis.wgsl");
+pub const DECAY_SHADER: &str = include_str!("ui/shaders/decay_vis.wgsl");
 
 impl ElementId {
     pub const ALL: &'static [ElementId] =
@@ -18,6 +19,10 @@ impl ElementId {
                 shader: BUFFER_SHADER,
                 uniform_size: std::mem::size_of::<BufferUniforms>() as u32,
             }),
+            ElementId::Decay => Some(ElementSpec {
+                shader: DECAY_SHADER,
+                uniform_size: std::mem::size_of::<DecayUniforms>() as u32,
+            }),
             _ => None,
         }
     }
@@ -26,6 +31,7 @@ impl ElementId {
         match self {
             ElementId::Spectrum => (100, 40),
             ElementId::Buffer => (550, 175),
+            ElementId::Decay => (550, 175),
             _ => (100, 40),
         }
     }

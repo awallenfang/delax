@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU16, AtomicUsize};
+use std::sync::atomic::{AtomicU16, AtomicU8, AtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
 use nice_plug::prelude::AtomicF32;
 use nice_plug::util;
@@ -10,7 +10,7 @@ use rustfft::num_complex::Complex32;
 use wgpu::Buffer;
 use crate::slint_ui;
 use crate::slint_ui::elements::{ElementId, GpuElementData};
-use crate::slint_ui::uniforms::{BufferUniforms, SpectrumUniforms};
+use crate::slint_ui::uniforms::{BufferUniforms, DecayUniforms, SpectrumUniforms};
 
 pub struct InputData {
     pub in_l: AtomicF32,
@@ -22,6 +22,17 @@ pub struct InputData {
     pub dry_buffer: [AtomicF32; 64],
     pub wet_buffer: [AtomicF32; 64],
     pub wetness: AtomicF32,
+
+    // Decay visualizer state (mirrors the old CPU DecayVisualizer params).
+    pub feedback_l: AtomicF32,
+    pub feedback_r: AtomicF32,
+    pub time_s_l: AtomicF32,
+    pub time_s_r: AtomicF32,
+    pub is_stereo: AtomicU8,
+    pub is_ping_pong: AtomicU8,
+    pub bpm_bound_l: AtomicU8,
+    pub bpm_bound_r: AtomicU8,
+
     dry_skip_counter: AtomicU16,
     wet_skip_counter: AtomicU16,
     skip: u16,
@@ -64,7 +75,15 @@ impl Default for InputData {
             fft_scratch: std::sync::Mutex::new(vec![Complex32::new(0.0, 0.0); scratch_len]),
             hann_window,
             spectrum_pending: std::sync::Mutex::new(Vec::with_capacity(32)),
-            wetness: AtomicF32::new(0.5)
+            wetness: AtomicF32::new(0.5),
+            feedback_l: AtomicF32::new(0.5),
+            feedback_r: AtomicF32::new(0.5),
+            time_s_l: AtomicF32::new(0.5),
+            time_s_r: AtomicF32::new(0.5),
+            is_stereo: AtomicU8::new(0),
+            is_ping_pong: AtomicU8::new(0),
+            bpm_bound_l: AtomicU8::new(0),
+            bpm_bound_r: AtomicU8::new(0),
         }
     }
 }
@@ -105,6 +124,28 @@ impl InputData {
 
     pub fn set_bpm(&self, bpm: f32) {
         self.bpm.store(bpm, Relaxed);
+    }
+
+    /// Push the per-sample delay/feedback state used by the decay visualizer.
+    pub fn set_decay_state(
+        &self,
+        feedback_l: f32,
+        feedback_r: f32,
+        time_s_l: f32,
+        time_s_r: f32,
+        is_stereo: bool,
+        is_ping_pong: bool,
+        bpm_bound_l: bool,
+        bpm_bound_r: bool,
+    ) {
+        self.feedback_l.store(feedback_l, Relaxed);
+        self.feedback_r.store(feedback_r, Relaxed);
+        self.time_s_l.store(time_s_l, Relaxed);
+        self.time_s_r.store(time_s_r, Relaxed);
+        self.is_stereo.store(is_stereo as u8, Relaxed);
+        self.is_ping_pong.store(is_ping_pong as u8, Relaxed);
+        self.bpm_bound_l.store(bpm_bound_l as u8, Relaxed);
+        self.bpm_bound_r.store(bpm_bound_r as u8, Relaxed);
     }
 
     pub fn reset(&self) {
@@ -269,6 +310,21 @@ impl InputData {
             params: [self.wetness.load(Relaxed), 0., 0., 0.]
         })
     }
+
+    pub fn decay_uniform(&self) -> Option<DecayUniforms> {
+        Some(DecayUniforms {
+            feedback: [self.feedback_l.load(Relaxed), self.feedback_r.load(Relaxed)],
+            time_s: [self.time_s_l.load(Relaxed), self.time_s_r.load(Relaxed)],
+            flags: [
+                self.is_stereo.load(Relaxed) as f32,
+                self.is_ping_pong.load(Relaxed) as f32,
+                self.bpm_bound_l.load(Relaxed) as f32,
+                self.bpm_bound_r.load(Relaxed) as f32,
+            ],
+            color_primary: [1.0, 214. / 255., 10. / 255., 0.5],
+            color_secondary: [0.0, 143. / 255., 186. / 255., 0.5],
+        })
+    }
 }
 
 impl GpuElementData for InputData {
@@ -280,6 +336,10 @@ impl GpuElementData for InputData {
             },
             ElementId::Buffer => {
                 let uniforms = self.buffer_uniform()?;
+                Some(bytemuck::bytes_of(&uniforms).to_vec())
+            }
+            ElementId::Decay => {
+                let uniforms = self.decay_uniform()?;
                 Some(bytemuck::bytes_of(&uniforms).to_vec())
             }
             _ => None,

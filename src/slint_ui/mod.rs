@@ -25,6 +25,7 @@ impl GpuImageSink for AppWindow {
         match element {
             ElementId::Spectrum => self.set_spectrum_tex(image),
             ElementId::Buffer => self.set_buffer_tex(image),
+            ElementId::Decay => self.set_decay_tex(image),
             _ => {}
         }
     }

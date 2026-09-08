@@ -1,0 +1,14 @@
+import { Palette } from "./global.slint";
+
+export component GpuDecayVisualizer inherits Rectangle {
+    in-out property <image> texture;
+
+    clip: true;
+    background: Palette.background;
+
+    Image {
+        source: root.texture;
+        width: 100%;
+        height: 100%;
+    }
+}

@@ -33,6 +33,8 @@ pub struct Delax {
     peak_out_l: PeakFollower,
     peak_out_r: PeakFollower,
     filter_pipeline: FilterPipeline,
+    decay_time_s_l: f32,
+    decay_time_s_r: f32,
 }
 
 impl Default for Delax {
@@ -64,6 +66,8 @@ impl Default for Delax {
             peak_out_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             filter_pipeline,
+            decay_time_s_l: 0.5,
+            decay_time_s_r: 0.5,
         }
     }
 }
@@ -211,26 +215,42 @@ impl Plugin for Delax {
             // The feedback values, used for the feedback loop.
             let feedbacked_left;
             let feedbacked_right;
+            let (fb_l, fb_r);
 
             match self.params.delay_params.stereo_delay.value() {
                 DelayMode::Mono => {
-                    let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
-                    feedbacked_left = feedback_l * pop_left;
-                    feedbacked_right = feedback_l * pop_right;
+                    fb_l = self.params.delay_params.feedback_l.smoothed.next();
+                    fb_r = fb_l;
+                    feedbacked_left = fb_l * pop_left;
+                    feedbacked_right = fb_l * pop_right;
                 }
                 DelayMode::Stereo => {
-                    let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
-                    let feedback_r = self.params.delay_params.feedback_r.smoothed.next();
-                    feedbacked_left = feedback_l * pop_left;
-                    feedbacked_right = feedback_r * pop_right;
+                    fb_l = self.params.delay_params.feedback_l.smoothed.next();
+                    fb_r = self.params.delay_params.feedback_r.smoothed.next();
+                    feedbacked_left = fb_l * pop_left;
+                    feedbacked_right = fb_r * pop_right;
                 }
                 DelayMode::PingPong => {
-                    let feedback_l = self.params.delay_params.feedback_l.smoothed.next();
-                    let feedback_r = self.params.delay_params.feedback_r.smoothed.next();
-                    feedbacked_left = feedback_r * pop_left;
-                    feedbacked_right = feedback_l * pop_right;
+                    fb_l = self.params.delay_params.feedback_l.smoothed.next();
+                    fb_r = self.params.delay_params.feedback_r.smoothed.next();
+                    feedbacked_left = fb_r * pop_left;
+                    feedbacked_right = fb_l * pop_right;
                 }
             }
+
+            let stereo_mode = self.params.delay_params.stereo_delay.value();
+            let is_stereo = stereo_mode != DelayMode::Mono;
+            let is_ping_pong = stereo_mode == DelayMode::PingPong;
+            self.input_data.set_decay_state(
+                fb_l,
+                fb_r,
+                self.decay_time_s_l,
+                self.decay_time_s_r,
+                is_stereo,
+                is_ping_pong,
+                self.params.delay_params.bpm_bound_l.value(),
+                self.params.delay_params.bpm_bound_r.value(),
+            );
 
             // ############ Filtering ###############
 
@@ -293,6 +313,9 @@ impl Delax {
                 self.left_delay_engine.set_delay_amount(delay_amt);
                 self.right_delay_engine.set_delay_amount(delay_amt);
 
+                self.decay_time_s_l = delay_amt / 1000.;
+                self.decay_time_s_r = delay_amt / 1000.;
+
                 let res = self.params.filter_params.input_svf_res_l.smoothed.next();
                 let cutoff = self.params.filter_params.input_svf_cutoff_l.smoothed.next();
                 let mode = self.params.filter_params.input_svf_filter_mode_l.value();
@@ -331,6 +354,9 @@ impl Delax {
                 };
                 self.left_delay_engine.set_delay_amount(delay_amt_l);
                 self.right_delay_engine.set_delay_amount(delay_amt_r);
+
+                self.decay_time_s_l = delay_amt_l / 1000.;
+                self.decay_time_s_r = delay_amt_r / 1000.;
 
                 let res_l = self.params.filter_params.input_svf_res_l.smoothed.next();
                 let res_r = self.params.filter_params.input_svf_res_r.smoothed.next();

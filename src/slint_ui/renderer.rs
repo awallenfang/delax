@@ -336,8 +336,8 @@ impl WgpuRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slint_ui::elements::SPECTRUM_SHADER;
-    use crate::slint_ui::uniforms::SpectrumUniforms;
+    use crate::slint_ui::elements::{SPECTRUM_SHADER, DECAY_SHADER};
+    use crate::slint_ui::uniforms::{SpectrumUniforms, DecayUniforms};
 
     #[test]
     fn render_yellow_square_to_slint_image() {
@@ -411,5 +411,37 @@ mod tests {
         let pixel_buffer = img.to_rgba8().unwrap();
         assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (100, 40));
         assert_eq!(&pixel_buffer.as_bytes()[0..4], &[0, 255, 0, 0], "green pixel");
+    }
+
+    #[test]
+    fn decay_shader_renders_feedback_line() {
+        let ctx = GpuContext::ensure_initialized().expect("headless Vulkan device");
+        // Building the pipeline validates the WGSL layout against the uniform size.
+        let spec = ElementSpec {
+            shader: DECAY_SHADER,
+            uniform_size: std::mem::size_of::<DecayUniforms>() as u32,
+        };
+        let uniforms = DecayUniforms {
+            feedback: [0.9, 0.6],
+            time_s: [0.5, 0.5],
+            flags: [1.0, 0.0, 0.0, 0.0],
+            color_primary: [1.0, 0.839, 0.039, 1.0],
+            color_secondary: [0.0, 0.561, 0.729, 1.0],
+        };
+
+        let mut registry = WgpuRegistry::new(ctx.clone());
+        registry.register(ElementId::Decay, spec);
+        let img = registry
+            .render_to_image(ElementId::Decay, 110, 60, bytemuck::bytes_of(&uniforms))
+            .expect("decay render + readback should succeed");
+
+        let pixel_buffer = img.to_rgba8().unwrap();
+        assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (110, 60));
+        // The decay line is drawn: some pixel must have non-zero alpha.
+        let bytes = pixel_buffer.as_bytes();
+        assert!(
+            bytes.chunks_exact(4).any(|px| px[3] > 0),
+            "decay bars should produce visible pixels"
+        );
     }
 }
