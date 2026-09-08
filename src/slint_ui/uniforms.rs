@@ -26,5 +26,6 @@ pub struct DecayUniforms {
     pub flags: [f32; 4],
     pub color_primary: [f32; 4],
     pub color_secondary: [f32; 4],
+    pub grid: [f32; 4],
 }
 

@@ -427,6 +427,7 @@ mod tests {
             flags: [1.0, 0.0, 0.0, 0.0],
             color_primary: [1.0, 0.839, 0.039, 1.0],
             color_secondary: [0.0, 0.561, 0.729, 1.0],
+            grid: [2.0, 0.0, 0.0, 0.0],
         };
 
         let mut registry = WgpuRegistry::new(ctx.clone());
@@ -460,6 +461,7 @@ mod tests {
             flags: [1.0, 1.0, 0.0, 0.0], // is_stereo + is_ping_pong
             color_primary: [1.0, 0.839, 0.039, 1.0],
             color_secondary: [0.0, 0.561, 0.729, 1.0],
+            grid: [2.0, 0.0, 0.0, 0.0],
         };
 
         let mut registry = WgpuRegistry::new(ctx.clone());
@@ -474,6 +476,38 @@ mod tests {
         assert!(
             bytes.chunks_exact(4).any(|px| px[3] > 0),
             "ping-pong pairs should produce visible pixels"
+        );
+    }
+
+    #[test]
+    fn decay_shader_tempo_grid_renders() {
+        let ctx = GpuContext::ensure_initialized().expect("headless Vulkan device");
+        let spec = ElementSpec {
+            shader: DECAY_SHADER,
+            uniform_size: std::mem::size_of::<DecayUniforms>() as u32,
+        };
+        let uniforms = DecayUniforms {
+            feedback: [0.9, 0.6],
+            time_s: [0.25, 0.25],
+            // Mono + left tempo-bound: bar (bar_s) lines top and bottom.
+            flags: [0.0, 0.0, 1.0, 0.0], // is_stereo=0, is_ping_pong=0, bpm_bound_l=1
+            color_primary: [1.0, 0.839, 0.039, 1.0],
+            color_secondary: [0.0, 0.561, 0.729, 1.0],
+            grid: [2.0, 0.0, 0.0, 0.0], // 120 bpm -> one bar every 2 s
+        };
+
+        let mut registry = WgpuRegistry::new(ctx.clone());
+        registry.register(ElementId::Decay, spec);
+        let img = registry
+            .render_to_image(ElementId::Decay, 110, 60, bytemuck::bytes_of(&uniforms))
+            .expect("tempo-grid decay render + readback should succeed");
+
+        let pixel_buffer = img.to_rgba8().unwrap();
+        assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (110, 60));
+        let bytes = pixel_buffer.as_bytes();
+        assert!(
+            bytes.chunks_exact(4).any(|px| px[3] > 0),
+            "tempo-bound grid + decay bars should produce visible pixels"
         );
     }
 }
