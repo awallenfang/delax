@@ -22,19 +22,24 @@ fn vs_main(
 }
 
 struct BufferVisUniforms {
-    levels_dry: array<vec4<f32>, 128>,
-    levels_wet: array<vec4<f32>, 128>,
+    levels_dry: array<vec4<f32>, 16>,
+    levels_wet: array<vec4<f32>, 16>,
     primary_col: vec4<f32>,
     secondary_col: vec4<f32>,
-    num_bars: u32
+    params: vec4<f32>,
 };
 
-var<immediate> imm: BufferVisUniforms;
+@group(0) @binding(0)
+var<uniform> imm: BufferVisUniforms;
 
 fn get_levels(index: u32) -> vec2<f32> {
     let vec_idx = index / 4u;
     let comp_idx = index % 4u;
-    return vec2(imm.levels_dry[vec_idx][comp_idx], imm.levels_wet[vec_idx][comp_idx]);
+
+    let dry_val = imm.levels_dry[vec_idx][comp_idx];
+    let wet_val = imm.levels_wet[vec_idx][comp_idx];
+
+    return vec2(dry_val * (1. - imm.params.x), wet_val*imm.params.x);
 }
 
 fn sdf_box(p: vec2<f32>, b: vec2<f32>) -> f32 {
@@ -46,34 +51,41 @@ fn sdf_box(p: vec2<f32>, b: vec2<f32>) -> f32 {
 fn fs_main(@location(0) frag_position: vec2<f32>) -> @location(0) vec4<f32> {
     let uv = frag_position * 0.5 + vec2<f32>(0.5);
 
-    let num_bars: f32 = 128.;
+    let num_bars: f32 = 64.;
     let gap_ratio: f32 = 0.2;
 
     let cell_x = uv.x * num_bars;
     let bar_index = u32(clamp(floor(cell_x), 0.0, num_bars - 1.0));
-    let local_x = fract(cell_x);
 
-    let normalized_heights = clamp(get_levels(bar_index), 0.0, 1.0);
+    let levels = get_levels(bar_index);
+    let height_dry = clamp(levels.x, 0.0, 1.0);
+    let height_wet = clamp(levels.y, 0.0, 1.0);
 
     let bar_width = (1.0 - gap_ratio) / num_bars;
     let half_width = bar_width * 0.5;
-    let half_height_dry = (normalized_heights.x * 0.95) * 0.5;
-    let half_height_wet = (normalized_heights.y * 0.95) * 0.5;
+    let half_height_dry = (height_dry * 0.95) * 0.5;
+    let half_height_wet = (height_wet * 0.95) * 0.5;
 
-    let bar_center = vec2<f32>(
-        (f32(bar_index) + 0.5) / num_bars,
-        half_height + 0.025
-    );
+    let center_x = (f32(bar_index) + 0.5) / num_bars;
+    let center = vec2<f32>(center_x, 0.5);
 
-    let dist_dry = sdf_box(uv - bar_center, vec2<f32>(half_width, half_height_dry));
-    let dist_wet = sdf_box(uv - bar_center, vec2<f32>(half_width, half_height_wet));
+    let dist_dry = sdf_box(uv - center, vec2<f32>(half_width, half_height_dry));
+    let dist_wet = sdf_box(uv - center, vec2<f32>(half_width, half_height_wet));
 
-    let smoothing_dry = fwidth(dist_dry);
-    let smoothing_wet = fwidth(dist_wet);
-    let alpha_dry = 0.5 - smoothstep(-smoothing_dry, smoothing_dry, dist_dry);
-    let alpha_wet = 0.5 - smoothstep(-smoothing_wet, smoothing_wet, dist_wet);
+    let mask_dry = 1.0 - smoothstep(-fwidth(dist_dry), fwidth(dist_dry), dist_dry);
+    let mask_wet = 1.0 - smoothstep(-fwidth(dist_wet), fwidth(dist_wet), dist_wet);
 
+    // Apply the SDF masks scaled to 0.5 base alpha
+    let dry_color = vec4<f32>(imm.primary_col.rgb, 0.5 * mask_dry);
+    let wet_color = vec4<f32>(imm.secondary_col.rgb, 0.5 * mask_wet);
 
-    let out_col = vec4<f32>(imm.primary_col.rgb, imm.primary_col.a * alpha_dry) + vec4<f32>(imm.secondary_col.rgb, imm.primary_col.a * alpha_wet);
-    return vec4<f32>(imm.primary_col.rgb, imm.primary_col.a * alpha);
+    // Standard Alpha-Over Blend (wet composite over dry)
+    let out_a = wet_color.a + dry_color.a * (1.0 - wet_color.a);
+
+    var out_rgb = vec3<f32>(0.0);
+    if (out_a > 0.0) {
+        out_rgb = (wet_color.rgb * wet_color.a + dry_color.rgb * dry_color.a * (1.0 - wet_color.a)) / out_a;
+    }
+
+    return vec4<f32>(out_rgb, out_a);
 }

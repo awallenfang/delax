@@ -26,7 +26,8 @@ struct SpectrumUniforms {
     primary_col: vec4<f32>,
 };
 
-var<immediate> imm: SpectrumUniforms;
+@group(0) @binding(0)
+var<uniform> imm: SpectrumUniforms;
 
 fn get_level(index: u32) -> f32 {
     let vec_idx = index / 4u;
@@ -58,7 +59,7 @@ fn fs_main(@location(0) frag_position: vec2<f32>) -> @location(0) vec4<f32> {
 
     let bar_center = vec2<f32>(
         (f32(bar_index) + 0.5) / num_bars,
-        half_height + 0.025
+        1. - half_height / 2.
     );
 
     let dist = sdf_box(uv - bar_center, vec2<f32>(half_width, half_height));

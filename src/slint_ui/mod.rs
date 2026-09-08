@@ -24,6 +24,7 @@ impl GpuImageSink for AppWindow {
     fn set_element_image(&self, element: ElementId, image: slint::Image) {
         match element {
             ElementId::Spectrum => self.set_spectrum_tex(image),
+            ElementId::Buffer => self.set_buffer_tex(image),
             _ => {}
         }
     }
