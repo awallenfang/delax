@@ -21,6 +21,8 @@ pub struct WGPURenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
+    uniform_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
     texture: wgpu::Texture,
     uniform_size: u32,
 }
@@ -44,10 +46,43 @@ impl WGPURenderer {
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(spec.shader)),
         });
 
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: spec.uniform_size.max(16) as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: std::num::NonZeroU64::new(
+                            spec.uniform_size.max(16) as u64,
+                        ),
+                    },
+                    count: None,
+                }],
+            });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[],
-            immediate_size: spec.uniform_size,
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -78,6 +113,8 @@ impl WGPURenderer {
             device,
             queue,
             pipeline,
+            uniform_buffer,
+            bind_group,
             texture,
             uniform_size: spec.uniform_size,
         }
@@ -116,6 +153,7 @@ impl WGPURenderer {
             return;
         }
         self.resize(w, h);
+        self.queue.write_buffer(&self.uniform_buffer, 0, uniforms);
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
@@ -137,7 +175,7 @@ impl WGPURenderer {
                 multiview_mask: None,
             });
             renderpass.set_pipeline(&self.pipeline);
-            renderpass.set_immediates(0, uniforms);
+            renderpass.set_bind_group(0, &self.bind_group, &[]);
             renderpass.draw(0..3, 0..1);
         }
         self.queue.submit(Some(encoder.finish()));
@@ -317,6 +355,8 @@ mod tests {
             40,
         );
 
+        // Flat zero levels: everything is background, which stays transparent
+        // so the image can overlay Slint UI.
         let uniforms = SpectrumUniforms {
             levels: [0.0; 32],
             primary_col: [1.0, 1.0, 0.0, 1.0],
@@ -328,7 +368,23 @@ mod tests {
 
         let data = pixel_buffer.as_bytes();
         assert_eq!(data.len(), 100 * 40 * 4, "RGBA8 byte size");
-        assert_eq!(&data[0..4], &[255, 255, 0, 255], "corner pixel = yellow");
+        assert_eq!(&data[0..4], &[255, 255, 0, 0], "background is transparent");
+
+        // Full levels: interior of bar 0 (x=1, mid height) is opaque yellow.
+        let uniforms = SpectrumUniforms {
+            levels: [1.0; 32],
+            primary_col: [1.0, 1.0, 0.0, 1.0],
+        };
+        renderer.render(100, 40, bytemuck::bytes_of(&uniforms));
+        let img = renderer.to_image().expect("render + readback should succeed");
+        let pixel_buffer = img.to_rgba8().expect("expected a shared (CPU) image back");
+        let data = pixel_buffer.as_bytes();
+        let bar_idx = (20 * 100 + 1) * 4;
+        assert_eq!(
+            &data[bar_idx..bar_idx + 4],
+            &[255, 255, 0, 255],
+            "lit bar is opaque yellow"
+        );
     }
 
     #[test]
@@ -349,11 +405,11 @@ mod tests {
             primary_col: [0.0, 1.0, 0.0, 1.0],
         };
         let img = registry
-            .render_to_image(ElementId::Spectrum, 16, 8, bytemuck::bytes_of(&uniforms))
+            .render_to_image(ElementId::Spectrum, 100, 40, bytemuck::bytes_of(&uniforms))
             .expect("registry render + readback should succeed");
 
         let pixel_buffer = img.to_rgba8().unwrap();
-        assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (16, 8));
-        assert_eq!(&pixel_buffer.as_bytes()[0..4], &[0, 255, 0, 255], "green pixel");
+        assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (100, 40));
+        assert_eq!(&pixel_buffer.as_bytes()[0..4], &[0, 255, 0, 0], "green pixel");
     }
 }

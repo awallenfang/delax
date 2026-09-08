@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, AtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
@@ -18,8 +19,9 @@ pub struct InputData {
     pub out_r: AtomicF32,
     pub out_spectrum: [AtomicF32; 32],
     pub bpm: AtomicF32,
-    pub dry_buffer: [AtomicF32; 128],
-    pub wet_buffer: [AtomicF32; 128],
+    pub dry_buffer: [AtomicF32; 64],
+    pub wet_buffer: [AtomicF32; 64],
+    pub wetness: AtomicF32,
     dry_skip_counter: AtomicU16,
     wet_skip_counter: AtomicU16,
     skip: u16,
@@ -49,8 +51,8 @@ impl Default for InputData {
             out_r: AtomicF32::new(0.),
             out_spectrum: [const { AtomicF32::new(0.) }; 32],
             bpm: AtomicF32::new(120.),
-            dry_buffer: [const { AtomicF32::new(0.) }; 128],
-            wet_buffer: [const { AtomicF32::new(0.) }; 128],
+            dry_buffer: [const { AtomicF32::new(0.) }; 64],
+            wet_buffer: [const { AtomicF32::new(0.) }; 64],
             dry_skip_counter: AtomicU16::new(0),
             wet_skip_counter: AtomicU16::new(0),
             skip: 1024,
@@ -61,7 +63,8 @@ impl Default for InputData {
             spectrum_consumer: Arc::new(std::sync::Mutex::new(Some(spec_cons))),
             fft_scratch: std::sync::Mutex::new(vec![Complex32::new(0.0, 0.0); scratch_len]),
             hann_window,
-            spectrum_pending: std::sync::Mutex::new(Vec::with_capacity(128)),
+            spectrum_pending: std::sync::Mutex::new(Vec::with_capacity(32)),
+            wetness: AtomicF32::new(0.5)
         }
     }
 }
@@ -155,7 +158,7 @@ impl InputData {
             }
             if pending.len() < 64 {
                 if pending.len() > 256 {
-                    let excess = pending.len() - 128;
+                    let excess = pending.len() - 32;
                     pending.drain(0..excess);
                 }
                 return;
@@ -205,8 +208,8 @@ impl InputData {
     fn poll_waveforms(&self, app: &slint_ui::AppWindow) {
         let dry_pos = self.dry_pos.load(Relaxed) % self.dry_buffer.len();
         let wet_pos = self.wet_pos.load(Relaxed) % self.wet_buffer.len();
-        let mut dry = [0.0f32; 128];
-        let mut wet = [0.0f32; 128];
+        let mut dry = [0.0f32; 64];
+        let mut wet = [0.0f32; 64];
         for i in 0..self.wet_buffer.len().min(self.dry_buffer.len()) {
             let idx = (dry_pos + 1 + i) % self.dry_buffer.len();
             dry[i] = self.dry_buffer[idx].load(Relaxed);
@@ -230,18 +233,40 @@ impl InputData {
     }
 
     pub fn buffer_uniform(&self) -> Option<BufferUniforms> {
-        let mut dry = [0.0f32; 128];
-        let mut wet = [0.0f32; 128];
-        for i in 0..128 {
-            dry[i] = self.dry_buffer[i].load(Relaxed);
-            wet[i] = self.wet_buffer[i].load(Relaxed);
+        let dry_pos = self.dry_pos.load(Relaxed);
+        let wet_pos = self.wet_pos.load(Relaxed);
+
+        let mut dry_flat = [0.0f32; 64];
+        let mut wet_flat = [0.0f32; 64];
+        for i in 0..64 {
+            dry_flat[i] = self.dry_buffer[(dry_pos + 1 + i) % 64].load(Relaxed);
+            wet_flat[i] = self.wet_buffer[(wet_pos + 1 + i) % 64].load(Relaxed);
         }
+
+        // Pack 32 flat floats into 8 vec4 chunks (8 * 4 = 32)
+        let mut levels_dry = [[0.0f32; 4]; 16];
+        let mut levels_wet = [[0.0f32; 4]; 16];
+        for i in 0..16 {
+            levels_dry[i] = [
+                dry_flat[i * 4],
+                dry_flat[i * 4 + 1],
+                dry_flat[i * 4 + 2],
+                dry_flat[i * 4 + 3],
+            ];
+            levels_wet[i] = [
+                wet_flat[i * 4],
+                wet_flat[i * 4 + 1],
+                wet_flat[i * 4 + 2],
+                wet_flat[i * 4 + 3],
+            ];
+        }
+
         Some(BufferUniforms {
-            levels_dry: dry,
-            levels_wet: wet,
-            // #ffd60a
-            primary_col: [1.0, 0.6724, 0.003, 1.0],
-            secondary_col: [0.0, 0.56, 0.73, 1.0],
+            levels_dry,
+            levels_wet,
+            primary_col: [1.0, 214./255., 10./256., 0.5],
+            secondary_col: [0.0, 143./256., 186./256., 0.5],
+            params: [self.wetness.load(Relaxed), 0., 0., 0.]
         })
     }
 }

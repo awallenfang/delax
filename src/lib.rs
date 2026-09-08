@@ -412,6 +412,7 @@ impl Delax {
         let r = self.peak_in_r.process(r_db).clamp(0., 1.5);
         self.input_data.in_l.store(l, Relaxed);
         self.input_data.in_r.store(r, Relaxed);
+        self.input_data.wetness.store(self.params.wetness.value(), Relaxed);
     }
 
     fn output_ui_send(&mut self, l: f32, r: f32) {
