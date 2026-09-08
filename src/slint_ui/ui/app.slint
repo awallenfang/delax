@@ -39,6 +39,7 @@ export component AppWindow inherits Window {
     in-out property <[float]> out_spectrum;
     in-out property <image> spectrum_tex;
     in-out property <image> buffer_tex;
+    in-out property <image> decay_tex;
     in-out property <[float]> dry_buffer;
     in-out property <[float]> wet_buffer;
     in-out property <string> version;
@@ -145,6 +146,7 @@ export component AppWindow inherits Window {
             if tab == 0:
                 DelayPage {
                 buffer_tex: buffer_tex;
+                decay_tex: decay_tex;
                 vertical-stretch: 1;
                 is-stereo <=> root.is_stereo;
                 is-ping-pong <=> root.is_ping_pong;
