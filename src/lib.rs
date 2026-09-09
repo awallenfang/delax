@@ -1,3 +1,4 @@
+use crate::filters::shifter::FrequencyShifter;
 use crate::delay_engine::delay_time_from_bpm_and_16th;
 use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::slint_ui::editor::DelaxSlintHost;
@@ -53,6 +54,11 @@ impl Default for Delax {
             Box::new(SimperSinSVF::new(44100.)),
             Box::new(SimperSinSVF::new(44100.)),
             "svf_filter",
+        );
+        filter_pipeline.register_stereo_pair(
+            Box::new(FrequencyShifter::new(44100., 0.)),
+            Box::new(FrequencyShifter::new(44100., 0.)),
+            "shimmer",
         );
         filter_pipeline.register_stereo(
             Box::new(DattorroReverb::new(0.5, 44100., 0.2, 0.0, 0.7, 0.8, 0.65, 0.8, 8., 1.1)),
@@ -440,6 +446,17 @@ impl Delax {
         }
         self.filter_pipeline.set_active("svf_filter", self.params.pipeline_params.eq_active.value());
         self.filter_pipeline.set_active("diffusor", self.params.pipeline_params.diffusor_active.value());
+
+        if self.params.shimmer_params.shimmer_stereo.value() {
+            let shift_l = self.params.shimmer_params.shift_l.value();
+            let shift_r = self.params.shimmer_params.shift_r.value();
+
+            self.filter_pipeline.set_param_stereo("shimmer", "shift", (shift_l, shift_r));
+        } else {
+            let shift_l = self.params.shimmer_params.shift_l.value();
+
+            self.filter_pipeline.set_param("shimmer", "shift", shift_l);
+        }
     }
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.

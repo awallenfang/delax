@@ -5,6 +5,8 @@ pub struct PipelineParams {
     pub eq_active: BoolParam,
     #[id = "diffusor_active"]
     pub diffusor_active: BoolParam,
+    #[id = "shimmer_active"]
+    pub shimmer_active: BoolParam,
 }
 
 impl Default for PipelineParams {
@@ -12,6 +14,7 @@ impl Default for PipelineParams {
         Self {
             eq_active: BoolParam::new("eq_active", true),
             diffusor_active: BoolParam::new("diffusor_active", true),
+            shimmer_active: BoolParam::new("shimmer_active", true),
         }
     }
 }

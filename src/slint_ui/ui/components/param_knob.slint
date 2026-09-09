@@ -15,8 +15,8 @@ export component ParamKnob inherits VerticalLayout {
 
     in property <bool> enabled: true;
 
-    width: 50px;
-    height: 75px;
+    width: 45px;
+    height: 70px;
     alignment: center;
 
     accessible-role: slider;
@@ -35,15 +35,15 @@ export component ParamKnob inherits VerticalLayout {
         height: 15px;
     }
     knob_rect := Rectangle {
-        width: 50px;
-        height: 50px;
+        width: 45px;
+        height: 45px;
         property <length> arc_width: 3px;
         property <length> arc_margin: 10px - arc_width;
         property <length> arc_space: arc_width + arc_margin;
         Text {
             text: display_val;
             color: root.enabled ? Palette.text : Palette.text-muted;
-            y: 42px;
+            y: 37px;
             horizontal-alignment: center;
             font-size: 7pt;
         }
