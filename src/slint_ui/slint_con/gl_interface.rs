@@ -8,7 +8,7 @@ pub(crate) struct SlintOpenGLInterface {
 }
 
 impl SlintOpenGLInterface {
-    pub(crate) fn new(window_context: WindowContext, width: u32, height: u32) -> Result<Self, String> {
+    pub(crate) fn new(window_context: WindowContext, _width: u32, _height: u32) -> Result<Self, String> {
         let gl = window_context.gl_context().unwrap();
         unsafe {
             gl.make_current().map_err(|e| e.to_string())?;
@@ -28,7 +28,7 @@ unsafe impl OpenGLInterface for SlintOpenGLInterface {
         self.gl.swap_buffers().map_err(|e| Box::<dyn Error + Send + Sync>::from(e.to_string()))
     }
 
-    fn resize(&self, width: NonZeroU32, height: NonZeroU32) -> Result<(), Box<dyn Error + Send + Sync>> {
+    fn resize(&self, _width: NonZeroU32, _height: NonZeroU32) -> Result<(), Box<dyn Error + Send + Sync>> {
         // self.ctx.borrow().resize(PhysicalSize::new(width.get(), height.get())).expect("Resize failed in gl_interface");
         Ok(())
     }

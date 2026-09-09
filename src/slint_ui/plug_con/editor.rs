@@ -132,11 +132,11 @@ impl EditorHandle for SlintEditorHandle {
         window.set_parent(&parent)
     }
 
-    fn show(&self, window: &Self::Window) -> Result<(), Self::Error> {
+    fn show(&self, _window: &Self::Window) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn hide(&self, window: &Self::Window) -> Result<(), Self::Error> {
+    fn hide(&self, _window: &Self::Window) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -154,17 +154,17 @@ impl EditorHandle for SlintEditorHandle {
 
     fn adjust_size(
         &self,
-        new_size: PhysicalSize<u32>,
-        window: &Self::Window,
+        _new_size: PhysicalSize<u32>,
+        _window: &Self::Window,
     ) -> Option<PhysicalSize<u32>> {
         None
     }
 
     fn on_virtual_key_from_host(
         &self,
-        key_code: VirtualKeyCode,
-        is_down: bool,
-        modifiers: Modifiers,
+        _key_code: VirtualKeyCode,
+        _is_down: bool,
+        _modifiers: Modifiers,
     ) -> bool {
         false
     }
@@ -173,11 +173,11 @@ impl EditorHandle for SlintEditorHandle {
         ()
     }
 
-    fn param_value_changed(&self, id: &str, normalized_value: f32) {
+    fn param_value_changed(&self, _id: &str, _normalized_value: f32) {
         ()
     }
 
-    fn param_modulation_changed(&self, id: &str, modulation_offset: f32) {
+    fn param_modulation_changed(&self, _id: &str, _modulation_offset: f32) {
         ()
     }
 }

@@ -184,7 +184,7 @@ impl InputData {
         self.poll_waveforms(app);
     }
 
-    fn poll_spectrum(&self, app: &slint_ui::AppWindow) {
+    fn poll_spectrum(&self, _app: &slint_ui::AppWindow) {
         let mut samples = [0.0f32; 64];
         let mut have_samples = false;
         {
@@ -246,7 +246,6 @@ impl InputData {
         for i in 0..32 {
             self.out_spectrum[i].store(spectrum[i], Relaxed);
         }
-        // app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum.to_vec())));
     }
 
     fn poll_waveforms(&self, app: &slint_ui::AppWindow) {

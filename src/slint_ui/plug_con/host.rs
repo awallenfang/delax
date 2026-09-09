@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use baseview::host::{Host, HostCallbacks};
 use baseview::{HandlerError, WindowSize};
 use nice_plug::context::gui::GuiContext;
-use nice_plug::editor::{HostMainThreadCaller, HostMethods};
+use nice_plug::editor::HostMethods;
 use crate::slint_ui::renderer::WgpuRegistry;
 
 pub trait SlintHost: Send + Sync {
