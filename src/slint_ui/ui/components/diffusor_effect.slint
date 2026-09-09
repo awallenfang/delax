@@ -1,0 +1,64 @@
+import { ParamKnob } from "param_knob.slint";
+import { ParamBus } from "../events.slint";
+import { ParamSwitch } from "param_switch.slint";
+import { Palette } from "../global.slint";
+
+export component DiffusorEffect inherits Rectangle {
+    property <bool> active: ParamBus.read_val("diffusor_active") > 0.5;
+    background: Palette.background-light;
+    HorizontalLayout {
+        padding-left: 1rem;
+        padding-right: 1rem;
+
+        alignment: space-between;
+        opacity: root.active ? 1.0 : 0.5;
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: "Diffusion";
+                color: Palette.text;
+            }
+        }
+        HorizontalLayout {
+            ParamKnob {
+                param_name: "dattorro_size";
+                label: "Size";
+                val: ParamBus.read_val("dattorro_size");
+            }
+            ParamKnob {
+                param_name: "dattorro_lushness";
+                label: "Lushness";
+                val: ParamBus.read_val("dattorro_lushness");
+            }
+            ParamKnob {
+                param_name: "dattorro_brightness";
+                label: "Brightness";
+                val: ParamBus.read_val("dattorro_brightness");
+            }
+
+            ParamKnob {
+                param_name: "dattorro_decay";
+                label: "Decay";
+                val: ParamBus.read_val("dattorro_decay");
+            }
+
+            ParamKnob {
+                param_name: "dattorro_pre_delay";
+                label: "Pre Delay";
+                val: ParamBus.read_val("dattorro_pre_delay");
+            }
+            ParamKnob {
+                param_name: "dattorro_mix";
+                label: "Mix";
+                val: ParamBus.read_val("dattorro_mix");
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            ParamSwitch {
+                param_name: "diffusor_active";
+                checked <=> root.active;
+            }
+        }
+    }
+}

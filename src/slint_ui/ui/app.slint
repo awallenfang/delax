@@ -16,7 +16,7 @@ import { SpectrumAnalyzer } from "components/spectrum_analyzer.slint";
 import { Button } from "components/button.slint";
 import { AboutPage } from "pages/about_page.slint";
 import { EditorPage } from "pages/editor_page.slint";
-import { FilterPage } from "pages/filter_page.slint";
+import { FilterPage } from "pages/effects_page.slint";
 import { DelayPage } from "pages/delay_page.slint";
 export { ParamBus }
 export struct FilterData {
@@ -105,7 +105,7 @@ export component AppWindow inherits Window {
 
                 Button {
                     checked: tab == 1;
-                    text: "Filter";
+                    text: "Effects";
                     width: 52px;
                     height: 24px;
                     clicked => {
