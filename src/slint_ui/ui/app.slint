@@ -10,7 +10,7 @@ import {
 import { ParamKnob } from "components/param_knob.slint";
 import { ParamBus } from "events.slint";
 import { ParamSwitch } from "components/param_switch.slint";
-import { Palette } from "./components/global.slint";
+import { Palette } from "./global.slint";
 import { PeakMeter } from "components/peak_meter.slint";
 import { SpectrumAnalyzer } from "components/spectrum_analyzer.slint";
 import { Button } from "components/button.slint";
@@ -19,8 +19,36 @@ import { EditorPage } from "pages/editor_page.slint";
 import { FilterPage } from "pages/filter_page.slint";
 import { DelayPage } from "pages/delay_page.slint";
 export { ParamBus }
+export struct FilterData {
+    filter_order: [string],
+}
 
+export struct HeaderData {
+    in_level_l: float,
+    in_level_r: float,
+    out_level_l: float,
+    out_level_r: float,
+}
+
+export struct MetaData {
+    is_stereo: bool,
+    is_ping_pong: bool,
+    is_filter_stereo: bool,
+    is_bpm_bound_l: bool,
+    is_bpm_bound_r: bool,
+}
+
+export struct Textures {
+    spectrum: image,
+    buffer: image,
+    decay: image
+}
 export component AppWindow inherits Window {
+    in-out property <FilterData> filter_data;
+    in-out property <HeaderData> header_data;
+    in-out property <Textures> textures;
+
+
     in-out property <bool> is_stereo: false;
     in-out property <bool> is_ping_pong: false;
     in-out property <bool> is_filter_stereo: false;
@@ -32,14 +60,6 @@ export component AppWindow inherits Window {
     in-out property <float> timing_factor_l: 1.0;
     in-out property <float> timing_factor_r: 1.0;
 
-    in-out property <float> in_level_l: 0.0;
-    in-out property <float> in_level_r: 0.0;
-    in-out property <float> out_level_l: 0.0;
-    in-out property <float> out_level_r: 0.0;
-    in-out property <[float]> out_spectrum;
-    in-out property <image> spectrum_tex;
-    in-out property <image> buffer_tex;
-    in-out property <image> decay_tex;
     in-out property <[float]> dry_buffer;
     in-out property <[float]> wet_buffer;
     in-out property <string> version;
@@ -75,7 +95,7 @@ export component AppWindow inherits Window {
                 alignment: LayoutAlignment.center;
                 Button {
                     checked: tab == 0;
-                    text: "hello";
+                    text: "Delay";
                     width: 52px;
                     height: 24px;
                     clicked => {
@@ -113,28 +133,28 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 2px;
                         PeakMeter {
-                            val <=> in_level_l;
+                            val <=> header_data.in_level_l;
                         }
 
                         PeakMeter {
-                            val <=> in_level_r;
+                            val <=> header_data.in_level_r;
                         }
                     }
 
                     VerticalLayout {
                         spacing: 2px;
                         PeakMeter {
-                            val <=> out_level_l;
+                            val <=> header_data.out_level_l;
                         }
 
                         PeakMeter {
-                            val <=> out_level_r;
+                            val <=> header_data.out_level_r;
                         }
                     }
                 }
 
                 SpectrumAnalyzer {
-                    texture <=> root.spectrum_tex;
+                    texture <=> root.textures.spectrum;
                     width: 100px;
                 }
             }
@@ -145,8 +165,8 @@ export component AppWindow inherits Window {
 
             if tab == 0:
                 DelayPage {
-                buffer_tex: buffer_tex;
-                decay_tex: decay_tex;
+                buffer_tex: root.textures.buffer;
+                decay_tex: root.textures.decay;
                 vertical-stretch: 1;
                 is-stereo <=> root.is_stereo;
                 is-ping-pong <=> root.is_ping_pong;

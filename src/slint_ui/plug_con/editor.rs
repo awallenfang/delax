@@ -60,6 +60,12 @@ impl<H: SlintHost + 'static> Editor
                 move |app, wgpu| host.on_frame(app, wgpu)
             }
         );
+        let on_init: Arc<dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>) + Send + Sync> = Arc::new(
+            {
+                let host = self.host.clone();
+                move |app, wgpu| host.on_init(app, wgpu)
+            }
+        );
         let on_resize: Arc<dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>, u32, u32) + Send + Sync> = Arc::new(
             {
                 let host = self.host.clone();
@@ -87,6 +93,7 @@ impl<H: SlintHost + 'static> Editor
                     on_event,
                     on_frame,
                     on_resize,
+                    on_init
                 )?)
             },
             to_baseview_host(host),

@@ -1,4 +1,5 @@
 use super::{StereoFilter, flush_denormal};
+use nice_plug::prelude::*;
 
 const INPUT_DIFFUSOR_SIZE_1: usize = 142;
 const INPUT_DIFFUSOR_SIZE_2: usize = 107;
@@ -30,10 +31,93 @@ const TAP_RIGHT_6: usize = 335;
 const TAP_RIGHT_7: usize = 121;
 
 const MAX_SIZE: f32 = 2.;
+#[derive(Params)]
+pub struct DattorroParams {
+    #[id = "dattorro_size"]
+    pub size: FloatParam,
+    #[id = "dattorro_decay"]
+    pub decay: FloatParam,
+    #[id = "dattorro_pre_delay"]
+    pub pre_delay: FloatParam,
+    #[id = "dattorro_damping"]
+    pub damping: FloatParam,
+    #[id = "dattorro_brightness"]
+    pub brightness: FloatParam,
+    #[id = "dattorro_lushness"]
+    pub lushness: FloatParam,
+    #[id = "dattorro_input_smear"]
+    pub input_smear: FloatParam,
+    #[id = "dattorro_tank_smear"]
+    pub tank_smear: FloatParam,
+    #[id = "dattorro_mix"]
+    pub mix: FloatParam,
+}
 
+impl Default for DattorroParams {
+    fn default() -> Self {
+        Self {
+            size: FloatParam::new(
+                "Size",
+                1.,
+                FloatRange::Linear {
+                    min: 0.1,
+                    max: MAX_SIZE,
+                },
+            )
+            .with_smoother(SmoothingStyle::Linear(0.2)),
+            decay: FloatParam::new("Decay", 0.5, FloatRange::Linear { min: 0.01, max: 1. })
+                .with_smoother(SmoothingStyle::Linear(0.2)),
+            pre_delay: FloatParam::new(
+                "Pre Delay",
+                0.5,
+                FloatRange::Skewed {
+                    min: 0.01,
+                    max: 1.,
+                    factor: 2.,
+                },
+            )
+            .with_smoother(SmoothingStyle::Exponential(2.)),
+            damping: FloatParam::new("Damping", 0.7, FloatRange::Linear { min: 0.0, max: 1. })
+                .with_smoother(SmoothingStyle::Linear(0.2)),
+            brightness: FloatParam::new(
+                "Brightness",
+                0.8,
+                FloatRange::Linear {
+                    min: 0.5,
+                    max: 0.95,
+                },
+            )
+            .with_smoother(SmoothingStyle::Linear(0.2)),
+            lushness: FloatParam::new("Lushness", 8., FloatRange::Linear { min: 4., max: 16. })
+                .with_smoother(SmoothingStyle::Linear(1.)),
+            input_smear: FloatParam::new(
+                "Input Smear",
+                0.65,
+                FloatRange::Linear {
+                    min: 0.5,
+                    max: 0.95,
+                },
+            )
+            .with_smoother(SmoothingStyle::Linear(0.2)),
+            tank_smear: FloatParam::new(
+                "Tank Smear",
+                0.8,
+                FloatRange::Linear {
+                    min: 0.5,
+                    max: 0.95,
+                },
+            )
+            .with_smoother(SmoothingStyle::Linear(0.2)),
+            mix: FloatParam::new("Mix", 0.25, FloatRange::Linear { min: 0., max: 0.5 })
+                .with_smoother(SmoothingStyle::Linear(50.))
+                .with_value_to_string(formatters::v2s_f32_rounded(2)),
+        }
+    }
+}
 impl StereoFilter for DattorroReverb {
     fn process_stereo(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
-        self.process_stereo(input_l, input_r)
+        let (out_l, out_r) = self.process_stereo(input_l, input_r);
+         (out_l * self.mix + input_l * (1.0 - self.mix), out_r * self.mix + input_r * (1.0 - self.mix))
     }
 
     fn set_param(&mut self, param_id: &'static str, val: (f32, f32)) {
@@ -47,7 +131,8 @@ impl StereoFilter for DattorroReverb {
             "tank_smear" => self.set_tank_smear(val.0),
             "lushness" => self.set_lushness(val.0),
             "size" => self.set_size(val.0),
-            _ => ()
+            "mix" => self.set_mix(val.0),
+            _ => (),
         }
     }
 }
@@ -64,6 +149,7 @@ impl StereoFilter for DattorroReverb {
 /// ```
 #[derive(Clone)]
 pub struct DattorroReverb {
+    mix: f32,
     sample_rate: f32,
     pre_delay_line: DelayLine,
     bandwidth_damper: Damper,
@@ -95,6 +181,7 @@ pub struct DattorroReverb {
 impl DattorroReverb {
     /// Create a new reverb instance with a sample rate and an initial decay factor
     pub fn new(
+        mix: f32,
         sample_rate: f32,
         decay: f32,
         pre_delay: f32,
@@ -108,11 +195,14 @@ impl DattorroReverb {
         if brightness > 0.95 {
             brightness = 0.95;
         }
-        let mut pre_delay_line =
-            DelayLine::new((sample_rate * MAX_SIZE) as usize, (pre_delay * sample_rate) as usize);
+        let mut pre_delay_line = DelayLine::new(
+            (sample_rate * MAX_SIZE) as usize,
+            (pre_delay * sample_rate) as usize,
+        );
         pre_delay_line.set_delay(pre_delay, sample_rate);
 
         Self {
+            mix,
             sample_rate,
             pre_delay_line,
             bandwidth_damper: Damper::new(brightness),
@@ -200,8 +290,8 @@ impl DattorroReverb {
         let feedback_l = self.delay_line_2_r.get();
         let feedback_r = self.delay_line_2_l.get();
 
-        let mut tank_l = signal + feedback_l;
-        let mut tank_r = signal + feedback_r;
+        let mut tank_l = signal * 0.5 + feedback_l;
+        let mut tank_r = signal * 0.5 + feedback_r;
 
         tank_l = self.decay_diffusor_l.process(tank_l);
         tank_r = self.decay_diffusor_r.process(tank_r);
@@ -229,58 +319,60 @@ impl DattorroReverb {
         // The delay lengths are all from the Dattorro paper
         let y_l = left_init
             + self
-            .delay_line_1_r
-            .get_with_delay((TAP_LEFT_1 as f32 * self.size) as usize)
+                .delay_line_1_r
+                .get_with_delay((TAP_LEFT_1 as f32 * self.size) as usize)
             + self
-            .delay_line_1_r
-            .get_with_delay((TAP_LEFT_2 as f32 * self.size) as usize)
+                .delay_line_1_r
+                .get_with_delay((TAP_LEFT_2 as f32 * self.size) as usize)
             - self
-            .input_diffusor_r
-            .tap_at((TAP_LEFT_3 as f32 * self.size) as usize)
+                .input_diffusor_r
+                .tap_at((TAP_LEFT_3 as f32 * self.size) as usize)
             + self
-            .delay_line_2_r
-            .get_with_delay((TAP_LEFT_4 as f32 * self.size) as usize)
+                .delay_line_2_r
+                .get_with_delay((TAP_LEFT_4 as f32 * self.size) as usize)
             - self
-            .delay_line_1_l
-            .get_with_delay((TAP_LEFT_5 as f32 * self.size) as usize)
+                .delay_line_1_l
+                .get_with_delay((TAP_LEFT_5 as f32 * self.size) as usize)
             - self
-            .input_diffusor_l
-            .tap_at((TAP_LEFT_6 as f32 * self.size) as usize)
+                .input_diffusor_l
+                .tap_at((TAP_LEFT_6 as f32 * self.size) as usize)
             - self
-            .delay_line_2_l
-            .get_with_delay((TAP_LEFT_7 as f32 * self.size) as usize);
+                .delay_line_2_l
+                .get_with_delay((TAP_LEFT_7 as f32 * self.size) as usize);
 
         let y_r = right_init
             + self
-            .delay_line_1_l
-            .get_with_delay((TAP_RIGHT_1 as f32 * self.size) as usize)
+                .delay_line_1_l
+                .get_with_delay((TAP_RIGHT_1 as f32 * self.size) as usize)
             + self
-            .delay_line_1_l
-            .get_with_delay((TAP_RIGHT_2 as f32 * self.size) as usize)
+                .delay_line_1_l
+                .get_with_delay((TAP_RIGHT_2 as f32 * self.size) as usize)
             - self
-            .input_diffusor_l
-            .tap_at((TAP_RIGHT_3 as f32 * self.size) as usize)
+                .input_diffusor_l
+                .tap_at((TAP_RIGHT_3 as f32 * self.size) as usize)
             + self
-            .delay_line_2_l
-            .get_with_delay((TAP_RIGHT_4 as f32 * self.size) as usize)
+                .delay_line_2_l
+                .get_with_delay((TAP_RIGHT_4 as f32 * self.size) as usize)
             - self
-            .delay_line_1_r
-            .get_with_delay((TAP_RIGHT_5 as f32 * self.size) as usize)
+                .delay_line_1_r
+                .get_with_delay((TAP_RIGHT_5 as f32 * self.size) as usize)
             - self
-            .input_diffusor_r
-            .tap_at((TAP_RIGHT_6 as f32 * self.size) as usize)
+                .input_diffusor_r
+                .tap_at((TAP_RIGHT_6 as f32 * self.size) as usize)
             - self
-            .delay_line_2_r
-            .get_with_delay((TAP_RIGHT_7 as f32 * self.size) as usize);
+                .delay_line_2_r
+                .get_with_delay((TAP_RIGHT_7 as f32 * self.size) as usize);
 
         (y_l, y_r)
     }
 
     /// Set the decay factor of the reverb
     pub fn set_decay(&mut self, decay: f32) {
-        self.decay = decay;
+        self.decay = decay.clamp(0.0, 0.98);
     }
-
+    pub fn set_mix(&mut self, mix: f32) {
+        self.mix = mix.clamp(0.0, 1.);
+    }
     pub fn set_pre_delay(&mut self, pre_delay: f32) {
         self.pre_delay = pre_delay;
         self.pre_delay_line.set_delay(pre_delay, self.sample_rate);
@@ -325,7 +417,7 @@ impl DattorroReverb {
     pub fn set_size(&mut self, size: f32) {
         self.size = size;
         /*self.pre_delay_line
-            .set_size((size * self.sample_rate) as usize);*/
+        .set_size((size * self.sample_rate) as usize);*/
         self.delay_line_1_l
             .set_size((DELAY_LINE_SIZE_L_1 as f32 * size) as usize);
         self.delay_line_1_r
@@ -519,16 +611,17 @@ impl DecayDiffusor {
         let delayed = self
             .delay_line
             .get_with_delay(self.delay + self.excursion.floor() as usize);
-        let in_changed = input + delayed * self.gain;
+        let in_changed = input - delayed * self.gain;
 
         self.delay_line.insert(in_changed);
 
-        delayed + -(in_changed * self.gain)
+        delayed + (in_changed * self.gain)
     }
 
     /// Modulates the excursion for each sample at a specific rate
     pub fn modulate_excursion(&mut self) {
-        self.excursion = (self.excursion_tick * self.excursion_rate).sin() * self.excursion_depth;
+        self.excursion = (self.excursion_tick * self.excursion_rate * std::f32::consts::TAU).sin()
+            * self.excursion_depth;
         self.excursion_tick += 1. / self.sample_rate;
     }
 
