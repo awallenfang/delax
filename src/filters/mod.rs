@@ -3,6 +3,7 @@ pub mod dattorro;
 pub mod params;
 pub mod peak_follower;
 pub mod simper;
+pub mod shifter;
 
 pub trait Filter: Send + Sync  {
     fn process(&mut self, input: f32) -> f32;

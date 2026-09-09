@@ -2,10 +2,13 @@ import { ParamKnob } from "param_knob.slint";
 import { ParamBus } from "../events.slint";
 import { ParamSwitch } from "param_switch.slint";
 import { Palette } from "../global.slint";
+import { IconButton } from "icon_button.slint";
 
 export component FilterEffect inherits Rectangle {
     property <int> tab: 0;
     property <bool> active: ParamBus.read_val("eq_active") > 0.5;
+    property <bool> is_stereo: ParamBus.read_val("svf_stereo_mode") > 0.5;
+
     opacity: root.active ? 1.0 : 0.5;
     background: Palette.background-light;
     HorizontalLayout {
@@ -17,6 +20,75 @@ export component FilterEffect inherits Rectangle {
             Text {
                 text: "Filter";
                 color: Palette.text;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 0.25rem;
+            IconButton {
+                width: 25px;
+                height: 25px;
+                checked: !root.is_stereo;
+                Image {
+                    source: @image-url("../assets/mono.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+
+                clicked => {
+                    ParamBus.param_changed("svf_stereo_mode", 0.0);
+                }
+            }
+            IconButton {
+                width: 25px;
+                height: 25px;
+                checked: root.is_stereo;
+                Image {
+                    source: @image-url("../assets/stereo.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+
+                clicked => {
+                    ParamBus.param_changed("svf_stereo_mode", 1.0);
+                }
+            }
+        }
+        if is_stereo:
+        VerticalLayout {
+            VerticalLayout {
+                alignment: center;
+                spacing: 0.25rem;
+                IconButton {
+                    width: 25px;
+                    height: 25px;
+                    checked: tab == 0;
+                    Text {
+                        text: "L";
+                        color: parent.checked ? Palette.text-dark : Palette.text;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    clicked => {
+                        tab = 0;
+                    }
+                }
+                IconButton {
+                    width: 25px;
+                    height: 25px;
+                    checked: tab == 1;
+                    Text {
+                        text: "R";
+                        color: parent.checked ? Palette.text-dark : Palette.text;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    clicked => {
+                        tab = 1;
+                    }
+                }
             }
         }
         if tab == 0:
@@ -62,13 +134,11 @@ export component FilterEffect inherits Rectangle {
                 param_name: "svf_res_r";
                 label: "Res";
                 val: ParamBus.read_val("svf_res_r");
-                display_val: ParamBus.read_display_val("svf_res_r");
             }
             ParamKnob {
                 param_name: "svf_mix_r";
                 label: "Mix";
                 val: ParamBus.read_val("svf_mix_r");
-                display_val: ParamBus.read_display_val("svf_mix_r");
             }
         }
         VerticalLayout {

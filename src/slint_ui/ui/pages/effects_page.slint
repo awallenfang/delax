@@ -14,6 +14,7 @@ import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
 import { FilterEffect } from "../components/filter_effect.slint";
 import { DiffusorEffect } from "../components/diffusor_effect.slint";
+import { ShimmerEffect } from "../components/shimmer_effect.slint";
 
 export component FilterPage inherits Rectangle {
     in-out property <bool> is_filter_stereo: false;
@@ -27,6 +28,7 @@ export component FilterPage inherits Rectangle {
         alignment: LayoutAlignment.stretch;
         spacing: 0.5rem;
         FilterEffect {}
+        ShimmerEffect {}
         DiffusorEffect {}
     }
 
