@@ -164,6 +164,10 @@ impl Plugin for Delax {
 
         self.filter_pipeline
             .set_param("svf_filter", "sample_rate", self.sample_rate);
+        self.filter_pipeline
+            .set_param("shimmer", "sample_rate", self.sample_rate);
+        self.filter_pipeline
+            .set_param("dattorro", "sample_rate", self.sample_rate);
         self.input_sin_svf_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_r.set_sample_rate(self.sample_rate);
 
@@ -171,8 +175,6 @@ impl Plugin for Delax {
         self.peak_in_r.set_sample_rate(self.sample_rate);
         self.peak_out_l.set_sample_rate(self.sample_rate);
         self.peak_out_r.set_sample_rate(self.sample_rate);
-
-        // self.filter_pipeline.register_stereo(Arc::new(Mutex::new(self.datorro.clone())));
 
         true
     }
@@ -302,13 +304,11 @@ impl Delax {
             .set_bpm(transport.tempo.unwrap_or(120.) as f32);
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
-                // Advance all smoothers so they stay in sync when switching modes.
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
                 let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
                 let count_l = self.params.delay_params.delay_note_l.smoothed.next();
                 let _count_r = self.params.delay_params.delay_note_r.smoothed.next();
                 let _ = (ms_r, _count_r);
-                // Advance div smoothers not needed – EnumParam not smoothed; just read value
                 let div_factor_l = self.params.delay_params.delay_div_l.value().factor();
                 let bpm_bound = self.params.delay_params.bpm_bound_l.value();
                 let mut bpm = 120.;
@@ -334,9 +334,11 @@ impl Delax {
                 self.input_sin_svf_l.set_res(res);
                 self.input_sin_svf_r.set_res(res);
                 self.input_sin_svf_l.set_cutoff(cutoff);
+                self.input_sin_svf_l.set_mix(1.);
                 self.input_sin_svf_r.set_cutoff(cutoff);
                 self.input_sin_svf_l.set_mode(mode);
                 self.input_sin_svf_r.set_mode(mode);
+                self.input_sin_svf_r.set_mix(1.);
             }
             DelayMode::Stereo | DelayMode::PingPong => {
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
@@ -382,6 +384,8 @@ impl Delax {
                 self.input_sin_svf_r.set_cutoff(cutoff_r);
                 self.input_sin_svf_l.set_mode(mode_l);
                 self.input_sin_svf_r.set_mode(mode_r);
+                self.input_sin_svf_l.set_mix(1.);
+                self.input_sin_svf_r.set_mix(1.);
             }
         }
         let dattorro_mix = self.params.dattorro_params.mix.smoothed.next();
@@ -408,17 +412,14 @@ impl Delax {
                 // `smoothed.next()` once for mono – keeps L/R smoothers in sync.
                 let res = self.params.svf_params.svf_res_l.smoothed.next();
                 let cutoff = self.params.svf_params.svf_cutoff_l.smoothed.next();
-                let mode = self.params.svf_params.svf_filter_mode_l.value();
+                let mode = self.params.svf_params.svf_filter_mode_l.modulated_normalized_value();
                 let mix = self.params.svf_params.svf_mix_l.value();
                 self.filter_pipeline.set_param("svf_filter", "res", res);
                 self.filter_pipeline
                     .set_param("svf_filter", "cutoff", cutoff);
                 self.filter_pipeline.set_param("svf_filter", "mix", mix);
+                self.filter_pipeline.set_param("svf_filter", "mode", mode);
 
-                self.input_sin_svf_l.set_cutoff(cutoff);
-                self.input_sin_svf_r.set_cutoff(cutoff);
-                self.input_sin_svf_l.set_mode(mode);
-                self.input_sin_svf_r.set_mode(mode);
             }
             filters::params::SVFStereoMode::Stereo => {
                 let res_l = self.params.svf_params.svf_res_l.smoothed.next();
@@ -427,21 +428,17 @@ impl Delax {
                 let cutoff_r = self.params.svf_params.svf_cutoff_r.smoothed.next();
                 let mix_l = self.params.svf_params.svf_mix_l.smoothed.next();
                 let mix_r = self.params.svf_params.svf_mix_r.smoothed.next();
-                let mode_l = self.params.svf_params.svf_filter_mode_l.value();
-                let mode_r = self.params.svf_params.svf_filter_mode_r.value();
+                let mode_l = self.params.svf_params.svf_filter_mode_l.modulated_normalized_value();
+                let mode_r = self.params.svf_params.svf_filter_mode_r.modulated_normalized_value();
                 self.filter_pipeline
                     .set_param_stereo("svf_filter", "res", (res_l, res_r));
                 self.filter_pipeline
                     .set_param_stereo("svf_filter", "cutoff", (cutoff_l, cutoff_r));
                 self.filter_pipeline
                     .set_param_stereo("svf_filter", "mix", (mix_l, mix_r));
+                self.filter_pipeline
+                    .set_param_stereo("svf_filter", "mode", (mode_l, mode_r));
 
-                self.input_sin_svf_l.set_res(res_l);
-                self.input_sin_svf_r.set_res(res_r);
-                self.input_sin_svf_l.set_cutoff(cutoff_l);
-                self.input_sin_svf_r.set_cutoff(cutoff_r);
-                self.input_sin_svf_l.set_mode(mode_l);
-                self.input_sin_svf_r.set_mode(mode_r);
             }
         }
         self.filter_pipeline.set_active("svf_filter", self.params.pipeline_params.eq_active.value());
