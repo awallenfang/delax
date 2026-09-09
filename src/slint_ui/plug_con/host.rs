@@ -8,6 +8,7 @@ use crate::slint_ui::renderer::WgpuRegistry;
 pub trait SlintHost: Send + Sync {
     type Component: slint::ComponentHandle + 'static;
 
+    fn on_init(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>);
     fn build(&self) -> Result<Self::Component, slint::PlatformError>;
     fn on_event(&self, app: &Self::Component, gui_context: &GuiContext);
     fn on_frame(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>);

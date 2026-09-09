@@ -3,14 +3,20 @@ use std::sync::Arc;
 use nice_plug::prelude::*;
 
 use crate::slint_ui::editor::EditorState;
-use crate::{delay_engine::params::EngineParams, filters::params::FilterParams};
+use crate::{delay_engine::params::EngineParams, filters::params::SVFParams};
+use crate::filter_pipeline::params::PipelineParams;
+use crate::filters::dattorro::DattorroParams;
 
 #[derive(Params)]
 pub struct DelaxParams {
     #[nested(group = "Delay Parameters")]
     pub delay_params: EngineParams,
-    #[nested(group = "Filter Parameters")]
-    pub filter_params: FilterParams,
+    #[nested(group = "EQ Parameters")]
+    pub svf_params: SVFParams,
+    #[nested(group = "Diffusor Parameters")]
+    pub dattorro_params: DattorroParams,
+    #[nested(group = "Pipeline Parameters")]
+    pub pipeline_params: PipelineParams,
     #[id = "wetness"]
     pub wetness: FloatParam,
     #[persist = "editor-state"]
@@ -21,7 +27,9 @@ impl Default for DelaxParams {
     fn default() -> Self {
         Self {
             delay_params: EngineParams::default(),
-            filter_params: FilterParams::default(),
+            dattorro_params: DattorroParams::default(),
+            svf_params: SVFParams::default(),
+            pipeline_params: PipelineParams::default(),
             wetness: FloatParam::new("Wetness", 0.5, FloatRange::Linear { min: 0., max: 1. })
                 .with_smoother(SmoothingStyle::Linear(50.))
                 .with_value_to_string(formatters::v2s_f32_rounded(2)),

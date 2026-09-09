@@ -1,13 +1,13 @@
 import { VerticalBox } from "std-widgets.slint";
 import { ParamBus } from "../events.slint";
-import { Palette } from "./global.slint";
+import { Palette } from "../global.slint";
 
 struct Click { x: length, y: length}
 export component ParamKnob inherits VerticalLayout {
     in property <string> param_name: "knob";
     in property <string> label: "Knob";
     in-out property <float> val: 0.5;
-    in-out property <string> display_val: 0.5;
+    in-out property <string> display_val;
 
     in property <float> minimum: 0.0;
     in property <float> maximum: 1.0;

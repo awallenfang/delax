@@ -16,7 +16,7 @@ pub enum SVFStereoMode {
 }
 
 #[derive(Params)]
-pub struct FilterParams {
+pub struct SVFParams {
     #[id = "svf_cutoff_l"]
     pub svf_cutoff_l: FloatParam,
     #[id = "svf_cutoff_r"]
@@ -49,7 +49,7 @@ pub struct FilterParams {
     pub input_svf_filter_mode_r: EnumParam<SVFFilterMode>,
 }
 
-impl Default for FilterParams {
+impl Default for SVFParams {
     fn default() -> Self {
         Self {
             svf_cutoff_l: FloatParam::new(

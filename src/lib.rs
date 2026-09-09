@@ -55,7 +55,7 @@ impl Default for Delax {
             "svf_filter",
         );
         filter_pipeline.register_stereo(
-            Box::new(DattorroReverb::new(44100., 0.1, 0.1, 0.7, 0.8, 0.65, 0.8, 8., 1.1)),
+            Box::new(DattorroReverb::new(0.5, 44100., 0.2, 0.0, 0.7, 0.8, 0.65, 0.8, 8., 1.1)),
             "dattorro"
         );
 
@@ -216,7 +216,8 @@ impl Plugin for Delax {
             let pop_right = self
                 .right_delay_engine
                 .interpolate_sample(DelayInterpolationMode::Nearest);
-
+            let (pop_left, pop_right) =
+                self.run_bank_filters(pop_left, pop_right);
             // ####### Feedback loop #########
             // The feedback values, used for the feedback loop.
             let feedbacked_left;
@@ -261,16 +262,14 @@ impl Plugin for Delax {
             // ############ Filtering ###############
 
             // Run the signal through the filters
-            let (filtered_output_l, filtered_output_r) =
-                self.run_bank_filters(feedbacked_left, feedbacked_right);
 
             // Mix the feedback and filtered signal together
             // Make the filtered output more stable by using the feedback param as well
             let (input_left, input_right) = self.run_input_filters(*left_sample, *right_sample);
             self.left_delay_engine
-                .write_sample(input_left + filtered_output_l);
+                .write_sample(input_left + feedbacked_left);
             self.right_delay_engine
-                .write_sample(input_right + filtered_output_r);
+                .write_sample(input_right + feedbacked_right);
 
             // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
@@ -322,9 +321,9 @@ impl Delax {
                 self.decay_time_s_l = delay_amt / 1000.;
                 self.decay_time_s_r = delay_amt / 1000.;
 
-                let res = self.params.filter_params.input_svf_res_l.smoothed.next();
-                let cutoff = self.params.filter_params.input_svf_cutoff_l.smoothed.next();
-                let mode = self.params.filter_params.input_svf_filter_mode_l.value();
+                let res = self.params.svf_params.input_svf_res_l.smoothed.next();
+                let cutoff = self.params.svf_params.input_svf_cutoff_l.smoothed.next();
+                let mode = self.params.svf_params.input_svf_filter_mode_l.value();
 
                 self.input_sin_svf_l.set_res(res);
                 self.input_sin_svf_r.set_res(res);
@@ -364,12 +363,12 @@ impl Delax {
                 self.decay_time_s_l = delay_amt_l / 1000.;
                 self.decay_time_s_r = delay_amt_r / 1000.;
 
-                let res_l = self.params.filter_params.input_svf_res_l.smoothed.next();
-                let res_r = self.params.filter_params.input_svf_res_r.smoothed.next();
-                let cutoff_l = self.params.filter_params.input_svf_cutoff_l.smoothed.next();
-                let cutoff_r = self.params.filter_params.input_svf_cutoff_r.smoothed.next();
-                let mode_l = self.params.filter_params.input_svf_filter_mode_l.value();
-                let mode_r = self.params.filter_params.input_svf_filter_mode_r.value();
+                let res_l = self.params.svf_params.input_svf_res_l.smoothed.next();
+                let res_r = self.params.svf_params.input_svf_res_r.smoothed.next();
+                let cutoff_l = self.params.svf_params.input_svf_cutoff_l.smoothed.next();
+                let cutoff_r = self.params.svf_params.input_svf_cutoff_r.smoothed.next();
+                let mode_l = self.params.svf_params.input_svf_filter_mode_l.value();
+                let mode_r = self.params.svf_params.input_svf_filter_mode_r.value();
 
                 self.input_sin_svf_l.set_res(res_l);
                 self.input_sin_svf_r.set_res(res_r);
@@ -379,14 +378,32 @@ impl Delax {
                 self.input_sin_svf_r.set_mode(mode_r);
             }
         }
+        let dattorro_mix = self.params.dattorro_params.mix.smoothed.next();
+        let dattorro_size = self.params.dattorro_params.size.smoothed.next();
+        let dattorro_decay = self.params.dattorro_params.decay.smoothed.next();
+        let dattorro_pre_delay = self.params.dattorro_params.pre_delay.smoothed.next();
+        let dattorro_damping = self.params.dattorro_params.damping.smoothed.next();
+        let dattorro_brightness = self.params.dattorro_params.brightness.smoothed.next();
+        let dattorro_lushness = self.params.dattorro_params.lushness.smoothed.next();
+        let dattorro_input_smear = self.params.dattorro_params.input_smear.smoothed.next();
+        let dattorro_tank_smear = self.params.dattorro_params.tank_smear.smoothed.next();
 
-        match self.params.filter_params.svf_stereo_mode.value() {
+        self.filter_pipeline.set_param("dattorro", "mix", dattorro_mix);
+        self.filter_pipeline.set_param("dattorro", "size", dattorro_size);
+        self.filter_pipeline.set_param("dattorro", "decay", dattorro_decay);
+        self.filter_pipeline.set_param("dattorro", "pre_delay", dattorro_pre_delay);
+        self.filter_pipeline.set_param("dattorro", "damping", dattorro_damping);
+        self.filter_pipeline.set_param("dattorro", "brightness", dattorro_brightness);
+        self.filter_pipeline.set_param("dattorro", "lushness", dattorro_lushness);
+        self.filter_pipeline.set_param("dattorro", "input_smear", dattorro_input_smear);
+        self.filter_pipeline.set_param("dattorro", "tank_smear", dattorro_tank_smear);
+        match self.params.svf_params.svf_stereo_mode.value() {
             filters::params::SVFStereoMode::Mono => {
                 // `smoothed.next()` once for mono – keeps L/R smoothers in sync.
-                let res = self.params.filter_params.svf_res_l.smoothed.next();
-                let cutoff = self.params.filter_params.svf_cutoff_l.smoothed.next();
-                let mode = self.params.filter_params.svf_filter_mode_l.value();
-                let mix = self.params.filter_params.svf_mix_l.value();
+                let res = self.params.svf_params.svf_res_l.smoothed.next();
+                let cutoff = self.params.svf_params.svf_cutoff_l.smoothed.next();
+                let mode = self.params.svf_params.svf_filter_mode_l.value();
+                let mix = self.params.svf_params.svf_mix_l.value();
                 self.filter_pipeline.set_param("svf_filter", "res", res);
                 self.filter_pipeline
                     .set_param("svf_filter", "cutoff", cutoff);
@@ -398,14 +415,14 @@ impl Delax {
                 self.input_sin_svf_r.set_mode(mode);
             }
             filters::params::SVFStereoMode::Stereo => {
-                let res_l = self.params.filter_params.svf_res_l.smoothed.next();
-                let res_r = self.params.filter_params.svf_res_r.smoothed.next();
-                let cutoff_l = self.params.filter_params.svf_cutoff_l.smoothed.next();
-                let cutoff_r = self.params.filter_params.svf_cutoff_r.smoothed.next();
-                let mix_l = self.params.filter_params.svf_mix_l.smoothed.next();
-                let mix_r = self.params.filter_params.svf_mix_r.smoothed.next();
-                let mode_l = self.params.filter_params.svf_filter_mode_l.value();
-                let mode_r = self.params.filter_params.svf_filter_mode_r.value();
+                let res_l = self.params.svf_params.svf_res_l.smoothed.next();
+                let res_r = self.params.svf_params.svf_res_r.smoothed.next();
+                let cutoff_l = self.params.svf_params.svf_cutoff_l.smoothed.next();
+                let cutoff_r = self.params.svf_params.svf_cutoff_r.smoothed.next();
+                let mix_l = self.params.svf_params.svf_mix_l.smoothed.next();
+                let mix_r = self.params.svf_params.svf_mix_r.smoothed.next();
+                let mode_l = self.params.svf_params.svf_filter_mode_l.value();
+                let mode_r = self.params.svf_params.svf_filter_mode_r.value();
                 self.filter_pipeline
                     .set_param_stereo("svf_filter", "res", (res_l, res_r));
                 self.filter_pipeline
@@ -421,6 +438,8 @@ impl Delax {
                 self.input_sin_svf_r.set_mode(mode_r);
             }
         }
+        self.filter_pipeline.set_active("svf_filter", self.params.pipeline_params.eq_active.value());
+        self.filter_pipeline.set_active("diffusor", self.params.pipeline_params.diffusor_active.value());
     }
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.

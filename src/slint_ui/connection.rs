@@ -10,6 +10,7 @@ use rustfft::num_complex::Complex32;
 use wgpu::Buffer;
 use crate::slint_ui;
 use crate::slint_ui::elements::{ElementId, GpuElementData};
+use crate::slint_ui::HeaderData;
 use crate::slint_ui::uniforms::{BufferUniforms, DecayUniforms, SpectrumUniforms};
 
 pub const UI_BUFFER_SIZE: usize = 128;
@@ -173,10 +174,12 @@ impl InputData {
     }
 
     pub fn update_ui(&self, app: &slint_ui::AppWindow) {
-        app.set_in_level_l(self.in_l.load(Relaxed));
-        app.set_in_level_r(self.in_r.load(Relaxed));
-        app.set_out_level_l(self.out_l.load(Relaxed));
-        app.set_out_level_r(self.out_r.load(Relaxed));
+        app.set_header_data(HeaderData {
+            in_level_l: self.in_l.load(Relaxed),
+            in_level_r: self.in_r.load(Relaxed),
+            out_level_l: self.in_l.load(Relaxed),
+            out_level_r: self.out_r.load(Relaxed),
+        });
         app.set_bpm(self.bpm.load(Relaxed));
 
         self.poll_spectrum(app);
@@ -245,7 +248,7 @@ impl InputData {
         for i in 0..32 {
             self.out_spectrum[i].store(spectrum[i], Relaxed);
         }
-        app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum.to_vec())));
+        // app.set_out_spectrum(slint::ModelRc::new(slint::VecModel::from(spectrum.to_vec())));
     }
 
     fn poll_waveforms(&self, app: &slint_ui::AppWindow) {

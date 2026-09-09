@@ -19,7 +19,7 @@ use crate::slint_ui::editor::UiEvent;
 
 slint::include_modules!();
 
-// Impls on the slint window
+/*
 impl GpuImageSink for AppWindow {
     fn set_element_image(&self, element: ElementId, image: slint::Image) {
         match element {
@@ -29,7 +29,7 @@ impl GpuImageSink for AppWindow {
             _ => {}
         }
     }
-}
+}*/
 
 static PARAM_STORE: OnceLock<RwLock<HashMap<String, (f32, SharedString)>>> = OnceLock::new();
 
