@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, AtomicU8, AtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
@@ -7,7 +6,6 @@ use nice_plug::util;
 use nice_plug::util::window::hann;
 use rustfft::{Fft, FftPlanner};
 use rustfft::num_complex::Complex32;
-use wgpu::Buffer;
 use crate::slint_ui;
 use crate::slint_ui::elements::{ElementId, GpuElementData};
 use crate::slint_ui::HeaderData;

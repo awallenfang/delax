@@ -1,4 +1,4 @@
-use super::{StereoFilter, flush_denormal};
+use super::StereoFilter;
 use nice_plug::prelude::*;
 
 const INPUT_DIFFUSOR_SIZE_1: usize = 142;
