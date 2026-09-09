@@ -37,6 +37,7 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
         on_event: Arc<dyn Fn(&T, &RefCell<WgpuRegistry>) + Send + Sync>,
         on_frame: Arc<dyn Fn(&T, &RefCell<WgpuRegistry>) + Send + Sync>,
         on_resize: Arc<dyn Fn(&T, &RefCell<WgpuRegistry>, u32, u32) + Send + Sync>,
+        on_init: Arc<dyn Fn(&T, &RefCell<WgpuRegistry>) + Send + Sync>,
     ) -> Result<Self, PlatformError>
     where
         F: FnOnce() -> Result<T, PlatformError>,
@@ -50,12 +51,14 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
         root.show().map_err(|e| PlatformError::Other(format!("Failed to show Slint component: {e}")))?;
 
         let gpu_context = GpuContext::ensure_initialized()?;
-
+        let wgpu_registry = RefCell::new(WgpuRegistry::new(gpu_context.clone()));
+        on_init(&root, &wgpu_registry);
+        
         Ok(Self {
             adapter,
             root: RefCell::new(root),
             last_pos: RefCell::new(slint::LogicalPosition::new(0.,0.)),
-            wgpu_registry: RefCell::new(WgpuRegistry::new(gpu_context.clone())),
+            wgpu_registry,
             on_event_closure: on_event.clone(),
             on_frame_closure: on_frame.clone(),
             on_resize_closure: on_resize.clone(),

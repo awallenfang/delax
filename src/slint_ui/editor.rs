@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use nice_plug::prelude::ParamPtr;
-use crate::slint_ui::param_store;
+use crate::slint_ui::{param_store, Textures};
 use slint::private_unstable_api::re_exports::ApproxEq;
 
 pub enum UiEvent {
@@ -165,10 +165,33 @@ impl DelaxSlintHost {
         app.set_timing_display_r(display_r.into());
         app.set_timing_factor_r(factor_r);
     }
+
+    fn render_vis(&self, app: &<DelaxSlintHost as SlintHost>::Component, wgpu: &RefCell<WgpuRegistry>) {
+        let mut textures = app.get_textures();
+        let mut registry = wgpu.borrow_mut();
+        for &element in ElementId::ALL {
+            let Some(spec) = element.spec() else { continue; };
+            registry.register(element, spec);
+            let Some(uniforms) = self.data.element_uniform(element) else { continue; };
+            let (w, h) = element.default_size();
+            let Some(image) = registry.render_to_image(element, w, h, &uniforms) else { continue; };
+            match element {
+                ElementId::Buffer => {textures.buffer = image.into()},
+                ElementId::Spectrum => {textures.spectrum = image.into()}
+                ElementId::Decay => {textures.decay = image.into()}
+                ElementId::Peak => {}
+            }
+        }
+        app.set_textures(textures);
+    }
 }
 
 impl SlintHost for DelaxSlintHost {
     type Component = slint_ui::AppWindow;
+
+    fn on_init(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>) {
+        self.render_vis(app, wgpu);
+    }
 
     fn build(&self) -> Result<Self::Component, PlatformError> {
         let app = slint_ui::AppWindow::new()?;
@@ -238,16 +261,7 @@ impl SlintHost for DelaxSlintHost {
     fn on_frame(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>) {
         self.sync_params_to_ui(app);
         self.data.update_ui(app);
-
-        let mut registry = wgpu.borrow_mut();
-        for &element in ElementId::ALL {
-            let Some(spec) = element.spec() else { continue; };
-            registry.register(element, spec);
-            let Some(uniforms) = self.data.element_uniform(element) else { continue; };
-            let (w, h) = element.default_size();
-            let Some(image) = registry.render_to_image(element, w, h, &uniforms) else { continue; };
-            app.set_element_image(element, image);
-        }
+        self.render_vis(app, wgpu);
     }
 
     fn on_resized(&self, width: u32, height: u32) {

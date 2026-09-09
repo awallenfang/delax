@@ -8,17 +8,26 @@ import {
 import { ParamKnob } from "../components/param_knob.slint";
 import { ParamBus } from "../events.slint";
 import { ParamSwitch } from "../components/param_switch.slint";
-import { Palette } from "../components/global.slint";
+import { Palette } from "../global.slint";
 import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
+import { EQFilter } from "../components/eq_filter.slint";
+import { DiffusorFilter } from "../components/diffusor_filter.slint";
 
 export component FilterPage inherits Rectangle {
     in-out property <bool> is_filter_stereo: false;
 
     clip: true;
     background: transparent;
-
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        alignment: LayoutAlignment.stretch;
+        EQFilter {}
+        DiffusorFilter {}
+    }
+    /*
     VerticalLayout {
         width: 100%;
         height: 100%;
@@ -106,5 +115,5 @@ export component FilterPage inherits Rectangle {
                 }
             }
         }
-    }
+    }*/
 }
