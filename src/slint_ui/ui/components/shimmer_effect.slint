@@ -1,0 +1,88 @@
+import { ParamKnob } from "param_knob.slint";
+import { ParamBus } from "../events.slint";
+import { ParamSwitch } from "param_switch.slint";
+import { Palette } from "../global.slint";
+import { IconButton } from "icon_button.slint";
+
+export component ShimmerEffect inherits Rectangle {
+    property <int> tab: 0;
+    property <bool> active: ParamBus.read_val("shimmer_active") > 0.5;
+    property <bool> is_stereo: ParamBus.read_val("shimmer_stereo") > 0.5;
+
+    opacity: root.active ? 1.0 : 0.5;
+    background: Palette.background-light;
+    HorizontalLayout {
+        padding-left: 1rem;
+        padding-right: 1rem;
+        alignment: space-evenly;
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: "Shimmer";
+                color: Palette.text;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 0.25rem;
+            IconButton {
+                width: 25px;
+                height: 25px;
+                checked: !root.is_stereo;
+                Image {
+                    source: @image-url("../assets/mono.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+
+                clicked => {
+                    ParamBus.param_changed("shimmer_stereo", 0.0);
+                }
+            }
+            IconButton {
+                width: 25px;
+                height: 25px;
+                checked: root.is_stereo;
+                Image {
+                    source: @image-url("../assets/stereo.svg");
+                    image-fit: contain;
+                    colorize: parent.checked ? Palette.text-dark : Palette.text;
+                }
+
+                clicked => {
+                    ParamBus.param_changed("shimmer_stereo", 1.0);
+                }
+            }
+        }
+        HorizontalLayout {
+            if !is_stereo:
+            ParamKnob {
+                param_name: "shimmer_shift_l";
+                label: "Shift";
+                val: ParamBus.read_val("shimmer_shift_l");
+                display_val: ParamBus.read_display_val("shimmer_shift_l");
+            }
+            if is_stereo:
+            ParamKnob {
+                param_name: "shimmer_shift_l";
+                label: "Shift L";
+                val: ParamBus.read_val("shimmer_shift_l");
+                display_val: ParamBus.read_display_val("shimmer_shift_l");
+            }
+            if is_stereo:
+            ParamKnob {
+                param_name: "shimmer_shift_r";
+                label: "Shift R";
+                val: ParamBus.read_val("shimmer_shift_r");
+                display_val: ParamBus.read_display_val("shimmer_shift_r");
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            ParamSwitch {
+                param_name: "shimmer_active";
+                checked <=> root.active;
+            }
+        }
+    }
+}
