@@ -9,7 +9,6 @@ mod slint_con;
 pub mod plug_con;
 pub mod editor;
 
-use crate::slint_ui::elements::{ElementId, GpuImageSink};
 use crate::slint_ui::param_component::ParamComponent;
 use nice_plug::params::Params;
 use slint::SharedString;

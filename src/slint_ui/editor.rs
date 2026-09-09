@@ -1,7 +1,7 @@
 use crate::params::DelaxParams;
 use crate::slint_ui;
 use crate::slint_ui::connection::InputData;
-use crate::slint_ui::elements::{ElementId, GpuElementData, GpuImageSink};
+use crate::slint_ui::elements::{ElementId, GpuElementData};
 use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::plug_con::host::SlintHost;
 use crate::slint_ui::renderer::WgpuRegistry;
@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use nice_plug::prelude::ParamPtr;
-use crate::slint_ui::{param_store, Textures};
+use crate::slint_ui::param_store;
 use slint::private_unstable_api::re_exports::ApproxEq;
 
 pub enum UiEvent {
