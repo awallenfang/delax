@@ -2,11 +2,27 @@ use nice_plug::prelude::*;
 
 #[derive(Debug, Enum, PartialEq, Clone, Copy)]
 pub enum SVFFilterMode {
-    Low,
-    Band,
-    High,
-    Notch,
-    Peak,
+    Low, //0.
+    Band, // 0.25
+    High, // 0.5
+    Notch, // 0.75
+    Peak, // 1.
+}
+
+impl SVFFilterMode {
+    pub fn from_lin_val(val: f32) -> Self {
+        if val <= 0.2 {
+            Self::Low
+        } else if val <= 0.4 {
+            Self::Band
+        } else if val <= 0.6 {
+            Self::High
+        } else if val <= 0.9 { 
+            Self::Notch
+        } else {
+            Self::Peak
+        }
+    }
 }
 
 #[derive(Enum, PartialEq)]

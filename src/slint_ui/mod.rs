@@ -31,9 +31,14 @@ impl GpuImageSink for AppWindow {
 }*/
 
 static PARAM_STORE: OnceLock<RwLock<HashMap<String, (f32, SharedString)>>> = OnceLock::new();
+static DEFAULTS_STORE: OnceLock<RwLock<HashMap<String, f32>>> = OnceLock::new();
 
 pub fn param_store() -> &'static RwLock<HashMap<String, (f32, SharedString)>> {
     PARAM_STORE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn defaults_store() -> &'static RwLock<HashMap<String, f32>> {
+    DEFAULTS_STORE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
 impl<P> ParamComponent<P> for AppWindow
@@ -51,6 +56,13 @@ where
                         .normalized_value_to_string(param_ptr.unmodulated_normalized_value(), true)
                 };
                 map.insert(p_id.to_string(), (val, SharedString::from(string)));
+            }
+        }
+        {
+            let mut defs = defaults_store().write().unwrap();
+            for (p_id, param_ptr, _) in params.param_map().iter() {
+                let default_val = unsafe { param_ptr.default_normalized_value() };
+                defs.insert(p_id.to_string(), default_val);
             }
         }
         {
@@ -97,6 +109,14 @@ where
                 .cloned()
                 .unwrap_or((0.0, SharedString::from("0.0")))
                 .1
+        });
+        bus.on_get_default_by_key(|key| {
+            defaults_store()
+                .read()
+                .unwrap()
+                .get(key.as_str())
+                .cloned()
+                .unwrap_or(0.0)
         });
     }
 
