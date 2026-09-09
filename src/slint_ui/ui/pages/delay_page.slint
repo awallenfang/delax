@@ -180,7 +180,6 @@ export component DelayPage inherits Rectangle {
                             param_name: "input_svf_res_l";
                             label: "Res";
                             val: ParamBus.read_val("input_svf_res_l");
-                            display_val: ParamBus.read_display_val("input_svf_res_l");
                         }
                     }
 
@@ -212,14 +211,12 @@ export component DelayPage inherits Rectangle {
                             param_name: "feedback_l";
                             label: "Feedback";
                             val: ParamBus.read_val("feedback_l");
-                            display_val: ParamBus.read_display_val("feedback_l");
                         }
 
                         ParamKnob {
                             param_name: "wetness";
                             label: "Wetness";
                             val: ParamBus.read_val("wetness");
-                            display_val: ParamBus.read_display_val("wetness");
                         }
                     }
 
@@ -256,7 +253,6 @@ export component DelayPage inherits Rectangle {
                                 param_name: "input_svf_res_l";
                                 label: "Res L";
                                 val: ParamBus.read_val("input_svf_res_l");
-                                display_val: ParamBus.read_display_val("input_svf_res_l");
                             }
                         }
 
@@ -286,7 +282,7 @@ export component DelayPage inherits Rectangle {
 
                             ParamKnob {
                                 param_name: "feedback_l";
-                                label: "Feedback L";
+                                label: "FB L";
                                 val: ParamBus.read_val("feedback_l");
                                 display_val: ParamBus.read_display_val("feedback_l");
                             }
@@ -295,7 +291,6 @@ export component DelayPage inherits Rectangle {
                                 param_name: "wetness";
                                 label: "Wetness";
                                 val: ParamBus.read_val("wetness");
-                                display_val: ParamBus.read_display_val("wetness");
                             }
                         }
                     }
@@ -321,7 +316,6 @@ export component DelayPage inherits Rectangle {
                                 param_name: "input_svf_res_r";
                                 label: "Res R";
                                 val: ParamBus.read_val("input_svf_res_r");
-                                display_val: ParamBus.read_display_val("input_svf_res_r");
                             }
                         }
 
@@ -351,16 +345,14 @@ export component DelayPage inherits Rectangle {
 
                             ParamKnob {
                                 param_name: "feedback_r";
-                                label: "Feedback R";
+                                label: "FB R";
                                 val: ParamBus.read_val("feedback_r");
-                                display_val: ParamBus.read_display_val("feedback_r");
                             }
 
                             ParamKnob {
                                 param_name: "wetness";
                                 label: "Wetness";
                                 val: ParamBus.read_val("wetness");
-                                display_val: ParamBus.read_display_val("wetness");
                             }
                         }
                     }

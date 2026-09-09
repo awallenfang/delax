@@ -53,7 +53,7 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
         let gpu_context = GpuContext::ensure_initialized()?;
         let wgpu_registry = RefCell::new(WgpuRegistry::new(gpu_context.clone()));
         on_init(&root, &wgpu_registry);
-        
+
         Ok(Self {
             adapter,
             root: RefCell::new(root),
@@ -117,7 +117,7 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
                             Some(platform::WindowEvent::PointerMoved { position: log_pos })
                         }
                     }
-                    MouseEvent::ButtonPressed { button, .. } => {
+                    MouseEvent::ButtonPressed { button, modifiers } => {
                         let Some(slint_button) = map_button(button) else {
                             return EventStatus::Ignored;
                         };

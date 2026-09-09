@@ -25,7 +25,7 @@ export component ParamKnob inherits VerticalLayout {
     Text {
         text: root.label;
         color: root.enabled ? Palette.text : Palette.text-muted;
-        font-size: 10px;
+        font-size: 7pt;
         horizontal-alignment: TextHorizontalAlignment.center;
         vertical-alignment: TextVerticalAlignment.center;
         opacity: root.enabled ? 1.0 : 0.5;
@@ -58,6 +58,22 @@ export component ParamKnob inherits VerticalLayout {
                     self.start_click = { x:self.mouse-x, y:self.mouse-y };
                     self.last_val = root.val;
                 }
+            }
+
+            double-clicked => {
+                let default = ParamBus.read_default(root.param_name);
+                ParamBus.param_changed(root.param_name, default);
+                root.val = default;
+            }
+
+            scroll-event(event) => {
+                if (!root.enabled) { return reject; }
+                let speed = event.modifiers.alt ? 0.25 : (event.modifiers.shift ? 4.0 : 1.0);
+                let delta = event.delta-y / root.drag_sense * (root.maximum - root.minimum) * speed;
+                let new_val = clamp(root.val + delta, root.minimum, root.maximum);
+                ParamBus.param_changed(root.param_name, new_val);
+                root.val = new_val;
+                accept
             }
 
             moved => {

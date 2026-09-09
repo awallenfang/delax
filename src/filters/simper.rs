@@ -346,7 +346,7 @@ impl Filter for SimperSinSVF {
             "sample_rate" => self.set_sample_rate(val),
             "res" => self.set_res(val),
             "mix" => self.set_mix(val),
-            // "mode" => self.set_mode(val),
+            "mode" => self.set_mode(SVFFilterMode::from_lin_val(val)),
             _ => {}
         }
     }

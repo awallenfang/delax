@@ -39,6 +39,22 @@ export component ParamSlider inherits VerticalLayout {
                 }
             }
 
+            double-clicked => {
+                let default = ParamBus.read_default(root.param_name);
+                ParamBus.param_changed(root.param_name, default);
+                root.val = default;
+            }
+
+            scroll-event(event) => {
+                if (!root.enabled) { return reject; }
+                let speed = event.modifiers.alt ? 0.25 : (event.modifiers.shift ? 4.0 : 1.0);
+                let delta = event.delta-x / slider_rect.width * speed;
+                let new_val = clamp(root.val + delta, 0.0, 1.0);
+                ParamBus.param_changed(root.param_name, new_val);
+                root.val = new_val;
+                accept
+            }
+
             moved => {
                 if (self.enabled && self.pressed) {
                     let v = clamp(self.mouse-x / slider_rect.width, 0.0, 1.0);
