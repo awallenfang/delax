@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use bytemuck::{Pod, Zeroable};
 use crate::slint_ui::connection::UI_BUFFER_SIZE;
 
