@@ -37,10 +37,6 @@ impl ElementId {
     }
 }
 
-pub trait GpuImageSink {
-    fn set_element_image(&self, element: ElementId, image: slint::Image);
-}
-
 pub trait GpuElementData: Send + Sync {
     fn element_uniform(&self, element: ElementId) -> Option<Vec<u8>>;
 }

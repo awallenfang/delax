@@ -202,7 +202,7 @@ impl SlintHost for DelaxSlintHost {
         Ok(app)
     }
 
-    fn on_event(&self, app: &Self::Component, gui_context: &GuiContext) {
+    fn on_event(&self, _app: &Self::Component, gui_context: &GuiContext) {
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
                 UiEvent::ParamChanged { id, value } => {
