@@ -1,0 +1,33 @@
+import {
+    Slider,
+    VerticalBox,
+    AboutSlint,
+    CheckBox,
+    Switch, Spinner, HorizontalBox
+} from "std-widgets.slint";
+import { ParamKnob } from "../components/param_knob.slint";
+import { ParamBus } from "../events.slint";
+import { ParamSwitch } from "../components/param_switch.slint";
+import { Palette } from "../global.slint";
+import { PeakMeter } from "../components/peak_meter.slint";
+import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
+import { Button } from "../components/button.slint";
+import { FilterEffect } from "../components/filter_effect.slint";
+import { DiffusorEffect } from "../components/diffusor_effect.slint";
+
+export component FilterPage inherits Rectangle {
+    in-out property <bool> is_filter_stereo: false;
+
+    clip: true;
+    background: transparent;
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        padding: 0.5rem;
+        alignment: LayoutAlignment.stretch;
+        spacing: 0.5rem;
+        FilterEffect {}
+        DiffusorEffect {}
+    }
+
+}
