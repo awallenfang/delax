@@ -36,6 +36,8 @@ export struct MetaData {
     is_filter_stereo: bool,
     is_bpm_bound_l: bool,
     is_bpm_bound_r: bool,
+    version: string,
+    bpm: float
 }
 
 export struct Textures {
@@ -128,10 +130,9 @@ export component AppWindow inherits Window {
                 spacing: 6px;
                 alignment: LayoutAlignment.end;
                 VerticalLayout {
-                    spacing: 2px;
-                    alignment: LayoutAlignment.center;
+                    alignment: LayoutAlignment.space-between;
                     VerticalLayout {
-                        spacing: 2px;
+                        spacing: 1px;
                         PeakMeter {
                             val <=> header_data.in_level_l;
                         }
@@ -142,7 +143,7 @@ export component AppWindow inherits Window {
                     }
 
                     VerticalLayout {
-                        spacing: 2px;
+                        spacing: 1px;
                         PeakMeter {
                             val <=> header_data.out_level_l;
                         }
