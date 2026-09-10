@@ -9,7 +9,7 @@ use delay_engine::{
 };
 use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
-use nice_plug::prelude::*;
+use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
 use slint_ui::connection::InputData;
 use std::sync::Arc;
@@ -137,7 +137,7 @@ impl Plugin for Delax {
         let (w, h) = self.params.editor_state.size();
         Some(SlintEditor::new(
             host,
-            baseview::dpi::PhysicalSize::new(w, h),
+            NativeSize::new(w, h),
             self.params.editor_state.title.clone(),
         ))
     }

@@ -4,6 +4,7 @@ use crate::slint_ui::renderer::WgpuRegistry;
 use baseview::Window;
 use baseview::dpi::PhysicalSize;
 use nice_plug::context::gui::GuiContext;
+use nice_plug::editor::dpi::NativeSize;
 use nice_plug::editor::{
     Editor, EditorHandle, HostMethods, Modifiers, ParentWindowHandle, ResizeHint, SpawnedEditor,
     VirtualKeyCode,
@@ -15,12 +16,12 @@ use baseview::gl::GlConfig;
 
 pub struct SlintEditor<H: SlintHost> {
     host: Arc<H>,
-    size: PhysicalSize<u32>,
+    size: NativeSize<u32>,
     title: String,
 }
 
 impl<H: SlintHost> SlintEditor<H> {
-    pub fn new(host: Arc<H>, size: PhysicalSize<u32>, title: String) -> Self {
+    pub fn new(host: Arc<H>, size: NativeSize<u32>, title: String) -> Self {
         Self {
             host,
             size,
@@ -105,7 +106,7 @@ impl<H: SlintHost + 'static> Editor
         })
     }
 
-    fn size(&self) -> PhysicalSize<u32> {
+    fn size(&self) -> NativeSize<u32> {
         self.size
     }
 
@@ -142,7 +143,7 @@ impl EditorHandle for SlintEditorHandle {
 
     fn set_size(
         &self,
-        new_size: PhysicalSize<u32>,
+        new_size: NativeSize<u32>,
         window: &Self::Window,
     ) -> Result<(), Self::Error> {
         window.resize(new_size)
@@ -154,9 +155,9 @@ impl EditorHandle for SlintEditorHandle {
 
     fn adjust_size(
         &self,
-        _new_size: PhysicalSize<u32>,
+        _new_size: NativeSize<u32>,
         _window: &Self::Window,
-    ) -> Option<PhysicalSize<u32>> {
+    ) -> Option<NativeSize<u32>> {
         None
     }
 
