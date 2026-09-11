@@ -1,7 +1,8 @@
 use crate::params::DelaxParams;
 use crate::slint_ui;
-use crate::slint_ui::connection::InputData;
-use crate::slint_ui::elements::{ElementId, GpuElementData};
+use crate::slint_ui::data_transport::{DataTransportRx, InputData};
+use crate::slint_ui::snapshot::UiVisualState;
+use crate::slint_ui::present;
 use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::plug_con::host::SlintHost;
 use crate::slint_ui::renderer::WgpuRegistry;
@@ -81,16 +82,26 @@ impl<'a> PersistentField<'a, EditorState> for Arc<EditorState> {
     }
 }
 
+pub struct UiConnection {
+    rx: DataTransportRx,
+    visual: UiVisualState,
+}
+
 pub struct DelaxSlintHost {
     params: Arc<DelaxParams>,
     data: Arc<InputData>,
+    ui: std::sync::Mutex<UiConnection>,
     event_tx: Sender<UiEvent>,
     event_rx: Receiver<UiEvent>,
     param_index: HashMap<String, ParamPtr>
 }
 
 impl DelaxSlintHost {
-    pub fn new(params: Arc<DelaxParams>, input_data: Arc<InputData>) -> Self {
+    pub fn new(
+        params: Arc<DelaxParams>,
+        input_data: Arc<InputData>,
+        transport_rx: DataTransportRx,
+    ) -> Self {
         let (event_tx, event_rx) = unbounded();
         let param_index = params.param_map().into_iter().map(|(id, ptr, _)| (id, ptr)).collect();
 
@@ -107,6 +118,10 @@ impl DelaxSlintHost {
         Self {
             params,
             data: input_data,
+            ui: std::sync::Mutex::new(UiConnection {
+                rx: transport_rx,
+                visual: UiVisualState::default(),
+            }),
             event_tx,
             event_rx,
             param_index
@@ -167,24 +182,9 @@ impl DelaxSlintHost {
     }
 
     fn render_vis(&self, app: &<DelaxSlintHost as SlintHost>::Component, wgpu: &RefCell<WgpuRegistry>) {
-        let mut textures = app.get_textures();
+        let Ok(ui) = self.ui.lock() else { return };
         let mut registry = wgpu.borrow_mut();
-        for &element in ElementId::ALL {
-            let Some(spec) = element.spec() else { continue; };
-            registry.register(element, spec);
-            let Some(uniforms) = self.data.element_uniform(element) else { continue; };
-            let (w, h) = element.default_size();
-            let Some(image) = registry.render_to_image(element, w, h, &uniforms) else { continue; };
-            match element {
-                ElementId::Buffer => {textures.buffer = image.into()},
-                ElementId::EditorBufferL => {textures.editor_buffer_l = image.into()},
-                ElementId::EditorBufferR => {textures.editor_buffer_r = image.into()},
-                ElementId::Spectrum => {textures.spectrum = image.into()}
-                ElementId::Decay => {textures.decay = image.into()}
-                ElementId::Peak => {}
-            }
-        }
-        app.set_textures(textures);
+        present::render_all(&self.data, &ui.visual, app, &mut registry);
     }
 }
 
@@ -262,8 +262,10 @@ impl SlintHost for DelaxSlintHost {
 
     fn on_frame(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>) {
         self.sync_params_to_ui(app);
-        self.data.update_ui(app);
-        self.render_vis(app, wgpu);
+        let Ok(mut ui) = self.ui.lock() else { return };
+        let UiConnection { rx, visual } = &mut *ui;
+        present::poll_and_present(&self.data, visual, rx, app);
+        present::render_all(&self.data, visual, app, &mut wgpu.borrow_mut());
     }
 
     fn on_resized(&self, width: u32, height: u32) {

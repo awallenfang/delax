@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use crate::slint_ui::connection::{EDITOR_VIS_SIZE, UI_BUFFER_SIZE};
+use crate::slint_ui::data_transport::{EDITOR_VIS_SIZE, UI_BUFFER_SIZE};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]

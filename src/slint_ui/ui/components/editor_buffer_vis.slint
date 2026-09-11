@@ -15,7 +15,7 @@ export component EditorBufferVisualizer inherits Rectangle {
                 x: max(0, min(write_head * root.width - self.width / 2, root.width - self.width));
                 y: 0;
                 font-size: 13px;
-                text: "R";
+                text: "W";
                 color: Palette.text;
                 height: parent.height;
                 horizontal-alignment: center;
@@ -24,7 +24,7 @@ export component EditorBufferVisualizer inherits Rectangle {
                 x: max(0, min(read_head * root.width - self.width / 2, root.width - self.width));
                 y: 0;
                 font-size: 13px;
-                text: "W";
+                text: "R";
                 color: Palette.text;
                 height: parent.height;
                 horizontal-alignment: center;
@@ -59,7 +59,7 @@ export component EditorBufferVisualizer inherits Rectangle {
                 x: max(0, min(write_head * root.width - self.width / 2, root.width - self.width));
                 y: 0;
                 font-size: 10px;
-                text: "R";
+                text: "W";
                 color: Palette.text;
                 height: parent.height;
                 horizontal-alignment: center;
@@ -68,7 +68,7 @@ export component EditorBufferVisualizer inherits Rectangle {
                 x: max(0, min(read_head * root.width - self.width / 2, root.width - self.width));
                 y: 0;
                 font-size: 10px;
-                text: "W";
+                text: "R";
                 color: Palette.text;
                 height: parent.height;
                 horizontal-alignment: center;
