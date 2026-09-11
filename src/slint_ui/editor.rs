@@ -177,6 +177,8 @@ impl DelaxSlintHost {
             let Some(image) = registry.render_to_image(element, w, h, &uniforms) else { continue; };
             match element {
                 ElementId::Buffer => {textures.buffer = image.into()},
+                ElementId::EditorBufferL => {textures.editor_buffer_l = image.into()},
+                ElementId::EditorBufferR => {textures.editor_buffer_r = image.into()},
                 ElementId::Spectrum => {textures.spectrum = image.into()}
                 ElementId::Decay => {textures.decay = image.into()}
                 ElementId::Peak => {}

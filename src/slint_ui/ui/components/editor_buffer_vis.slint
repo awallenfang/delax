@@ -1,0 +1,78 @@
+import { VerticalBox, Slider } from "std-widgets.slint";
+import { ParamBus } from "../events.slint";
+import { Palette } from "../global.slint";
+
+export component EditorBufferVisualizer inherits Rectangle {
+    in-out property <image> texture;
+    in-out property <float> read_head;
+    in-out property <float> write_head;
+    in property <bool> left_channel;
+    VerticalLayout {
+        if !left_channel:
+        Rectangle {
+            height: 13px;
+            Text {
+                x: max(0, min(write_head * root.width - self.width / 2, root.width - self.width));
+                y: 0;
+                font-size: 13px;
+                text: "R";
+                color: Palette.text;
+                height: parent.height;
+                horizontal-alignment: center;
+            }
+            Text {
+                x: max(0, min(read_head * root.width - self.width / 2, root.width - self.width));
+                y: 0;
+                font-size: 13px;
+                text: "W";
+                color: Palette.text;
+                height: parent.height;
+                horizontal-alignment: center;
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            Image {
+                source:  root.texture;
+                width: 100%;
+                height: parent.height;
+            }
+            Rectangle {
+                x: read_head * root.width;
+                height: parent.height;
+                width: 1px;
+                background: Palette.primary;
+                clip: false;
+            }
+            Rectangle {
+                x: write_head * root.width;
+                height: parent.height;
+                width: 1px;
+                background: Palette.secondary;
+                clip: false;
+            }
+        }
+        if left_channel:
+        Rectangle {
+            height: 10px;
+            Text {
+                x: max(0, min(write_head * root.width - self.width / 2, root.width - self.width));
+                y: 0;
+                font-size: 10px;
+                text: "R";
+                color: Palette.text;
+                height: parent.height;
+                horizontal-alignment: center;
+            }
+            Text {
+                x: max(0, min(read_head * root.width - self.width / 2, root.width - self.width));
+                y: 0;
+                font-size: 10px;
+                text: "W";
+                color: Palette.text;
+                height: parent.height;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}

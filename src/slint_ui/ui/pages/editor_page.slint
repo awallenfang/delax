@@ -12,6 +12,31 @@ import { Palette } from "../global.slint";
 import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
+import { EditorBufferVisualizer } from "../components/editor_buffer_vis.slint";
 
 export component EditorPage inherits VerticalLayout {
+    in property <image> editor_tex_l;
+    in property <image> editor_tex_r;
+    in-out property <float> read_head_l;
+    in-out property <float> read_head_r;
+    in-out property <float> write_head_l;
+    in-out property <float> write_head_r;
+
+    VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 4px;
+        EditorBufferVisualizer {
+            horizontal-stretch: 1;
+            texture: root.editor_tex_l;
+            read_head <=> root.read_head_l;
+            write_head <=> root.write_head_l;
+        }
+        EditorBufferVisualizer {
+            horizontal-stretch: 1;
+            texture: root.editor_tex_r;
+            read_head <=> root.read_head_r;
+            write_head <=> root.write_head_r;
+            left_channel: true;
+        }
+    }
 }

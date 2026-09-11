@@ -23,13 +23,15 @@ export component FilterPage inherits Rectangle {
     background: transparent;
     VerticalLayout {
         width: 100%;
-        height: 100%;
         padding: 0.5rem;
         alignment: LayoutAlignment.stretch;
         spacing: 0.5rem;
         FilterEffect {}
         ShimmerEffect {}
         DiffusorEffect {}
+        VerticalLayout {
+            vertical-stretch: 1;
+        }
     }
 
 }

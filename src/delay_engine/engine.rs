@@ -7,9 +7,15 @@
 /// let out = engine.pop_sample();
 /// assert_eq!(out, 0.5);
 /// ```
+pub const MAX_DELAY_SECS: f32 = 32.0;
+
+const MIN_ACTIVE_LEN: usize = 1;
+
 pub struct DelayEngine {
     /// The internal mono buffer
     buffer: Vec<f32>,
+    /// The length of the actively used buffer part. Changes using the write/read jumps
+    active_len: usize,
     /// The sample rate to be used for internal conversions
     sample_rate: f32,
     /// The delay time in ms
@@ -30,8 +36,10 @@ impl DelayEngine {
     ///
     /// The buffer size can later be changed using [DelayEngine::set_buffer_size()].
     pub fn new(size: usize, sample_rate: f32) -> Self {
+        let size = size.max(MIN_ACTIVE_LEN);
         Self {
             buffer: vec![0.; size],
+            active_len: size,
             sample_rate,
             delay_time: 0.,
             read_jumps: vec![Jump(size - 1, 0)],
@@ -67,15 +75,15 @@ impl DelayEngine {
             DelayInterpolationMode::Nearest => {
                 let mut index = self.write_head as i32
                     - ms_to_samples(self.delay_time, self.sample_rate) as i32;
-                index = index.rem_euclid(self.buffer.len() as i32);
+                index = index.rem_euclid(self.active_len as i32);
 
                 self.buffer[index as usize]
             }
             DelayInterpolationMode::Linear => {
                 let upper_index = (self.write_head as i32
                     - ms_to_samples(self.delay_time, self.sample_rate) as i32)
-                    .rem_euclid(self.buffer.len() as i32);
-                let lower_index = (upper_index - 1).rem_euclid(self.buffer.len() as i32);
+                    .rem_euclid(self.active_len as i32);
+                let lower_index = (upper_index - 1).rem_euclid(self.active_len as i32);
 
                 let lower_sample = self.buffer[lower_index as usize];
                 let upper_sample = self.buffer[upper_index as usize];
@@ -118,25 +126,35 @@ impl DelayEngine {
     ///
     /// Input: Delay time in ms
     ///
-    /// For now this changes the position of the write head relative to the read head.
-    ///
-    /// Values larger than the bank size will simply result in a duration of `samples % bank_size``
+    /// The delay is clamped to `active_len - 1` so it never reads into the
+    /// inactive tail. Callers needing UI feedback should compare against
+    /// [DelayEngine::max_delay_ms()] to detect clamping.
     pub fn set_delay_amount(&mut self, delay_time: f32) {
         let delay_samples =
-            ms_to_samples(delay_time, self.sample_rate).clamp(0, self.buffer.len() - 1);
+            ms_to_samples(delay_time, self.sample_rate).clamp(0, self.active_len - 1);
         self.read_head = ((self.write_head as i32 - delay_samples as i32)
-            .rem_euclid(self.buffer.len() as i32)) as usize;
+            .rem_euclid(self.active_len as i32)) as usize;
         self.delay_time = delay_time;
+    }
+
+    /// Maximum delay in ms that fits into the current active length.
+    pub fn max_delay_ms(&self) -> f32 {
+        ((self.active_len.saturating_sub(1)) as f32 / self.sample_rate) * 1000.
     }
 
     #[allow(dead_code)]
     /// Changes the buffer size.
     ///
-    /// This resets the whole buffer to zero.
+    /// This allocates and must only be called from `activate()`/init, never
+    /// on the audio thread. Resets the active length to the full capacity.
     pub fn set_buffer_size(&mut self, size: usize) {
+        let size = size.max(MIN_ACTIVE_LEN);
         self.buffer = vec![0.; size];
-        self.write_head %= size;
-        self.read_head %= size;
+        self.active_len = size;
+        self.read_jumps = vec![Jump(size - 1, 0)];
+        self.write_jumps = vec![Jump(size - 1, 0)];
+        self.write_head = 0;
+        self.read_head = 0;
     }
 
     /// Check if there is a jump in the current index. If there is a jump, return it.
@@ -155,16 +173,74 @@ impl DelayEngine {
         self.read_jumps = jumps.to_owned();
     }
 
+    /// Set the raw write jump vector. Symmetric to [DelayEngine::set_raw_read_jumps].
+    #[allow(dead_code)]
+    pub fn set_raw_write_jumps(&mut self, jumps: &[Jump]) {
+        self.write_jumps = jumps.to_owned();
+    }
+
     /// Reset the internal buffers to zero.
+    ///
+    /// Only clears the active region so large capacities stay cheap on the
+    /// audio thread. Full clears happen in `activate()` via fresh allocation.
     pub fn reset(&mut self) {
-        self.buffer.iter_mut().for_each(|sample| *sample = 0.);
+        self.buffer[..self.active_len]
+            .iter_mut()
+            .for_each(|sample| *sample = 0.);
+    }
+
+    /// Sets the effective length without reallocating.
+    ///
+    /// Installs a single wrap jump `Jump(len-1, 0)` for both heads so the
+    /// engine only cycles `0..len`. Heads are wrapped into range; call
+    /// [DelayEngine::set_delay_amount()] afterwards to rebase `read_head`
+    /// for the current delay (done by the caller in `update_params`).
+    /// Allocation-free and safe on the audio thread.
+    pub fn set_active_len(&mut self, length: usize) {
+        let clamp_len = length.clamp(MIN_ACTIVE_LEN, self.buffer.len());
+        if clamp_len == self.active_len {
+            return;
+        }
+        self.active_len = clamp_len;
+        self.read_jumps = vec![Jump(clamp_len - 1, 0)];
+        self.write_jumps = vec![Jump(clamp_len - 1, 0)];
+        self.write_head %= clamp_len;
+        self.read_head %= clamp_len;
+    }
+
+    pub fn write_head(&self) -> usize {
+        return self.write_head
+    }
+
+    pub fn read_head(&self) -> usize {
+        self.read_head
+    }
+
+    pub fn active_len(&self) -> usize {
+        self.active_len
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.buffer.len()
+    }
+
+    pub fn read_jumps(&self) -> Vec<Jump> {
+        self.read_jumps.clone()
+    }
+
+    pub fn write_jumps(&self) -> Vec<Jump> {
+        self.write_jumps.clone()
+    }
+
+    pub fn get_active_ptr(&self) -> &[f32] {
+        &self.buffer[..self.active_len]
     }
 }
 
 /// A jump inside of the banks. Currently this holds `Jump(from, to)`.
 /// Both are inclusive, so with `Jump(10,100)` the read order will be 8,9,10,100
-#[derive(Clone)]
-pub struct Jump(usize, usize);
+#[derive(Clone, Copy)]
+pub struct Jump(pub usize, pub usize);
 
 #[allow(dead_code)]
 pub enum DelayInterpolationMode {

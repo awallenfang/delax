@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use crate::slint_ui::connection::UI_BUFFER_SIZE;
+use crate::slint_ui::connection::{EDITOR_VIS_SIZE, UI_BUFFER_SIZE};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
@@ -9,11 +9,18 @@ pub struct SpectrumUniforms {
 }
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
-pub struct BufferUniforms {
+pub struct DoubleBufferUniforms {
     pub levels_dry: [[f32; 4]; UI_BUFFER_SIZE / 4],
     pub levels_wet: [[f32; 4]; UI_BUFFER_SIZE / 4],
     pub primary_col: [f32; 4],
     pub secondary_col: [f32; 4],
+    pub params: [f32; 4],
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+pub struct BufferUniforms {
+    pub levels: [[f32; 4]; EDITOR_VIS_SIZE / 4],
+    pub col: [f32; 4],
     pub params: [f32; 4],
 }
 
