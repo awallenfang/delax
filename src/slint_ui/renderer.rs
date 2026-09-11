@@ -8,6 +8,8 @@ pub enum ElementId {
     Spectrum,
     Decay,
     Buffer,
+    EditorBufferL,
+    EditorBufferR,
     Peak,
 }
 
@@ -336,8 +338,8 @@ impl WgpuRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slint_ui::elements::{SPECTRUM_SHADER, DECAY_SHADER};
-    use crate::slint_ui::uniforms::{SpectrumUniforms, DecayUniforms};
+    use crate::slint_ui::elements::{SPECTRUM_SHADER, DECAY_SHADER, BUFFER_SHADER};
+    use crate::slint_ui::uniforms::{SpectrumUniforms, DecayUniforms, BufferUniforms};
 
     #[test]
     fn render_yellow_square_to_slint_image() {
@@ -477,6 +479,51 @@ mod tests {
             bytes.chunks_exact(4).any(|px| px[3] > 0),
             "ping-pong pairs should produce visible pixels"
         );
+    }
+
+    #[test]
+    fn buffer_shader_renders_editor_snapshot() {
+        let ctx = GpuContext::ensure_initialized().expect("headless Vulkan device");
+        // Building the pipeline validates the WGSL layout against BufferUniforms.
+        // EditorBufferL/R share this exact spec (see elements.rs).
+        let spec = ElementSpec {
+            shader: BUFFER_SHADER,
+            uniform_size: std::mem::size_of::<BufferUniforms>() as u32,
+        };
+        let mut levels = [[0.0f32; 4]; 128];
+        levels[0] = [1.0, 0.5, 0.0, 0.0];
+        // L and R differ only in level buffer and tint, not layout.
+        let uniforms_l = BufferUniforms {
+            levels,
+            col: [1.0, 214. / 255., 10. / 255., 0.5],
+            params: [0.5, 0.0, 0.0, 0.0],
+        };
+        let uniforms_r = BufferUniforms {
+            levels,
+            col: [0.0, 143. / 255., 186. / 255., 0.5],
+            params: [0.5, 0.0, 0.0, 0.0],
+        };
+
+        let mut registry = WgpuRegistry::new(ctx.clone());
+        for element in [ElementId::EditorBufferL, ElementId::EditorBufferR] {
+            registry.register(element, spec);
+        }
+        for (element, uniforms) in [
+            (ElementId::EditorBufferL, uniforms_l),
+            (ElementId::EditorBufferR, uniforms_r),
+        ] {
+            let img = registry
+                .render_to_image(element, 110, 60, bytemuck::bytes_of(&uniforms))
+                .expect("editor buffer render + readback should succeed");
+
+            let pixel_buffer = img.to_rgba8().unwrap();
+            assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (110, 60));
+            let bytes = pixel_buffer.as_bytes();
+            assert!(
+                bytes.chunks_exact(4).any(|px| px[3] > 0),
+                "editor snapshot bars should produce visible pixels"
+            );
+        }
     }
 
     #[test]

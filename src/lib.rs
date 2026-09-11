@@ -4,14 +4,14 @@ use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::slint_ui::editor::DelaxSlintHost;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
-    engine::{DelayEngine, DelayInterpolationMode},
+    engine::{DelayEngine, DelayInterpolationMode, MAX_DELAY_SECS},
     params::DelayMode,
 };
 use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
 use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
-use slint_ui::connection::InputData;
+use slint_ui::connection::{EditorChunk, InputData, EDITOR_CHUNK_SAMPLES};
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use crate::filters::dattorro::DattorroReverb;
@@ -38,12 +38,16 @@ pub struct Delax {
     filter_pipeline: FilterPipeline,
     decay_time_s_l: f32,
     decay_time_s_r: f32,
+    editor_peak_l: f32,
+    editor_peak_r: f32,
+    editor_tick: u32,
 }
 
 impl Default for Delax {
     fn default() -> Self {
-        // 20 seconds buffer to accommodate long BPM-synced delays (e.g. 32 1/4 notes at 60 BPM = 8s, 32 half notes = 64s clamped to 20s covers most musical use)
-        let default_buf = 44100 * 20;
+        // Fixed physical capacity; effective length is controlled via jumps
+        // (see DelayEngine::set_active_len) and defaults to the whole buffer.
+        let default_buf = (44100.0 * MAX_DELAY_SECS) as usize;
         let mut left_delay_engine = DelayEngine::new(default_buf, 44100.);
         left_delay_engine.set_delay_amount(0.);
         let mut right_delay_engine = DelayEngine::new(default_buf, 44100.);
@@ -80,6 +84,9 @@ impl Default for Delax {
             filter_pipeline,
             decay_time_s_l: 0.5,
             decay_time_s_r: 0.5,
+            editor_peak_l: 0.,
+            editor_peak_r: 0.,
+            editor_tick: 0,
         }
     }
 }
@@ -152,12 +159,24 @@ impl Plugin for Delax {
         // The `reset()` function is always called right after this function. You can remove this
         // function if you do not need it.
         self.sample_rate = buffer_config.sample_rate;
+        self.editor_peak_l = 0.;
+        self.editor_peak_r = 0.;
+        self.editor_tick = 0;
 
-        let buffer_size = (self.sample_rate * 20.0) as usize;
+        let buffer_size = (self.sample_rate * MAX_DELAY_SECS) as usize;
         let mut left_delay_engine = DelayEngine::new(buffer_size, self.sample_rate);
         left_delay_engine.set_delay_amount(0.);
         let mut right_delay_engine = DelayEngine::new(buffer_size, self.sample_rate);
         right_delay_engine.set_delay_amount(0.);
+
+        // Re-apply persisted effective lengths (secs -> samples) so a saved
+        // session / sample-rate change keeps the Editor setting.
+        let active_l =
+            (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
+        let active_r =
+            (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
+        left_delay_engine.set_active_len(active_l);
+        right_delay_engine.set_active_len(active_r);
 
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
@@ -192,6 +211,9 @@ impl Plugin for Delax {
         self.peak_in_r.hold_counter = 0.;
         self.peak_out_l.hold_counter = 0.;
         self.peak_out_r.hold_counter = 0.;
+        self.editor_peak_l = 0.;
+        self.editor_peak_r = 0.;
+        self.editor_tick = 0;
         self.input_data.reset();
     }
 
@@ -274,10 +296,12 @@ impl Plugin for Delax {
             // Mix the feedback and filtered signal together
             // Make the filtered output more stable by using the feedback param as well
             let (input_left, input_right) = self.run_input_filters(*left_sample, *right_sample);
-            self.left_delay_engine
-                .write_sample(input_left + feedbacked_left);
-            self.right_delay_engine
-                .write_sample(input_right + feedbacked_right);
+            let written_l = input_left + feedbacked_left;
+            let written_r = input_right + feedbacked_right;
+            self.left_delay_engine.write_sample(written_l);
+            self.right_delay_engine.write_sample(written_r);
+            self.editor_peak_l = self.editor_peak_l.max(written_l.abs());
+            self.editor_peak_r = self.editor_peak_r.max(written_r.abs());
 
             // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
@@ -292,6 +316,24 @@ impl Plugin for Delax {
                 .push_spectrum((pop_left * wetness + pop_right * wetness) * 0.5);
 
             self.output_ui_send(wet_l, wet_r);
+
+            self.editor_tick = self.editor_tick.wrapping_add(1);
+            if self.editor_tick.is_multiple_of(EDITOR_CHUNK_SAMPLES as u32) {
+                self.input_data.push_editor_chunk(EditorChunk {
+                    l: self.editor_peak_l,
+                    r: self.editor_peak_r,
+                    pos_l: self.left_delay_engine.write_head() as u32,
+                    pos_r: self.right_delay_engine.write_head() as u32,
+                });
+                self.editor_peak_l = 0.;
+                self.editor_peak_r = 0.;
+                self.input_data
+                    .active_len_l
+                    .store(self.left_delay_engine.active_len(), Relaxed);
+                self.input_data
+                    .active_len_r
+                    .store(self.right_delay_engine.active_len(), Relaxed);
+            }
         }
 
         ProcessStatus::Normal
@@ -321,11 +363,21 @@ impl Delax {
                 } else {
                     ms_l
                 };
-                self.left_delay_engine.set_delay_amount(delay_amt);
-                self.right_delay_engine.set_delay_amount(delay_amt);
+                // Effective length first (allocation-free), then clamp delay
+                // so it never reads into the inactive tail.
+                let desired =
+                    (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
+                self.left_delay_engine.set_active_len(desired);
+                self.right_delay_engine.set_active_len(desired);
+                let max_ms = self.left_delay_engine.max_delay_ms();
+                let clamped = delay_amt > max_ms;
+                let delay_clamped = delay_amt.min(max_ms);
+                self.left_delay_engine.set_delay_amount(delay_clamped);
+                self.right_delay_engine.set_delay_amount(delay_clamped);
+                self.input_data.set_clamped(clamped, clamped);
 
-                self.decay_time_s_l = delay_amt / 1000.;
-                self.decay_time_s_r = delay_amt / 1000.;
+                self.decay_time_s_l = delay_clamped / 1000.;
+                self.decay_time_s_r = delay_clamped / 1000.;
 
                 let res = self.params.svf_params.input_svf_res_l.smoothed.next();
                 let cutoff = self.params.svf_params.input_svf_cutoff_l.smoothed.next();
@@ -365,11 +417,24 @@ impl Delax {
                 } else {
                     ms_r
                 };
-                self.left_delay_engine.set_delay_amount(delay_amt_l);
-                self.right_delay_engine.set_delay_amount(delay_amt_r);
+                let desired_l =
+                    (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
+                let desired_r =
+                    (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
+                self.left_delay_engine.set_active_len(desired_l);
+                self.right_delay_engine.set_active_len(desired_r);
+                let max_ms_l = self.left_delay_engine.max_delay_ms();
+                let max_ms_r = self.right_delay_engine.max_delay_ms();
+                let clamped_l = delay_amt_l > max_ms_l;
+                let clamped_r = delay_amt_r > max_ms_r;
+                let delay_clamped_l = delay_amt_l.min(max_ms_l);
+                let delay_clamped_r = delay_amt_r.min(max_ms_r);
+                self.left_delay_engine.set_delay_amount(delay_clamped_l);
+                self.right_delay_engine.set_delay_amount(delay_clamped_r);
+                self.input_data.set_clamped(clamped_l, clamped_r);
 
-                self.decay_time_s_l = delay_amt_l / 1000.;
-                self.decay_time_s_r = delay_amt_r / 1000.;
+                self.decay_time_s_l = delay_clamped_l / 1000.;
+                self.decay_time_s_r = delay_clamped_r / 1000.;
 
                 let res_l = self.params.svf_params.input_svf_res_l.smoothed.next();
                 let res_r = self.params.svf_params.input_svf_res_r.smoothed.next();
@@ -478,6 +543,10 @@ impl Delax {
         self.input_data.in_l.store(l, Relaxed);
         self.input_data.in_r.store(r, Relaxed);
         self.input_data.wetness.store(self.params.wetness.value(), Relaxed);
+        self.input_data.read_head_l.store(self.left_delay_engine.read_head() as f32 / self.left_delay_engine.active_len() as f32, Relaxed);
+        self.input_data.read_head_r.store(self.right_delay_engine.read_head() as f32 / self.right_delay_engine.active_len() as f32, Relaxed);
+        self.input_data.write_head_l.store(self.left_delay_engine.write_head() as f32 / self.left_delay_engine.active_len() as f32, Relaxed);
+        self.input_data.write_head_r.store(self.right_delay_engine.write_head() as f32 / self.right_delay_engine.active_len() as f32, Relaxed);
     }
 
     fn output_ui_send(&mut self, l: f32, r: f32) {

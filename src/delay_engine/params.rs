@@ -1,5 +1,7 @@
 use nice_plug::prelude::*;
 
+use crate::delay_engine::engine::MAX_DELAY_SECS;
+
 #[derive(Enum, PartialEq)]
 pub enum DelayMode {
     Mono,
@@ -91,6 +93,10 @@ pub struct EngineParams {
     pub delay_div_l: EnumParam<NoteDiv>,
     #[id = "delay_div_r"]
     pub delay_div_r: EnumParam<NoteDiv>,
+    #[id = "buffer_len_l"]
+    pub buffer_len_l: FloatParam,
+    #[id = "buffer_len_r"]
+    pub buffer_len_r: FloatParam,
 }
 
 impl Default for EngineParams {
@@ -125,7 +131,7 @@ impl Default for EngineParams {
             delay_note_l: FloatParam::new(
                 "Delay Note L",
                 2.,
-                FloatRange::Linear { min: 0., max: 16. },
+                FloatRange::Linear { min: 0., max: 8. },
             )
             .with_step_size(0.5)
             .with_smoother(SmoothingStyle::Linear(50.0))
@@ -135,7 +141,7 @@ impl Default for EngineParams {
             delay_note_r: FloatParam::new(
                 "Delay Note R",
                 2.,
-                FloatRange::Linear { min: 0., max: 16. },
+                FloatRange::Linear { min: 0., max: 8. },
             )
             .with_step_size(0.5)
             .with_smoother(SmoothingStyle::Linear(50.0))
@@ -157,6 +163,26 @@ impl Default for EngineParams {
             bpm_bound_r: BoolParam::new("BPM Bound Channel 2", false),
             delay_div_l: EnumParam::new("Div L", NoteDiv::Sixteenth),
             delay_div_r: EnumParam::new("Div R", NoteDiv::Sixteenth),
+            buffer_len_l: FloatParam::new(
+                "Buffer Len L",
+                5.,
+                FloatRange::Linear {
+                    min: 1.,
+                    max: MAX_DELAY_SECS,
+                },
+            )
+            .with_unit(" s")
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            buffer_len_r: FloatParam::new(
+                "Buffer Len R",
+                5.,
+                FloatRange::Linear {
+                    min: 1.,
+                    max: MAX_DELAY_SECS,
+                },
+            )
+            .with_unit(" s")
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
         }
     }
 }

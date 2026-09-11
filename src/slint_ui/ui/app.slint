@@ -40,14 +40,24 @@ export struct MetaData {
     bpm: float
 }
 
+export struct EditorData {
+    write_head_l: float,
+    write_head_r: float,
+    read_head_l: float,
+    read_head_r: float
+}
+
 export struct Textures {
     spectrum: image,
     buffer: image,
-    decay: image
+    decay: image,
+    editor_buffer_l: image,
+    editor_buffer_r: image
 }
 export component AppWindow inherits Window {
     in-out property <FilterData> filter_data;
     in-out property <HeaderData> header_data;
+    in-out property <EditorData> editor_data;
     in-out property <Textures> textures;
 
 
@@ -188,7 +198,13 @@ export component AppWindow inherits Window {
             }
             if tab == 2:
                 EditorPage {
+                editor_tex_l: root.textures.editor_buffer_l;
+                editor_tex_r: root.textures.editor_buffer_r;
                 vertical-stretch: 1;
+                read_head_l: root.editor_data.read_head_l;
+                write_head_l: root.editor_data.write_head_l;
+                read_head_r: root.editor_data.read_head_r;
+                write_head_r: root.editor_data.write_head_r;
             }
             if tab == 3:
                 AboutPage {

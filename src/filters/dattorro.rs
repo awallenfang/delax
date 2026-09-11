@@ -141,9 +141,9 @@ impl StereoFilter for DattorroReverb {
 ///
 /// Usage:
 /// ```
-/// use revvex::filters::dattorro::DattorroReverb;
+/// use delax::filters::dattorro::DattorroReverb;
 ///
-/// let mut reverb = DattorroReverb::new(44100., 0.5, 0.1, 0.7, 0.8, 0.65, 0.8, 8., 2.);
+/// let mut reverb = DattorroReverb::new(1.0, 44100., 0.5, 0.1, 0.7, 0.8, 0.65, 0.8, 8., 2.);
 /// let (l, r) = reverb.process_stereo(0.5, 0.5);
 ///
 /// ```
