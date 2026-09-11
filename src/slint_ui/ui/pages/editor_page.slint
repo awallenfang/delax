@@ -13,6 +13,7 @@ import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
 import { EditorBufferVisualizer } from "../components/editor_buffer_vis.slint";
+import { IconButton } from "../components/icon_button.slint";
 
 export component EditorPage inherits VerticalLayout {
     in property <image> editor_tex_l;
@@ -21,6 +22,8 @@ export component EditorPage inherits VerticalLayout {
     in-out property <float> read_head_r;
     in-out property <float> write_head_l;
     in-out property <float> write_head_r;
+    in-out property <bool> is_stereo;
+    in-out property <bool> is_ping_pong;
 
     VerticalLayout {
         vertical-stretch: 1;
@@ -37,6 +40,66 @@ export component EditorPage inherits VerticalLayout {
             read_head <=> root.read_head_r;
             write_head <=> root.write_head_r;
             left_channel: true;
+        }
+    }
+    HorizontalLayout {
+        height: 25px;
+        width: 10%;
+        alignment: LayoutAlignment.center;
+        spacing: 10px;
+        IconButton {
+            width: 25px;
+            height: 25px;
+            checked: !root.is_stereo;
+            Image {
+                source: @image-url("../assets/mono.svg");
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+
+            clicked => {
+                ParamBus.param_changed("stereo", 0.0);
+            }
+        }
+        IconButton {
+            width: 25px;
+            height: 25px;
+            checked: root.is_stereo && !is_ping_pong;
+            Image {
+                source: @image-url("../assets/stereo.svg");
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+
+            clicked => {
+                ParamBus.param_changed("stereo", 0.5);
+            }
+        }
+        IconButton {
+            width: 25px;
+            height: 25px;
+            checked: root.is_ping_pong;
+            Image {
+                source: @image-url("../assets/pingpong.svg");
+                image-fit: contain;
+                colorize: parent.checked ? Palette.text-dark : Palette.text;
+            }
+
+            clicked => {
+                ParamBus.param_changed("stereo", 1.0);
+            }
+        }
+    }
+    HorizontalLayout {
+        ParamKnob {
+            param_name: "buffer_len_l";
+            label: "Buffer_len_l";
+            val: ParamBus.read_val("buffer_len_l");
+        }
+        ParamKnob {
+            param_name: "buffer_len_r";
+            label: "Buffer_len_r";
+            val: ParamBus.read_val("buffer_len_r");
         }
     }
 }

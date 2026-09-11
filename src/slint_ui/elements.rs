@@ -51,6 +51,3 @@ impl ElementId {
     }
 }
 
-pub trait GpuElementData: Send + Sync {
-    fn element_uniform(&self, element: ElementId) -> Option<Vec<u8>>;
-}

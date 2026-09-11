@@ -322,14 +322,11 @@ impl WgpuRegistry {
         uniforms: &[u8],
     ) -> Option<slint::Image> {
         if let Some(cached_uniform) = self.render_cache.get(&id) {
-            if cached_uniform.len() == uniforms.len() {
-                if cached_uniform == uniforms {
-                    return None;
-                }
+            if cached_uniform.len() == uniforms.len() && cached_uniform == uniforms {
+                return None;
             }
-        } else {
-            self.render_cache.insert(id, uniforms.to_vec());
         }
+        self.render_cache.insert(id, uniforms.to_vec());
         self.renderers.get_mut(&id)?.render(w, h, uniforms);
         self.renderers.get(&id)?.to_image()
     }

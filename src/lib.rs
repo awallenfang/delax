@@ -11,9 +11,10 @@ use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
 use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
-use slint_ui::connection::{EditorChunk, InputData, EDITOR_CHUNK_SAMPLES};
+use slint_ui::data_transport::{
+    self, DataTransportTx, EditorChunk, InputData, UiBlock, EDITOR_CHUNK_SAMPLES,
+};
 use std::sync::Arc;
-use std::sync::atomic::Ordering::Relaxed;
 use crate::filters::dattorro::DattorroReverb;
 
 mod delay_engine;
@@ -31,6 +32,7 @@ pub struct Delax {
     input_sin_svf_l: SimperSinSVF,
     input_sin_svf_r: SimperSinSVF,
     input_data: Arc<InputData>,
+    transport_tx: DataTransportTx,
     peak_in_l: PeakFollower,
     peak_in_r: PeakFollower,
     peak_out_l: PeakFollower,
@@ -69,6 +71,7 @@ impl Default for Delax {
             "dattorro"
         );
 
+        let (transport_tx, _dropped_rx) = data_transport::channel();
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
@@ -77,6 +80,7 @@ impl Default for Delax {
             input_sin_svf_l: SimperSinSVF::new(44100.),
             input_sin_svf_r: SimperSinSVF::new(44100.),
             input_data: Arc::new(InputData::default()),
+            transport_tx,
             peak_in_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
@@ -137,9 +141,12 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
+        let (transport_tx, transport_rx) = data_transport::channel();
+        self.transport_tx = transport_tx;
         let host = Arc::new(DelaxSlintHost::new(
             self.params.clone(),
             self.input_data.clone(),
+            transport_rx,
         ));
         let (w, h) = self.params.editor_state.size();
         Some(SlintEditor::new(
@@ -214,6 +221,7 @@ impl Plugin for Delax {
         self.editor_peak_l = 0.;
         self.editor_peak_r = 0.;
         self.editor_tick = 0;
+        self.transport_tx.reset_decim();
         self.input_data.reset();
     }
 
@@ -223,9 +231,24 @@ impl Plugin for Delax {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        let mut pending = PendingUi {
+            bpm: 120.,
+            clamped_l: false,
+            clamped_r: false,
+        };
+        let mut last_fb_l = 0.5f32;
+        let mut last_fb_r = 0.5f32;
+        let mut meter_in_l = 0.0f32;
+        let mut meter_in_r = 0.0f32;
+        let mut meter_out_l = 0.0f32;
+        let mut meter_out_r = 0.0f32;
+        let mut last_wetness = self.params.wetness.value();
+        let mut had_samples = false;
+
         for channel_samples in buffer.iter_samples() {
+            had_samples = true;
             // Update all the elements to the current params
-            self.update_params(_context.transport());
+            self.update_params(_context.transport(), &mut pending);
             // ########## Input ###########
             // Read the values sample by sample for now
             let mut channel_iter = channel_samples.into_iter();
@@ -236,8 +259,7 @@ impl Plugin for Delax {
 
             let dry_l = *left_sample;
             let dry_r = *right_sample;
-            self.input_data.push_dry(dry_l, dry_r);
-            self.input_ui_send(dry_l, dry_r);
+            (meter_in_l, meter_in_r) = self.meter_in(dry_l, dry_r);
 
             // The output of the banks
             let pop_left = self
@@ -274,20 +296,8 @@ impl Plugin for Delax {
                     feedbacked_right = fb_l * pop_right;
                 }
             }
-
-            let stereo_mode = self.params.delay_params.stereo_delay.value();
-            let is_stereo = stereo_mode != DelayMode::Mono;
-            let is_ping_pong = stereo_mode == DelayMode::PingPong;
-            self.input_data.set_decay_state(
-                fb_l,
-                fb_r,
-                self.decay_time_s_l,
-                self.decay_time_s_r,
-                is_stereo,
-                is_ping_pong,
-                self.params.delay_params.bpm_bound_l.value(),
-                self.params.delay_params.bpm_bound_r.value(),
-            );
+            last_fb_l = fb_l;
+            last_fb_r = fb_r;
 
             // ############ Filtering ###############
 
@@ -305,21 +315,23 @@ impl Plugin for Delax {
 
             // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
+            last_wetness = wetness;
 
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
 
             let wet_l = *left_sample;
             let wet_r = *right_sample;
-            self.input_data.push_wet(pop_left, pop_right);
-            self.input_data
-                .push_spectrum((pop_left * wetness + pop_right * wetness) * 0.5);
+            self.transport_tx
+                .push_wave_sample(dry_l, dry_r, pop_left, pop_right);
+            self.transport_tx
+                .push_spectrum_sample((pop_left * wetness + pop_right * wetness) * 0.5);
 
-            self.output_ui_send(wet_l, wet_r);
+            (meter_out_l, meter_out_r) = self.meter_out(wet_l, wet_r);
 
             self.editor_tick = self.editor_tick.wrapping_add(1);
             if self.editor_tick.is_multiple_of(EDITOR_CHUNK_SAMPLES as u32) {
-                self.input_data.push_editor_chunk(EditorChunk {
+                self.transport_tx.push_editor_chunk(EditorChunk {
                     l: self.editor_peak_l,
                     r: self.editor_peak_r,
                     pos_l: self.left_delay_engine.write_head() as u32,
@@ -327,23 +339,56 @@ impl Plugin for Delax {
                 });
                 self.editor_peak_l = 0.;
                 self.editor_peak_r = 0.;
-                self.input_data
-                    .active_len_l
-                    .store(self.left_delay_engine.active_len(), Relaxed);
-                self.input_data
-                    .active_len_r
-                    .store(self.right_delay_engine.active_len(), Relaxed);
             }
+        }
+
+        if had_samples {
+            let active_len_l = self.left_delay_engine.active_len();
+            let active_len_r = self.right_delay_engine.active_len();
+            let stereo_mode = self.params.delay_params.stereo_delay.value();
+            self.input_data.publish_block(&UiBlock {
+                in_l: meter_in_l,
+                in_r: meter_in_r,
+                out_l: meter_out_l,
+                out_r: meter_out_r,
+                wetness: last_wetness,
+                read_head_l: self.left_delay_engine.read_head() as f32
+                    / active_len_l.max(1) as f32,
+                read_head_r: self.right_delay_engine.read_head() as f32
+                    / active_len_r.max(1) as f32,
+                write_head_l: self.left_delay_engine.write_head() as f32
+                    / active_len_l.max(1) as f32,
+                write_head_r: self.right_delay_engine.write_head() as f32
+                    / active_len_r.max(1) as f32,
+                feedback_l: last_fb_l,
+                feedback_r: last_fb_r,
+                time_s_l: self.decay_time_s_l,
+                time_s_r: self.decay_time_s_r,
+                bpm: pending.bpm,
+                is_stereo: stereo_mode != DelayMode::Mono,
+                is_ping_pong: stereo_mode == DelayMode::PingPong,
+                bpm_bound_l: self.params.delay_params.bpm_bound_l.value(),
+                bpm_bound_r: self.params.delay_params.bpm_bound_r.value(),
+                clamped_l: pending.clamped_l,
+                clamped_r: pending.clamped_r,
+                active_len_l,
+                active_len_r,
+            });
         }
 
         ProcessStatus::Normal
     }
 }
 
+struct PendingUi {
+    bpm: f32,
+    clamped_l: bool,
+    clamped_r: bool,
+}
+
 impl Delax {
-    fn update_params(&mut self, transport: &Transport) {
-        self.input_data
-            .set_bpm(transport.tempo.unwrap_or(120.) as f32);
+    fn update_params(&mut self, transport: &Transport, pending: &mut PendingUi) {
+        pending.bpm = transport.tempo.unwrap_or(120.) as f32;
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
@@ -374,7 +419,8 @@ impl Delax {
                 let delay_clamped = delay_amt.min(max_ms);
                 self.left_delay_engine.set_delay_amount(delay_clamped);
                 self.right_delay_engine.set_delay_amount(delay_clamped);
-                self.input_data.set_clamped(clamped, clamped);
+                pending.clamped_l = clamped;
+                pending.clamped_r = clamped;
 
                 self.decay_time_s_l = delay_clamped / 1000.;
                 self.decay_time_s_r = delay_clamped / 1000.;
@@ -431,7 +477,8 @@ impl Delax {
                 let delay_clamped_r = delay_amt_r.min(max_ms_r);
                 self.left_delay_engine.set_delay_amount(delay_clamped_l);
                 self.right_delay_engine.set_delay_amount(delay_clamped_r);
-                self.input_data.set_clamped(clamped_l, clamped_r);
+                pending.clamped_l = clamped_l;
+                pending.clamped_r = clamped_r;
 
                 self.decay_time_s_l = delay_clamped_l / 1000.;
                 self.decay_time_s_r = delay_clamped_r / 1000.;
@@ -534,28 +581,21 @@ impl Delax {
         (l, r)
     }
 
-    fn input_ui_send(&mut self, l: f32, r: f32) {
+    fn meter_in(&mut self, l: f32, r: f32) -> (f32, f32) {
         // Convert to 0..1 dB range, then smooth with peak follower for stable UI meter
         let l_db = (1. + util::gain_to_db(l.abs()) / 100.).clamp(0., 1.5);
         let r_db = (1. + util::gain_to_db(r.abs()) / 100.).clamp(0., 1.5);
         let l = self.peak_in_l.process(l_db).clamp(0., 1.5);
         let r = self.peak_in_r.process(r_db).clamp(0., 1.5);
-        self.input_data.in_l.store(l, Relaxed);
-        self.input_data.in_r.store(r, Relaxed);
-        self.input_data.wetness.store(self.params.wetness.value(), Relaxed);
-        self.input_data.read_head_l.store(self.left_delay_engine.read_head() as f32 / self.left_delay_engine.active_len() as f32, Relaxed);
-        self.input_data.read_head_r.store(self.right_delay_engine.read_head() as f32 / self.right_delay_engine.active_len() as f32, Relaxed);
-        self.input_data.write_head_l.store(self.left_delay_engine.write_head() as f32 / self.left_delay_engine.active_len() as f32, Relaxed);
-        self.input_data.write_head_r.store(self.right_delay_engine.write_head() as f32 / self.right_delay_engine.active_len() as f32, Relaxed);
+        (l, r)
     }
 
-    fn output_ui_send(&mut self, l: f32, r: f32) {
+    fn meter_out(&mut self, l: f32, r: f32) -> (f32, f32) {
         let l_db = (1. + util::gain_to_db_fast(l.abs()) / 100.).clamp(0., 1.5);
         let r_db = (1. + util::gain_to_db_fast(r.abs()) / 100.).clamp(0., 1.5);
         let l = self.peak_out_l.process(l_db).clamp(0., 1.5);
         let r = self.peak_out_r.process(r_db).clamp(0., 1.5);
-        self.input_data.out_l.store(l, Relaxed);
-        self.input_data.out_r.store(r, Relaxed);
+        (l, r)
     }
 }
 

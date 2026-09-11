@@ -205,6 +205,8 @@ export component AppWindow inherits Window {
                 write_head_l: root.editor_data.write_head_l;
                 read_head_r: root.editor_data.read_head_r;
                 write_head_r: root.editor_data.write_head_r;
+                is_stereo <=> root.is_stereo;
+                is_ping_pong <=> root.is_ping_pong;
             }
             if tab == 3:
                 AboutPage {
