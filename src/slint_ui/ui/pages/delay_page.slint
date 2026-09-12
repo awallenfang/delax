@@ -170,16 +170,16 @@ export component DelayPage inherits Rectangle {
                         alignment: LayoutAlignment.space-around;
 
                         ParamKnob {
-                            param_name: "input_svf_cutoff_l";
-                            label: "Cutoff";
-                            val: ParamBus.read_val("input_svf_cutoff_l");
-                            display_val: ParamBus.read_display_val("input_svf_cutoff_l");
+                            param_name: "input_svf_cutoff_low_l";
+                            label: "Low";
+                            val: ParamBus.read_val("input_svf_cutoff_low_l");
+                            display_val: ParamBus.read_display_val("input_svf_cutoff_low_l");
                         }
-
                         ParamKnob {
-                            param_name: "input_svf_res_l";
-                            label: "Res";
-                            val: ParamBus.read_val("input_svf_res_l");
+                            param_name: "input_svf_cutoff_high_l";
+                            label: "High";
+                            val: ParamBus.read_val("input_svf_cutoff_high_l");
+                            display_val: ParamBus.read_display_val("input_svf_cutoff_high_l");
                         }
                     }
 
@@ -243,16 +243,16 @@ export component DelayPage inherits Rectangle {
                             alignment: LayoutAlignment.space-around;
 
                             ParamKnob {
-                                param_name: "input_svf_cutoff_l";
-                                label: "Cutoff L";
-                                val: ParamBus.read_val("input_svf_cutoff_l");
-                                display_val: ParamBus.read_display_val("input_svf_cutoff_l");
+                                param_name: "input_svf_cutoff_low_l";
+                                label: "Low L";
+                                val: ParamBus.read_val("input_svf_cutoff_low_l");
+                                display_val: ParamBus.read_display_val("input_svf_cutoff_low_l");
                             }
-
                             ParamKnob {
-                                param_name: "input_svf_res_l";
-                                label: "Res L";
-                                val: ParamBus.read_val("input_svf_res_l");
+                                param_name: "input_svf_cutoff_high_l";
+                                label: "High L";
+                                val: ParamBus.read_val("input_svf_cutoff_high_l");
+                                display_val: ParamBus.read_display_val("input_svf_cutoff_high_l");
                             }
                         }
 
@@ -306,16 +306,16 @@ export component DelayPage inherits Rectangle {
                             alignment: LayoutAlignment.space-around;
 
                             ParamKnob {
-                                param_name: "input_svf_cutoff_r";
-                                label: "Cutoff R";
-                                val: ParamBus.read_val("input_svf_cutoff_r");
-                                display_val: ParamBus.read_display_val("input_svf_cutoff_r");
+                                param_name: "input_svf_cutoff_low_r";
+                                label: "Low R";
+                                val: ParamBus.read_val("input_svf_cutoff_low_r");
+                                display_val: ParamBus.read_display_val("input_svf_cutoff_low_r");
                             }
-
                             ParamKnob {
-                                param_name: "input_svf_res_r";
-                                label: "Res R";
-                                val: ParamBus.read_val("input_svf_res_r");
+                                param_name: "input_svf_cutoff_high_r";
+                                label: "High R";
+                                val: ParamBus.read_val("input_svf_cutoff_high_r");
+                                display_val: ParamBus.read_display_val("input_svf_cutoff_high_r");
                             }
                         }
 
