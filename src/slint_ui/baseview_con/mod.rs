@@ -50,7 +50,17 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
         let root = builder().map_err(|e| PlatformError::Other(format!("Failed to build Slint component: {e}")))?;
         root.show().map_err(|e| PlatformError::Other(format!("Failed to show Slint component: {e}")))?;
 
-        let gpu_context = GpuContext::ensure_initialized()?;
+        let gpu_context = match GpuContext::ensure_initialized() {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!(
+                    "\n\
+                     delax: cannot open its window — no Vulkan GPU driver is available.\n\
+                     Detail: {e}\n"
+                );
+                std::process::exit(1);
+            }
+        };
         let wgpu_registry = RefCell::new(WgpuRegistry::new(gpu_context.clone()));
         on_init(&root, &wgpu_registry);
 
