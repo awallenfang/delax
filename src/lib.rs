@@ -1,4 +1,4 @@
-use crate::filters::shifter::FrequencyShifter;
+use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
 use crate::delay_engine::delay_time_from_bpm_and_16th;
 use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::slint_ui::editor::DelaxSlintHost;
@@ -29,8 +29,10 @@ pub struct Delax {
     left_delay_engine: DelayEngine,
     right_delay_engine: DelayEngine,
     sample_rate: f32,
-    input_sin_svf_l: SimperSinSVF,
-    input_sin_svf_r: SimperSinSVF,
+    input_sin_svf_low_l: SimperSinSVF,
+    input_sin_svf_high_l: SimperSinSVF,
+    input_sin_svf_low_r: SimperSinSVF,
+    input_sin_svf_high_r: SimperSinSVF,
     input_data: Arc<InputData>,
     transport_tx: DataTransportTx,
     peak_in_l: PeakFollower,
@@ -72,13 +74,22 @@ impl Default for Delax {
         );
 
         let (transport_tx, _dropped_rx) = data_transport::channel();
+
+        let input_low_l = SimperSinSVF::new(44100.);
+        let input_low_r = SimperSinSVF::new(44100.);
+        let mut input_high_l = SimperSinSVF::new(44100.);
+        let mut input_high_r = SimperSinSVF::new(44100.);
+        input_high_l.set_mode(SVFFilterMode::High);
+        input_high_r.set_mode(SVFFilterMode::High);
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
             right_delay_engine,
             sample_rate: 44100.,
-            input_sin_svf_l: SimperSinSVF::new(44100.),
-            input_sin_svf_r: SimperSinSVF::new(44100.),
+            input_sin_svf_low_l: input_low_l,
+            input_sin_svf_low_r: input_low_r,
+            input_sin_svf_high_l: input_high_l,
+            input_sin_svf_high_r: input_high_r,
             input_data: Arc::new(InputData::default()),
             transport_tx,
             peak_in_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
@@ -194,8 +205,10 @@ impl Plugin for Delax {
             .set_param("shimmer", "sample_rate", self.sample_rate);
         self.filter_pipeline
             .set_param("dattorro", "sample_rate", self.sample_rate);
-        self.input_sin_svf_l.set_sample_rate(self.sample_rate);
-        self.input_sin_svf_r.set_sample_rate(self.sample_rate);
+        self.input_sin_svf_low_l.set_sample_rate(self.sample_rate);
+        self.input_sin_svf_low_r.set_sample_rate(self.sample_rate);
+        self.input_sin_svf_high_l.set_sample_rate(self.sample_rate);
+        self.input_sin_svf_high_r.set_sample_rate(self.sample_rate);
 
         self.peak_in_l.set_sample_rate(self.sample_rate);
         self.peak_in_r.set_sample_rate(self.sample_rate);
@@ -425,18 +438,12 @@ impl Delax {
                 self.decay_time_s_l = delay_clamped / 1000.;
                 self.decay_time_s_r = delay_clamped / 1000.;
 
-                let res = self.params.svf_params.input_svf_res_l.smoothed.next();
-                let cutoff = self.params.svf_params.input_svf_cutoff_l.smoothed.next();
-                let mode = self.params.svf_params.input_svf_filter_mode_l.value();
-
-                self.input_sin_svf_l.set_res(res);
-                self.input_sin_svf_r.set_res(res);
-                self.input_sin_svf_l.set_cutoff(cutoff);
-                self.input_sin_svf_l.set_mix(1.);
-                self.input_sin_svf_r.set_cutoff(cutoff);
-                self.input_sin_svf_l.set_mode(mode);
-                self.input_sin_svf_r.set_mode(mode);
-                self.input_sin_svf_r.set_mix(1.);
+                let cutoff_low_l = self.params.svf_params.input_svf_cutoff_low_l.smoothed.next();
+                let cutoff_high_l = self.params.svf_params.input_svf_cutoff_high_l.smoothed.next();
+                self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
+                self.input_sin_svf_low_r.set_cutoff(cutoff_low_l);
+                self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
+                self.input_sin_svf_high_r.set_cutoff(cutoff_high_l);
             }
             DelayMode::Stereo | DelayMode::PingPong => {
                 let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
@@ -483,21 +490,14 @@ impl Delax {
                 self.decay_time_s_l = delay_clamped_l / 1000.;
                 self.decay_time_s_r = delay_clamped_r / 1000.;
 
-                let res_l = self.params.svf_params.input_svf_res_l.smoothed.next();
-                let res_r = self.params.svf_params.input_svf_res_r.smoothed.next();
-                let cutoff_l = self.params.svf_params.input_svf_cutoff_l.smoothed.next();
-                let cutoff_r = self.params.svf_params.input_svf_cutoff_r.smoothed.next();
-                let mode_l = self.params.svf_params.input_svf_filter_mode_l.value();
-                let mode_r = self.params.svf_params.input_svf_filter_mode_r.value();
-
-                self.input_sin_svf_l.set_res(res_l);
-                self.input_sin_svf_r.set_res(res_r);
-                self.input_sin_svf_l.set_cutoff(cutoff_l);
-                self.input_sin_svf_r.set_cutoff(cutoff_r);
-                self.input_sin_svf_l.set_mode(mode_l);
-                self.input_sin_svf_r.set_mode(mode_r);
-                self.input_sin_svf_l.set_mix(1.);
-                self.input_sin_svf_r.set_mix(1.);
+                let cutoff_low_l = self.params.svf_params.input_svf_cutoff_low_l.smoothed.next();
+                let cutoff_high_l = self.params.svf_params.input_svf_cutoff_high_l.smoothed.next();
+                let cutoff_low_r = self.params.svf_params.input_svf_cutoff_low_r.smoothed.next();
+                let cutoff_high_r = self.params.svf_params.input_svf_cutoff_high_r.smoothed.next();
+                self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
+                self.input_sin_svf_low_r.set_cutoff(cutoff_low_r);
+                self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
+                self.input_sin_svf_high_r.set_cutoff(cutoff_high_r);
             }
         }
         let dattorro_mix = self.params.dattorro_params.mix.smoothed.next();
@@ -576,8 +576,8 @@ impl Delax {
     /// Run the filter chain on the input signal. This can probably be refactored out down the line. But for now it doesn't work correctly without
     fn run_input_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
         use filters::Filter;
-        let l = self.input_sin_svf_l.process(input_l);
-        let r = self.input_sin_svf_r.process(input_r);
+        let (l,r)  = (self.input_sin_svf_high_l.process(input_l), self.input_sin_svf_high_r.process(input_r));
+        let (l,r)  = (self.input_sin_svf_low_l.process(l), self.input_sin_svf_low_r.process(r));
         (l, r)
     }
 
