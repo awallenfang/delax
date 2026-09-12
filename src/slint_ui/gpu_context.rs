@@ -19,7 +19,11 @@ impl GpuContext {
         let adapter = pollster::block_on(instance.request_adapter(
             &wgpu::RequestAdapterOptions::default(),
         ))
-        .map_err(|e| format!("wgpu: no suitable Vulkan adapter: {e:?}"))?;
+        .map_err(|e| {
+            format!(
+                "wgpu could not find any Vulkan adapter: {e}."
+            )
+        })?;
 
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
