@@ -1,4 +1,6 @@
 
+use std::ops::Index;
+
 use crate::filters::{Filter, StereoFilter};
 
 /// A pipeline to send the signal through different filters in different orders
@@ -126,6 +128,25 @@ impl FilterPipeline {
                 }
             }
         }
+    }
+
+    fn id_order_to_index(&self, order_str: &[&str]) -> Vec<usize> {
+        let mut order = Vec::new();
+        for id in order_str {
+            let entry = self.registered_filters.iter().enumerate().filter(|e| e.1.1 == *id).map(|e|e.0).nth(0);
+            if let Some(idx) = entry {
+                order.push(idx);
+            }
+        }
+
+        order
+    }
+    pub fn set_order(&mut self, order: &[&str]) {
+        let resolved = self.id_order_to_index(order);
+        if resolved.len() != self.registered_filters.len() {
+            return;
+        }
+        self.order = resolved;
     }
 }
 

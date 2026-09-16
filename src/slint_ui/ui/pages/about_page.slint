@@ -31,40 +31,47 @@ export component AboutPage inherits VerticalLayout {
         text: "Used dependencies:";
         color: Palette.text;
     }
-    StyledText {
-        text: @markdown("[Nice-Plug (ISC)](https://codeberg.org/RustAudio/nice-plug.git)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
+    HorizontalBox {
+        VerticalBox {
+            StyledText {
+                text: @markdown("[Nice-Plug (ISC)](https://codeberg.org/RustAudio/nice-plug.git)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Crossbeam (MIT)](https://github.com/crossbeam-rs/crossbeam)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Serde (MIT)](https://github.com/serde-rs/serde)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Slint (Royalty free)](https://github.com/slint-ui/slint)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[Baseview (MIT)](https://github.com/RustAudio/baseview)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[RustFFT (MIT)](https://github.com/ejmahler/RustFFT)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+            StyledText {
+                text: @markdown("[rtrb (MIT)](https://github.com/mgeier/rtrb)");
+                link-color: Palette.secondary;
+                link-clicked(url) => { Platform.open-url(url); }
+            }
+        }
+        VerticalBox {
+            AboutSlint {}
+        }
     }
-    StyledText {
-        text: @markdown("[Crossbeam (MIT)](https://github.com/crossbeam-rs/crossbeam)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[Serde (MIT)](https://github.com/serde-rs/serde)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[Slint (Royalty free)](https://github.com/slint-ui/slint)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[Baseview (MIT)](https://github.com/RustAudio/baseview)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[RustFFT (MIT)](https://github.com/ejmahler/RustFFT)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    StyledText {
-        text: @markdown("[rtrb (MIT)](https://github.com/mgeier/rtrb)");
-        link-color: Palette.secondary;
-        link-clicked(url) => { Platform.open-url(url); }
-    }
-    AboutSlint { }
+    
 }

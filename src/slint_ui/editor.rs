@@ -34,6 +34,9 @@ pub enum UiEvent {
     SetTimeMode {
         bpm_id: String,
     },
+    SetEffectOrder {
+        order: Vec<String>,
+    },
 }
 #[derive(Deserialize, Serialize)]
 pub struct EditorState {
@@ -93,7 +96,8 @@ pub struct DelaxSlintHost {
     ui: std::sync::Mutex<UiConnection>,
     event_tx: Sender<UiEvent>,
     event_rx: Receiver<UiEvent>,
-    param_index: HashMap<String, ParamPtr>
+    param_index: HashMap<String, ParamPtr>,
+    effect_order: Arc<std::sync::RwLock<Vec<String>>>,
 }
 
 impl DelaxSlintHost {
@@ -101,6 +105,7 @@ impl DelaxSlintHost {
         params: Arc<DelaxParams>,
         input_data: Arc<InputData>,
         transport_rx: DataTransportRx,
+        effect_order: Arc<std::sync::RwLock<Vec<String>>>,
     ) -> Self {
         let (event_tx, event_rx) = unbounded();
         let param_index = params.param_map().into_iter().map(|(id, ptr, _)| (id, ptr)).collect();
@@ -124,7 +129,8 @@ impl DelaxSlintHost {
             }),
             event_tx,
             event_rx,
-            param_index
+            param_index,
+            effect_order,
         }
     }
 
@@ -254,6 +260,11 @@ impl SlintHost for DelaxSlintHost {
                             }
                             break;
                         }
+                    }
+                }
+                UiEvent::SetEffectOrder { order } => {
+                    if let Ok(mut shared) = self.effect_order.write() {
+                        *shared = order;
                     }
                 }
             }
