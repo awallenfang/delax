@@ -14,7 +14,7 @@ use params::DelaxParams;
 use slint_ui::data_transport::{
     self, DataTransportTx, EditorChunk, InputData, UiBlock, EDITOR_CHUNK_SAMPLES,
 };
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use crate::filters::dattorro::DattorroReverb;
 
 mod delay_engine;
@@ -45,6 +45,8 @@ pub struct Delax {
     editor_peak_l: f32,
     editor_peak_r: f32,
     editor_tick: u32,
+    effect_order: Arc<RwLock<Vec<String>>>,
+    applied_effect_order: Vec<String>,
 }
 
 impl Default for Delax {
@@ -61,7 +63,7 @@ impl Default for Delax {
         filter_pipeline.register_stereo_pair(
             Box::new(SimperSinSVF::new(44100.)),
             Box::new(SimperSinSVF::new(44100.)),
-            "svf_filter",
+            "filter",
         );
         filter_pipeline.register_stereo_pair(
             Box::new(FrequencyShifter::new(44100., 0.)),
@@ -70,10 +72,16 @@ impl Default for Delax {
         );
         filter_pipeline.register_stereo(
             Box::new(DattorroReverb::new(0.5, 44100., 0.2, 0.0, 0.7, 0.8, 0.65, 0.8, 8., 1.1)),
-            "dattorro"
+            "diffusor"
         );
 
         let (transport_tx, _dropped_rx) = data_transport::channel();
+
+        let default_order = vec![
+            "filter".to_string(),
+            "shimmer".to_string(),
+            "diffusor".to_string(),
+        ];
 
         let input_low_l = SimperSinSVF::new(44100.);
         let input_low_r = SimperSinSVF::new(44100.);
@@ -102,6 +110,8 @@ impl Default for Delax {
             editor_peak_l: 0.,
             editor_peak_r: 0.,
             editor_tick: 0,
+            effect_order: Arc::new(RwLock::new(default_order.clone())),
+            applied_effect_order: default_order,
         }
     }
 }
@@ -158,6 +168,7 @@ impl Plugin for Delax {
             self.params.clone(),
             self.input_data.clone(),
             transport_rx,
+            self.effect_order.clone(),
         ));
         let (w, h) = self.params.editor_state.size();
         Some(SlintEditor::new(
@@ -200,11 +211,11 @@ impl Plugin for Delax {
         self.right_delay_engine = right_delay_engine;
 
         self.filter_pipeline
-            .set_param("svf_filter", "sample_rate", self.sample_rate);
+            .set_param("filter", "sample_rate", self.sample_rate);
         self.filter_pipeline
             .set_param("shimmer", "sample_rate", self.sample_rate);
         self.filter_pipeline
-            .set_param("dattorro", "sample_rate", self.sample_rate);
+            .set_param("diffusor", "sample_rate", self.sample_rate);
         self.input_sin_svf_low_l.set_sample_rate(self.sample_rate);
         self.input_sin_svf_low_r.set_sample_rate(self.sample_rate);
         self.input_sin_svf_high_l.set_sample_rate(self.sample_rate);
@@ -257,6 +268,8 @@ impl Plugin for Delax {
         let mut meter_out_r = 0.0f32;
         let mut last_wetness = self.params.wetness.value();
         let mut had_samples = false;
+
+        self.poll_effect_order();
 
         for channel_samples in buffer.iter_samples() {
             had_samples = true;
@@ -400,6 +413,22 @@ struct PendingUi {
 }
 
 impl Delax {
+    fn poll_effect_order(&mut self) {
+        let current: Vec<String> = match self.effect_order.try_read() {
+            Ok(guard) => {
+                if *guard == self.applied_effect_order {
+                    return;
+                }
+                guard.clone()
+            }
+            Err(_) => return,
+        };
+
+        let refs: Vec<&str> = current.iter().map(|s| s.as_str()).collect();
+        self.filter_pipeline.set_order(&refs);
+        self.applied_effect_order = current;
+    }
+
     fn update_params(&mut self, transport: &Transport, pending: &mut PendingUi) {
         pending.bpm = transport.tempo.unwrap_or(120.) as f32;
         match self.params.delay_params.stereo_delay.value() {
@@ -510,15 +539,15 @@ impl Delax {
         let dattorro_input_smear = self.params.dattorro_params.input_smear.smoothed.next();
         let dattorro_tank_smear = self.params.dattorro_params.tank_smear.smoothed.next();
 
-        self.filter_pipeline.set_param("dattorro", "mix", dattorro_mix);
-        self.filter_pipeline.set_param("dattorro", "size", dattorro_size);
-        self.filter_pipeline.set_param("dattorro", "decay", dattorro_decay);
-        self.filter_pipeline.set_param("dattorro", "pre_delay", dattorro_pre_delay);
-        self.filter_pipeline.set_param("dattorro", "damping", dattorro_damping);
-        self.filter_pipeline.set_param("dattorro", "brightness", dattorro_brightness);
-        self.filter_pipeline.set_param("dattorro", "lushness", dattorro_lushness);
-        self.filter_pipeline.set_param("dattorro", "input_smear", dattorro_input_smear);
-        self.filter_pipeline.set_param("dattorro", "tank_smear", dattorro_tank_smear);
+        self.filter_pipeline.set_param("diffusor", "mix", dattorro_mix);
+        self.filter_pipeline.set_param("diffusor", "size", dattorro_size);
+        self.filter_pipeline.set_param("diffusor", "decay", dattorro_decay);
+        self.filter_pipeline.set_param("diffusor", "pre_delay", dattorro_pre_delay);
+        self.filter_pipeline.set_param("diffusor", "damping", dattorro_damping);
+        self.filter_pipeline.set_param("diffusor", "brightness", dattorro_brightness);
+        self.filter_pipeline.set_param("diffusor", "lushness", dattorro_lushness);
+        self.filter_pipeline.set_param("diffusor", "input_smear", dattorro_input_smear);
+        self.filter_pipeline.set_param("diffusor", "tank_smear", dattorro_tank_smear);
         match self.params.svf_params.svf_stereo_mode.value() {
             filters::params::SVFStereoMode::Mono => {
                 // `smoothed.next()` once for mono – keeps L/R smoothers in sync.
@@ -526,11 +555,11 @@ impl Delax {
                 let cutoff = self.params.svf_params.svf_cutoff_l.smoothed.next();
                 let mode = self.params.svf_params.svf_filter_mode_l.modulated_normalized_value();
                 let mix = self.params.svf_params.svf_mix_l.value();
-                self.filter_pipeline.set_param("svf_filter", "res", res);
+                self.filter_pipeline.set_param("filter", "res", res);
                 self.filter_pipeline
-                    .set_param("svf_filter", "cutoff", cutoff);
-                self.filter_pipeline.set_param("svf_filter", "mix", mix);
-                self.filter_pipeline.set_param("svf_filter", "mode", mode);
+                    .set_param("filter", "cutoff", cutoff);
+                self.filter_pipeline.set_param("filter", "mix", mix);
+                self.filter_pipeline.set_param("filter", "mode", mode);
 
             }
             filters::params::SVFStereoMode::Stereo => {
@@ -543,18 +572,19 @@ impl Delax {
                 let mode_l = self.params.svf_params.svf_filter_mode_l.modulated_normalized_value();
                 let mode_r = self.params.svf_params.svf_filter_mode_r.modulated_normalized_value();
                 self.filter_pipeline
-                    .set_param_stereo("svf_filter", "res", (res_l, res_r));
+                    .set_param_stereo("filter", "res", (res_l, res_r));
                 self.filter_pipeline
-                    .set_param_stereo("svf_filter", "cutoff", (cutoff_l, cutoff_r));
+                    .set_param_stereo("filter", "cutoff", (cutoff_l, cutoff_r));
                 self.filter_pipeline
-                    .set_param_stereo("svf_filter", "mix", (mix_l, mix_r));
+                    .set_param_stereo("filter", "mix", (mix_l, mix_r));
                 self.filter_pipeline
-                    .set_param_stereo("svf_filter", "mode", (mode_l, mode_r));
+                    .set_param_stereo("filter", "mode", (mode_l, mode_r));
 
             }
         }
-        self.filter_pipeline.set_active("svf_filter", self.params.pipeline_params.eq_active.value());
+        self.filter_pipeline.set_active("filter", self.params.pipeline_params.eq_active.value());
         self.filter_pipeline.set_active("diffusor", self.params.pipeline_params.diffusor_active.value());
+        self.filter_pipeline.set_active("shimmer", self.params.pipeline_params.shimmer_active.value());
 
         if self.params.shimmer_params.shimmer_stereo.value() {
             let shift_l = self.params.shimmer_params.shift_l.value();

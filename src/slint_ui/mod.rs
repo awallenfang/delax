@@ -14,6 +14,7 @@ pub mod editor;
 use crate::slint_ui::param_component::ParamComponent;
 use nice_plug::params::Params;
 use slint::SharedString;
+use slint::Model;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 use crate::slint_ui::editor::UiEvent;
@@ -92,6 +93,14 @@ where
                 let _ = tx3.send(UiEvent::SetTimeMode {
                     bpm_id: bpm_id.to_string(),
                 });
+            });
+        }
+        {
+            let tx_order = tx.clone();
+            self.on_effect_order_changed(move |order| {
+                let order: Vec<String> =
+                    order.iter().map(|s| s.to_string()).collect();
+                let _ = tx_order.send(UiEvent::SetEffectOrder { order });
             });
         }
         bus.on_get_val_by_key(|key, _version| {

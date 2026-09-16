@@ -3,7 +3,10 @@ import {
     VerticalBox,
     AboutSlint,
     CheckBox,
-    Switch, Spinner, HorizontalBox
+    Switch,
+    Spinner,
+    HorizontalBox,
+    ScrollView,
 } from "std-widgets.slint";
 import { ParamKnob } from "../components/param_knob.slint";
 import { ParamBus } from "../events.slint";
@@ -12,6 +15,7 @@ import { Palette } from "../global.slint";
 import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
+import { IconButton } from "../components/icon_button.slint";
 import { FilterEffect } from "../components/filter_effect.slint";
 import { DiffusorEffect } from "../components/diffusor_effect.slint";
 import { ShimmerEffect } from "../components/shimmer_effect.slint";
@@ -19,19 +23,87 @@ import { ShimmerEffect } from "../components/shimmer_effect.slint";
 export component FilterPage inherits Rectangle {
     in-out property <bool> is_filter_stereo: false;
 
-    clip: true;
-    background: transparent;
-    VerticalLayout {
-        width: 100%;
-        padding: 0.5rem;
-        alignment: LayoutAlignment.stretch;
-        spacing: 0.5rem;
-        FilterEffect {}
-        ShimmerEffect {}
-        DiffusorEffect {}
-        VerticalLayout {
-            vertical-stretch: 1;
+    in-out property <[string]> effect-order: ["filter", "shimmer", "diffusor"];
+    callback order-changed([string]);
+
+    public function move-up(idx: int) {
+        if (idx == 1) {
+            root.effect-order = [root.effect-order[1], root.effect-order[0], root.effect-order[2]];
+            root.order-changed(root.effect-order);
+        } else if (idx == 2) {
+            root.effect-order = [root.effect-order[0], root.effect-order[2], root.effect-order[1]];
+            root.order-changed(root.effect-order);
         }
     }
 
+    public function move-down(idx: int) {
+        if (idx == 0) {
+            root.effect-order = [root.effect-order[1], root.effect-order[0], root.effect-order[2]];
+            root.order-changed(root.effect-order);
+        } else if (idx == 1) {
+            root.effect-order = [root.effect-order[0], root.effect-order[2], root.effect-order[1]];
+            root.order-changed(root.effect-order);
+        }
+    }
+
+    clip: true;
+    background: transparent;
+
+        VerticalLayout {
+            width: 100%;
+            padding: 0.5rem;
+            alignment: LayoutAlignment.stretch;
+            spacing: 0.5rem;
+
+            for entry[idx] in root.effect-order: HorizontalLayout {
+                spacing: 6px;
+                alignment: LayoutAlignment.stretch;
+
+                if (entry == "filter"): FilterEffect {
+                    horizontal-stretch: 1;
+                }
+                if (entry == "shimmer"): ShimmerEffect {
+                    horizontal-stretch: 1;
+                }
+                if (entry == "diffusor"): DiffusorEffect {
+                    horizontal-stretch: 1;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    IconButton {
+                        width: 22px;
+                        height: 22px;
+                        enabled: idx > 0;
+                        clicked => { root.move-up(idx); }
+                        Text {
+                            text: "▲";
+                            color: idx > 0 ? Palette.text : Palette.text-muted;
+                            font-size: 8pt;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    IconButton {
+                        width: 22px;
+                        height: 22px;
+                        enabled: idx < root.effect-order.length - 1;
+                        clicked => { root.move-down(idx); }
+                        Text {
+                            text: "▼";
+                            color: idx < root.effect-order.length - 1 ? Palette.text : Palette.text-muted;
+                            font-size: 8pt;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                vertical-stretch: 1;
+            }
+        }
 }

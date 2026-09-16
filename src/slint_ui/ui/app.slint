@@ -77,6 +77,8 @@ export component AppWindow inherits Window {
     in-out property <string> version;
     in-out property <float> bpm;
 
+    callback effect-order-changed([string]);
+
     private property <int> tab: 0;
 
     background: Palette.background;
@@ -195,6 +197,7 @@ export component AppWindow inherits Window {
                 FilterPage {
                 vertical-stretch: 1;
                 is-filter-stereo <=> root.is_filter_stereo;
+                order-changed(order) => { root.effect-order-changed(order); }
             }
             if tab == 2:
                 EditorPage {
