@@ -1,10 +1,11 @@
+use crate::delay_engine::jump_builder::JumpBuilder;
 use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
 use crate::delay_engine::delay_time_from_bpm_and_16th;
 use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::slint_ui::editor::DelaxSlintHost;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
-    engine::{DelayEngine, DelayInterpolationMode, MAX_DELAY_SECS},
+    engine::{DelayEngine, MAX_DELAY_SECS},
     params::DelayMode,
 };
 use filters::peak_follower::PeakFollower;
@@ -206,6 +207,10 @@ impl Plugin for Delax {
             (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
         left_delay_engine.set_active_len(active_l);
         right_delay_engine.set_active_len(active_r);
+        let jumps_l = JumpBuilder::split_evenly(active_l, 8).shuffle().build();
+        let jumps_r = JumpBuilder::split_evenly(active_r, 8).shuffle().build();
+        left_delay_engine.set_raw_read_jumps(&jumps_l);
+        right_delay_engine.set_raw_read_jumps(&jumps_r);
 
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
@@ -287,13 +292,9 @@ impl Plugin for Delax {
             let dry_r = *right_sample;
             (meter_in_l, meter_in_r) = self.meter_in(dry_l, dry_r);
 
-            // The output of the banks
-            let pop_left = self
-                .left_delay_engine
-                .interpolate_sample(DelayInterpolationMode::Nearest);
-            let pop_right = self
-                .right_delay_engine
-                .interpolate_sample(DelayInterpolationMode::Nearest);
+            // The output of the banks, stepped through the read jump tables.
+            let pop_left = self.left_delay_engine.pop_sample();
+            let pop_right = self.right_delay_engine.pop_sample();
             let (pop_left, pop_right) =
                 self.run_bank_filters(pop_left, pop_right);
             // ####### Feedback loop #########
@@ -412,6 +413,20 @@ struct PendingUi {
     clamped_r: bool,
 }
 
+fn set_engine_len(engine: &mut DelayEngine, len: usize) {
+    if len == engine.active_len() {
+        return;
+    }
+    let old_len = engine.active_len();
+    let old_jumps = JumpBuilder::from_jumps(old_len, engine.read_jumps());
+    engine.set_active_len(len);
+    let new_len = engine.active_len();
+    if new_len == old_len {
+        return;
+    }
+    engine.set_raw_read_jumps(&old_jumps.scaled(new_len).build());
+}
+
 impl Delax {
     fn poll_effect_order(&mut self) {
         let current: Vec<String> = match self.effect_order.try_read() {
@@ -454,8 +469,8 @@ impl Delax {
                 // so it never reads into the inactive tail.
                 let desired =
                     (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
-                self.left_delay_engine.set_active_len(desired);
-                self.right_delay_engine.set_active_len(desired);
+                set_engine_len(&mut self.left_delay_engine, desired);
+                set_engine_len(&mut self.right_delay_engine, desired);
                 let max_ms = self.left_delay_engine.max_delay_ms();
                 let clamped = delay_amt > max_ms;
                 let delay_clamped = delay_amt.min(max_ms);
@@ -503,8 +518,8 @@ impl Delax {
                     (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
                 let desired_r =
                     (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
-                self.left_delay_engine.set_active_len(desired_l);
-                self.right_delay_engine.set_active_len(desired_r);
+                set_engine_len(&mut self.left_delay_engine, desired_l);
+                set_engine_len(&mut self.right_delay_engine, desired_r);
                 let max_ms_l = self.left_delay_engine.max_delay_ms();
                 let max_ms_r = self.right_delay_engine.max_delay_ms();
                 let clamped_l = delay_amt_l > max_ms_l;
