@@ -1,12 +1,14 @@
 import { VerticalBox, Slider } from "std-widgets.slint";
 import { ParamBus } from "../events.slint";
-import { Palette } from "../global.slint";
+import { Palette, UIJump } from "../global.slint";
 
 export component EditorBufferVisualizer inherits Rectangle {
     in-out property <image> texture;
     in-out property <float> read_head;
     in-out property <float> write_head;
     in property <bool> left_channel;
+    in property <[UIJump]> read_jumps;
+    in property <[UIJump]> write_jumps;
     VerticalLayout {
         if !left_channel:
         Rectangle {
@@ -49,6 +51,22 @@ export component EditorBufferVisualizer inherits Rectangle {
                 height: parent.height;
                 width: 1px;
                 background: Palette.secondary;
+                clip: false;
+            }
+            for jump in read_jumps:
+            Rectangle {
+                x: jump.from * root.width;
+                height: parent.height;
+                width: 1px;
+                background: green;
+                clip: false;
+            }
+            for jump in write_jumps:
+            Rectangle {
+                x: jump.from * root.width;
+                height: parent.height;
+                width: 1px;
+                background: white;
                 clip: false;
             }
         }

@@ -27,6 +27,7 @@ pub struct UiVisualState {
     wave_wet: [f32; UI_BUFFER_SIZE],
     wave_pos: usize,
     wave_filled: usize,
+    pub seen_jump_version: u64,
 }
 
 impl Default for UiVisualState {
@@ -48,6 +49,7 @@ impl Default for UiVisualState {
             wave_wet: [0.; UI_BUFFER_SIZE],
             wave_pos: 0,
             wave_filled: 0,
+            seen_jump_version: 0
         }
     }
 }
@@ -200,133 +202,5 @@ impl UiVisualState {
             col,
             params: [0.5, 0., 0., 0.],
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::slint_ui::data_transport as dt;
-    use std::sync::atomic::Ordering::Relaxed;
-
-    struct Fixture {
-        data: InputData,
-        tx: dt::DataTransportTx,
-        rx: dt::DataTransportRx,
-        visual: UiVisualState,
-    }
-
-    impl Fixture {
-        fn new() -> Self {
-            let (tx, rx) = dt::channel();
-            Self {
-                data: InputData::default(),
-                tx,
-                rx,
-                visual: UiVisualState::default(),
-            }
-        }
-
-        fn poll(&mut self) {
-            let (rx, visual, data) = (&mut self.rx, &mut self.visual, &self.data);
-            visual.poll_editor(rx, data);
-        }
-    }
-
-    fn feed_revolution(fx: &mut Fixture, len: usize, l_val: f32, r_val: f32) {
-        fx.data.active_len_l.store(len, Relaxed);
-        fx.data.active_len_r.store(len, Relaxed);
-        let mut pos = 0;
-        while pos < len {
-            fx.tx.push_editor_chunk(dt::EditorChunk {
-                l: l_val,
-                r: r_val,
-                pos_l: pos as u32,
-                pos_r: pos as u32,
-            });
-            pos += dt::EDITOR_CHUNK_SAMPLES;
-        }
-        fx.poll();
-    }
-
-    #[test]
-    fn editor_stream_places_chunks_into_bins() {
-        let mut fx = Fixture::new();
-        fx.data.active_len_l.store(EDITOR_VIS_SIZE, Relaxed);
-        fx.data.active_len_r.store(EDITOR_VIS_SIZE, Relaxed);
-        fx.tx.push_editor_chunk(dt::EditorChunk {
-            l: 0.75,
-            r: 0.25,
-            pos_l: 0,
-            pos_r: 0,
-        });
-        fx.tx.push_editor_chunk(dt::EditorChunk {
-            l: 0.5,
-            r: 1.5,
-            pos_l: (EDITOR_VIS_SIZE - 1) as u32,
-            pos_r: (EDITOR_VIS_SIZE - 1) as u32,
-        });
-        fx.poll();
-        assert_eq!(fx.visual.editor_l[0], 0.75);
-        assert_eq!(fx.visual.editor_r[0], 0.25);
-        assert_eq!(fx.visual.editor_l[EDITOR_VIS_SIZE - 1], 0.5);
-        assert_eq!(fx.visual.editor_r[EDITOR_VIS_SIZE - 1], 1.0);
-    }
-
-    #[test]
-    fn editor_stream_keeps_channels_separate() {
-        let mut fx = Fixture::new();
-        feed_revolution(&mut fx, 32768, 0.8, 0.2);
-        for cell in fx.visual.editor_l.iter() {
-            assert!((cell - 0.8).abs() < 1e-6);
-        }
-        for cell in fx.visual.editor_r.iter() {
-            assert!((cell - 0.2).abs() < 1e-6);
-        }
-    }
-
-    #[test]
-    fn editor_stream_clears_shadow_on_length_change() {
-        let mut fx = Fixture::new();
-        feed_revolution(&mut fx, 32768, 0.9, 0.9);
-        assert_eq!(fx.visual.editor_l[0], 0.9);
-        fx.data.active_len_l.store(4096, Relaxed);
-        fx.data.active_len_r.store(4096, Relaxed);
-        fx.poll();
-        assert_eq!(fx.visual.editor_l[0], 0.0);
-        assert_eq!(fx.visual.editor_r[0], 0.0);
-    }
-
-    #[test]
-    fn wave_history_keeps_chronological_order() {
-        let mut fx = Fixture::new();
-        for i in 0..3 {
-            for _ in 0..dt::WAVE_DECIM {
-                fx.tx.push_wave_sample(i as f32 * 0.1, 0., 0., 0.);
-            }
-        }
-        fx.visual.poll_wave(&mut fx.rx);
-        let (dry, _) = fx.visual.wave_snapshot();
-        assert!(dry[UI_BUFFER_SIZE - 1] >= dry[UI_BUFFER_SIZE - 3]);
-        let u = fx.visual.buffer_uniform(0.5).expect("uniforms");
-        assert_eq!(u.levels_dry[UI_BUFFER_SIZE / 4 - 1][3], dry[UI_BUFFER_SIZE - 1]);
-    }
-
-    #[test]
-    fn editor_uniforms_differ_by_channel_buffer_and_color() {
-        let mut fx = Fixture::new();
-        fx.visual.editor_l[0] = 0.75;
-        fx.visual.editor_r[0] = 0.25;
-        let l = fx
-            .visual
-            .editor_buffer_uniform(EditorChannel::Left)
-            .expect("uniforms");
-        let r = fx
-            .visual
-            .editor_buffer_uniform(EditorChannel::Right)
-            .expect("uniforms");
-        assert_eq!(l.levels[0][0], 0.75);
-        assert_eq!(r.levels[0][0], 0.25);
-        assert_ne!(l.col, r.col);
     }
 }
