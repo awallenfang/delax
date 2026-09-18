@@ -1,9 +1,20 @@
+use std::collections::HashMap;
+
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::{rng, SeedableRng};
 
-use crate::delay_engine::engine::Jump;
+/// A jump inside of the banks. Currently this holds `Jump(from, to, order)`.
+/// Both are inclusive, so with `Jump(10,100, 0)` the read order will be 8,9,10,100
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Jump(pub usize, pub usize, pub usize);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JumpSegment {
+    pub start: usize,
+    pub end: usize,
+    pub order: usize,
+}
 #[derive(Clone, Debug)]
 pub struct JumpBuilder {
     size: usize,
@@ -15,7 +26,7 @@ impl JumpBuilder {
         assert!(size > 0);
         JumpBuilder {
             size,
-            jumps: vec![Jump(size - 1, 0)],
+            jumps: vec![Jump(size - 1, 0, 0)],
         }
     }
 
@@ -29,7 +40,7 @@ impl JumpBuilder {
             let last = i + 1 == splits;
             let end = if last { size - 1 } else { (i + 1) * width - 1 };
             let next_start = if last { 0 } else { (i + 1) * width };
-            jumps.push(Jump(end, next_start));
+            jumps.push(Jump(end, next_start, i));
         }
         JumpBuilder { size, jumps }
     }
@@ -50,7 +61,7 @@ impl JumpBuilder {
             let mut order: Vec<usize> = (0..n).collect();
             order.shuffle(rng);
             self.jumps = (0..n)
-                .map(|i| Jump(ends[order[i]], starts[order[(i + 1) % n]]))
+                .map(|i| Jump(ends[order[i]], starts[order[(i + 1) % n]], i))
                 .collect();
         }
         self.clone()
@@ -86,7 +97,7 @@ impl JumpBuilder {
         if new_starts.len() <= 1 {
             return Self::empty(new_size);
         }
-        let idx: std::collections::HashMap<usize, usize> = new_starts
+        let idx: HashMap<usize, usize> = new_starts
             .iter()
             .enumerate()
             .map(|(i, &s)| (s, i))
@@ -106,7 +117,7 @@ impl JumpBuilder {
         let ends = Self::segment_ends(&new_starts, new_size);
         let k = new_order.len();
         let jumps = (0..k)
-            .map(|i| Jump(ends[new_order[i]], new_starts[new_order[(i + 1) % k]]))
+            .map(|i| Jump(ends[new_order[i]], new_starts[new_order[(i + 1) % k]], i))
             .collect();
         JumpBuilder {
             size: new_size,
@@ -133,9 +144,8 @@ impl JumpBuilder {
             return (0..n).collect();
         }
         let ends = Self::segment_ends(starts, self.size);
-        let next: std::collections::HashMap<usize, usize> =
-            self.jumps.iter().map(|j| (j.0, j.1)).collect();
-        let seg_of: std::collections::HashMap<usize, usize> =
+        let next: HashMap<usize, usize> = self.jumps.iter().map(|j| (j.0, j.1)).collect();
+        let seg_of: HashMap<usize, usize> =
             starts.iter().enumerate().map(|(i, &s)| (s, i)).collect();
         let mut order = vec![0];
         let mut visited = vec![false; n];
@@ -176,6 +186,20 @@ impl JumpBuilder {
             let width = (self.size / n.max(1)).max(1);
             (0..n).map(|i| (i * width).min(self.size - 1)).collect()
         }
+    }
+
+    pub fn segments(&self) -> Vec<JumpSegment> {
+        let starts = self.segment_starts();
+        let order = self.cycle_order(&starts);
+        let ends = Self::segment_ends(&starts, self.size);
+        let rank: HashMap<usize, usize> = order.iter().enumerate().map(|(r, &s)| (s, r)).collect();
+        (0..starts.len())
+            .map(|i| JumpSegment {
+                start: starts[i],
+                end: ends[i],
+                order: rank[&i],
+            })
+            .collect()
     }
 }
 
@@ -229,8 +253,8 @@ mod tests {
 
     #[test]
     fn empty_produces_single_wrap_jump() {
-        assert_eq!(JumpBuilder::empty(8).build(), vec![Jump(7, 0)]);
-        assert_eq!(JumpBuilder::empty(1).build(), vec![Jump(0, 0)]);
+        assert_eq!(JumpBuilder::empty(8).build(), vec![Jump(7, 0, 0)]);
+        assert_eq!(JumpBuilder::empty(1).build(), vec![Jump(0, 0, 0)]);
     }
 
     #[test]
@@ -252,14 +276,14 @@ mod tests {
     #[test]
     fn split_evenly_divisible_creates_linear_segments() {
         let jumps = JumpBuilder::split_evenly(12, 3).build();
-        assert_eq!(jumps, vec![Jump(3, 4), Jump(7, 8), Jump(11, 0)]);
+        assert_eq!(jumps, vec![Jump(3, 4, 0), Jump(7, 8, 1), Jump(11, 0, 2)]);
         assert_eq!(engine_read_order(&jumps, 12), (0..12).collect::<Vec<_>>());
     }
 
     #[test]
     fn split_evenly_with_remainder_absorbs_tail() {
         let jumps = JumpBuilder::split_evenly(10, 3).build();
-        assert_eq!(jumps, vec![Jump(2, 3), Jump(5, 6), Jump(9, 0)]);
+        assert_eq!(jumps, vec![Jump(2, 3, 0), Jump(5, 6, 1), Jump(9, 0, 2)]);
         assert_in_bounds(&jumps, 10);
         assert_full_coverage(&jumps, 10);
     }
@@ -267,7 +291,7 @@ mod tests {
     #[test]
     fn split_evenly_more_splits_than_samples_clamps() {
         let jumps = JumpBuilder::split_evenly(3, 5).build();
-        assert_eq!(jumps, vec![Jump(0, 1), Jump(1, 2), Jump(2, 0)]);
+        assert_eq!(jumps, vec![Jump(0, 1, 0), Jump(1, 2, 1), Jump(2, 0, 2)]);
         assert_full_coverage(&jumps, 3);
     }
 
@@ -296,7 +320,7 @@ mod tests {
         let mut builder = JumpBuilder::split_evenly(8, 2);
         let first = builder.build();
         builder.shuffle_seeded(42);
-        assert_eq!(first, vec![Jump(3, 4), Jump(7, 0)]);
+        assert_eq!(first, vec![Jump(3, 4, 0), Jump(7, 0, 1)]);
         assert_eq!(builder.build().len(), 2);
     }
 
@@ -326,6 +350,9 @@ mod tests {
             to_before.sort_unstable();
             to_after.sort_unstable();
             assert_eq!(to_before, to_after, "seed {seed}: destinations changed");
+            let mut thirds: Vec<_> = after.iter().map(|j| j.2).collect();
+            thirds.sort_unstable();
+            assert_eq!(thirds, vec![0, 1, 2, 3], "seed {seed}: stale segment index");
             assert_full_coverage(&after, 12);
         }
     }
@@ -354,7 +381,7 @@ mod tests {
     fn shuffle_single_segment_is_noop() {
         let mut builder = JumpBuilder::empty(8);
         let after = builder.shuffle_seeded(99).build();
-        assert_eq!(after, vec![Jump(7, 0)]);
+        assert_eq!(after, vec![Jump(7, 0, 0)]);
     }
 
     #[test]
@@ -370,6 +397,21 @@ mod tests {
         assert_full_coverage(&jumps, 16);
     }
 
+    #[test]
+    fn jump_rank_matches_segment_order() {
+        for seed in [1, 7, 123] {
+            let builder = JumpBuilder::split_evenly(12, 4).shuffle_seeded(seed);
+            let jumps = builder.build();
+            let segs = builder.segments();
+            let ends: Vec<_> = segs.iter().map(|s| s.end).collect();
+            for (pos, j) in jumps.iter().enumerate() {
+                assert_eq!(j.2, pos);
+                let seg = ends.iter().position(|&e| e == j.0).unwrap();
+                assert_eq!(segs[seg].order, pos);
+            }
+        }
+    }
+
     fn visit_order(size: usize, jumps: &[Jump]) -> Vec<usize> {
         let b = JumpBuilder::from_jumps(size, jumps.to_vec());
         let starts = b.segment_starts();
@@ -380,13 +422,13 @@ mod tests {
     fn scaled_linear_up_is_exact() {
         let scaled = JumpBuilder::split_evenly(12, 3).scaled(24).build();
         assert_eq!(scaled, JumpBuilder::split_evenly(24, 3).build());
-        assert_eq!(scaled, vec![Jump(7, 8), Jump(15, 16), Jump(23, 0)]);
+        assert_eq!(scaled, vec![Jump(7, 8, 0), Jump(15, 16, 1), Jump(23, 0, 2)]);
 
         let scaled = JumpBuilder::split_evenly(80, 8).scaled(160).build();
         assert_eq!(scaled, JumpBuilder::split_evenly(160, 8).build());
         assert_eq!(scaled.len(), 8);
         for (i, j) in scaled.iter().enumerate() {
-            assert_eq!(*j, Jump((i + 1) * 20 - 1, (i + 1) * 20 % 160));
+            assert_eq!(*j, Jump((i + 1) * 20 - 1, (i + 1) * 20 % 160, i));
         }
     }
 
@@ -394,7 +436,7 @@ mod tests {
     fn scaled_linear_down_with_remainder_is_exact() {
         let scaled = JumpBuilder::split_evenly(12, 3).scaled(10).build();
         assert_eq!(scaled, JumpBuilder::split_evenly(10, 3).build());
-        assert_eq!(scaled, vec![Jump(2, 3), Jump(5, 6), Jump(9, 0)]);
+        assert_eq!(scaled, vec![Jump(2, 3, 0), Jump(5, 6, 1), Jump(9, 0, 2)]);
     }
 
     #[test]
@@ -441,10 +483,10 @@ mod tests {
     #[test]
     fn scaled_collapse_to_single() {
         assert_eq!(
-            JumpBuilder::split_evenly(4, 4).scaled(1).build(),
-            vec![Jump(0, 0)]
+            JumpBuilder::from_jumps(6, vec![]).build(),
+            vec![Jump(5, 0, 0)]
         );
-        assert_eq!(JumpBuilder::empty(8).scaled(3).build(), vec![Jump(2, 0)]);
+        assert_eq!(JumpBuilder::empty(8).scaled(3).build(), vec![Jump(2, 0, 0)]);
     }
 
     #[test]
@@ -458,6 +500,9 @@ mod tests {
 
     #[test]
     fn from_jumps_empty_falls_back() {
-        assert_eq!(JumpBuilder::from_jumps(6, vec![]).build(), vec![Jump(5, 0)]);
+        assert_eq!(
+            JumpBuilder::from_jumps(6, vec![]).build(),
+            vec![Jump(5, 0, 0)]
+        );
     }
 }

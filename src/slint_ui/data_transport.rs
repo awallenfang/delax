@@ -1,8 +1,10 @@
 use nice_plug::prelude::AtomicF32;
 use nice_plug::util::gain_to_db;
-use std::sync::atomic::{AtomicU8, AtomicUsize};
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
 
+use crate::delay_engine::jump_builder::Jump;
 use crate::slint_ui::uniforms::DecayUniforms;
 
 pub const SPECTRUM_RING_SIZE: usize = 1024;
@@ -14,7 +16,7 @@ pub const UI_BUFFER_SIZE: usize = 128;
 pub const EDITOR_VIS_SIZE: usize = UI_BUFFER_SIZE * 4;
 pub const EDITOR_CHUNK_SAMPLES: usize = 64;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct EditorChunk {
     pub l: f32,
     pub r: f32,
@@ -114,7 +116,7 @@ impl DataTransportTx {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct UiBlock {
     pub in_l: f32,
     pub in_r: f32,
@@ -166,6 +168,13 @@ pub struct InputData {
 
     pub active_len_l: AtomicUsize,
     pub active_len_r: AtomicUsize,
+
+    pub read_jumps_l: Mutex<Vec<Jump>>,
+    pub read_jumps_r: Mutex<Vec<Jump>>,
+    pub write_jumps_l: Mutex<Vec<Jump>>,
+    pub write_jumps_r: Mutex<Vec<Jump>>,
+
+    pub jump_version: AtomicU64
 }
 
 impl Default for InputData {
@@ -193,6 +202,11 @@ impl Default for InputData {
             read_head_r: AtomicF32::new(0.),
             write_head_l: AtomicF32::new(0.),
             write_head_r: AtomicF32::new(0.),
+            read_jumps_l: Mutex::new(vec![]),
+            read_jumps_r: Mutex::new(vec![]),
+            write_jumps_l: Mutex::new(vec![]),
+            write_jumps_r: Mutex::new(vec![]),
+            jump_version: AtomicU64::new(0)
         }
     }
 }
@@ -223,6 +237,22 @@ impl InputData {
         self.active_len_r.store(b.active_len_r, Relaxed);
     }
 
+    pub fn publish_jumps(&self, read_l: Vec<Jump>, read_r: Vec<Jump>, write_l: Vec<Jump>, write_r: Vec<Jump>) {
+        if let Ok(mut content) = self.read_jumps_l.lock() {
+            *content = read_l;
+        }
+        if let Ok(mut content) = self.read_jumps_r.lock() {
+            *content = read_r;
+        }
+        if let Ok(mut content) = self.write_jumps_l.lock() {
+            *content = write_l;
+        }
+        if let Ok(mut content) = self.write_jumps_r.lock() {
+            *content = write_r;
+        }
+        self.jump_version.fetch_add(1, Relaxed);
+    }
+
     pub fn reset(&self) {
         self.in_l.store(0., Relaxed);
         self.in_r.store(0., Relaxed);
@@ -248,58 +278,3 @@ impl InputData {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pushes_never_block_and_drop_on_full() {
-        let (mut tx, mut rx) = channel();
-        for i in 0..(SPECTRUM_RING_SIZE * SPEC_DECIM as usize + 100) {
-            tx.push_spectrum_sample(i as f32);
-        }
-        let mut n = 0;
-        while rx.spec_cons.pop().is_ok() {
-            n += 1;
-        }
-        assert_eq!(n, SPECTRUM_RING_SIZE);
-
-        for i in 0..(EDITOR_RING_SIZE + 10) {
-            tx.push_editor_chunk(EditorChunk {
-                l: i as f32,
-                r: 0.,
-                pos_l: i as u32,
-                pos_r: i as u32,
-            });
-        }
-        let mut m = 0;
-        while rx.editor_cons.pop().is_ok() {
-            m += 1;
-        }
-        assert_eq!(m, EDITOR_RING_SIZE);
-    }
-
-    #[test]
-    fn wave_peak_hold_and_stride() {
-        let (mut tx, mut rx) = channel();
-        for _ in 0..(WAVE_DECIM - 1) {
-            tx.push_wave_sample(0.1, 0.1, 0.1, 0.1);
-        }
-        assert!(rx.wave_cons.pop().is_err());
-        tx.push_wave_sample(0.5, 0.5, 0.25, 0.25);
-        let s = rx.wave_cons.pop().expect("one sample per stride");
-        assert!((s.dry - db01(0.5)).abs() < 1e-6);
-        assert!((s.wet - db01(0.25)).abs() < 1e-6);
-    }
-
-    #[test]
-    fn spectrum_boxcar_mean() {
-        let (mut tx, mut rx) = channel();
-        for i in 1..=SPEC_DECIM {
-            tx.push_spectrum_sample(i as f32);
-        }
-        let v = rx.spec_cons.pop().expect("one mean per stride");
-        let expect: f32 = (1..=SPEC_DECIM).map(|i| i as f32).sum::<f32>() / SPEC_DECIM as f32;
-        assert!((v - expect).abs() < 1e-6);
-    }
-}

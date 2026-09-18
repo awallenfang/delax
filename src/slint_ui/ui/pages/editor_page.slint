@@ -8,7 +8,7 @@ import {
 import { ParamKnob } from "../components/param_knob.slint";
 import { ParamBus } from "../events.slint";
 import { ParamSwitch } from "../components/param_switch.slint";
-import { Palette } from "../global.slint";
+import { Palette, UIJump } from "../global.slint";
 import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
@@ -24,6 +24,10 @@ export component EditorPage inherits VerticalLayout {
     in-out property <float> write_head_r;
     in-out property <bool> is_stereo;
     in-out property <bool> is_ping_pong;
+    in property <[UIJump]> read_jumps_l;
+    in property <[UIJump]> read_jumps_r;
+    in property <[UIJump]> write_jumps_l;
+    in property <[UIJump]> write_jumps_r;
 
     VerticalLayout {
         vertical-stretch: 1;
@@ -33,6 +37,8 @@ export component EditorPage inherits VerticalLayout {
             texture: root.editor_tex_l;
             read_head <=> root.read_head_l;
             write_head <=> root.write_head_l;
+            read_jumps: root.read_jumps_l;
+            write_jumps: root.write_jumps_l;
         }
         EditorBufferVisualizer {
             horizontal-stretch: 1;
@@ -40,6 +46,8 @@ export component EditorPage inherits VerticalLayout {
             read_head <=> root.read_head_r;
             write_head <=> root.write_head_r;
             left_channel: true;
+            read_jumps: root.read_jumps_r;
+            write_jumps: root.write_jumps_r;
         }
     }
     HorizontalLayout {

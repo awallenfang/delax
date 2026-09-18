@@ -1,12 +1,22 @@
 use std::sync::atomic::Ordering::Relaxed;
 
-use slint::Model;
+use slint::{Model, ModelRc, VecModel};
 
+use crate::delay_engine::jump_builder::Jump;
 use crate::slint_ui::data_transport::{DataTransportRx, InputData};
 use crate::slint_ui::snapshot::{EditorChannel, UiVisualState};
 use crate::slint_ui::elements::ElementId;
 use crate::slint_ui::renderer::WgpuRegistry;
-use crate::slint_ui::{self, EditorData, HeaderData};
+use crate::slint_ui::{self, EditorData, HeaderData, UIJump};
+
+fn normalize_jumps(jumps: &[Jump], active_len: usize) -> Vec<UIJump> {
+    let len = active_len.max(1)  as f32;
+    jumps.iter().map(|j| UIJump {
+        from: j.0 as f32 / len,
+        to: j.1 as f32 / len,
+        order: j.2 as i32
+    }).collect()
+}
 
 pub fn poll_and_present(
     data: &InputData,
@@ -26,32 +36,54 @@ pub fn poll_and_present(
         out_level_r: data.out_r.load(Relaxed),
     });
     app.set_bpm(data.bpm.load(Relaxed));
-    app.set_editor_data(EditorData {
+
+    let mut editor = EditorData {
         write_head_l: data.write_head_l.load(Relaxed),
         write_head_r: data.write_head_r.load(Relaxed),
         read_head_l: data.read_head_l.load(Relaxed),
         read_head_r: data.read_head_r.load(Relaxed),
-    });
+        read_jumps_l: app.get_editor_data().read_jumps_l,
+        read_jumps_r: app.get_editor_data().read_jumps_r,
+        write_jumps_l: app.get_editor_data().write_jumps_l,
+        write_jumps_r: app.get_editor_data().write_jumps_r,
+    };
+    let version = data.jump_version.load(Relaxed);
+    if version != visual.seen_jump_version {
+        visual.seen_jump_version = version;
+        let len_l = data.active_len_l.load(Relaxed);
+        let len_r = data.active_len_r.load(Relaxed);
+
+        if let Ok(j) = data.read_jumps_l.lock() {
+            editor.read_jumps_l = push_model(editor.read_jumps_l, normalize_jumps(&j, len_l));
+        }
+        if let Ok(j) = data.read_jumps_r.lock() {
+            editor.read_jumps_r = push_model(editor.read_jumps_r, normalize_jumps(&j, len_r));
+        }
+        if let Ok(j) = data.write_jumps_l.lock() {
+            editor.write_jumps_l = push_model(editor.write_jumps_l, normalize_jumps(&j, len_l));
+        }
+        if let Ok(j) = data.write_jumps_r.lock() {
+            editor.write_jumps_r = push_model(editor.write_jumps_r, normalize_jumps(&j, len_r));
+        }
+    }
+
+    app.set_editor_data(editor);
 }
 
-fn push_model(current: &slint::ModelRc<f32>, values: Vec<f32>) -> bool {
-    match current.as_any().downcast_ref::<slint::VecModel<f32>>() {
+fn push_model<T: Clone + 'static>(current: ModelRc<T>, values: Vec<T>) -> ModelRc<T> {
+    match current.as_any().downcast_ref::<VecModel<T>>() {
         Some(model) => {
             model.set_vec(values);
-            true
+            current
         }
-        None => false,
+        None => ModelRc::new(VecModel::from(values)),
     }
 }
 
 pub fn push_waveforms(visual: &UiVisualState, app: &slint_ui::AppWindow) {
     let (dry, wet) = visual.wave_snapshot();
-    if !push_model(&app.get_dry_buffer(), dry.to_vec()) {
-        app.set_dry_buffer(slint::ModelRc::new(slint::VecModel::from(dry.to_vec())));
-    }
-    if !push_model(&app.get_wet_buffer(), wet.to_vec()) {
-        app.set_wet_buffer(slint::ModelRc::new(slint::VecModel::from(wet.to_vec())));
-    }
+    app.set_dry_buffer(push_model(app.get_dry_buffer(), dry.to_vec()));
+    app.set_wet_buffer(push_model(app.get_wet_buffer(), wet.to_vec()));
 }
 
 pub fn render_all(

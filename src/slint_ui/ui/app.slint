@@ -10,7 +10,7 @@ import {
 import { ParamKnob } from "components/param_knob.slint";
 import { ParamBus } from "events.slint";
 import { ParamSwitch } from "components/param_switch.slint";
-import { Palette } from "./global.slint";
+import { Palette, UIJump } from "./global.slint";
 import { PeakMeter } from "components/peak_meter.slint";
 import { SpectrumAnalyzer } from "components/spectrum_analyzer.slint";
 import { Button } from "components/button.slint";
@@ -40,11 +40,17 @@ export struct MetaData {
     bpm: float
 }
 
+
+
 export struct EditorData {
     write_head_l: float,
     write_head_r: float,
     read_head_l: float,
-    read_head_r: float
+    read_head_r: float,
+    read_jumps_l: [UIJump],
+    read_jumps_r: [UIJump],
+    write_jumps_l: [UIJump],
+    write_jumps_r: [UIJump], 
 }
 
 export struct Textures {
@@ -201,16 +207,20 @@ export component AppWindow inherits Window {
             }
             if tab == 2:
                 EditorPage {
-                editor_tex_l: root.textures.editor_buffer_l;
-                editor_tex_r: root.textures.editor_buffer_r;
-                vertical-stretch: 1;
-                read_head_l: root.editor_data.read_head_l;
-                write_head_l: root.editor_data.write_head_l;
-                read_head_r: root.editor_data.read_head_r;
-                write_head_r: root.editor_data.write_head_r;
-                is_stereo <=> root.is_stereo;
-                is_ping_pong <=> root.is_ping_pong;
-            }
+                    editor_tex_l: root.textures.editor_buffer_l;
+                    editor_tex_r: root.textures.editor_buffer_r;
+                    vertical-stretch: 1;
+                    read_head_l: root.editor_data.read_head_l;
+                    write_head_l: root.editor_data.write_head_l;
+                    read_head_r: root.editor_data.read_head_r;
+                    write_head_r: root.editor_data.write_head_r;
+                    is_stereo <=> root.is_stereo;
+                    is_ping_pong <=> root.is_ping_pong;
+                    read_jumps_l: root.editor_data.read_jumps_l;
+                    read_jumps_r: root.editor_data.read_jumps_r;
+                    write_jumps_l: root.editor_data.write_jumps_l;
+                    write_jumps_r: root.editor_data.write_jumps_r;
+                }
             if tab == 3:
                 AboutPage {
                 vertical-stretch: 1;

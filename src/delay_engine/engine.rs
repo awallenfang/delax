@@ -1,3 +1,5 @@
+use crate::delay_engine::jump_builder::Jump;
+
 /// The entry of the delay engine for Delax. It holds the buffers and handles the input and output of samples for specific parameters.
 ///
 /// Usage:
@@ -42,8 +44,8 @@ impl DelayEngine {
             active_len: size,
             sample_rate,
             delay_time: 0.,
-            read_jumps: vec![Jump(size - 1, 0)],
-            write_jumps: vec![Jump(size - 1, 0)],
+            read_jumps: vec![Jump(size - 1, 0, 0)],
+            write_jumps: vec![Jump(size - 1, 0, 0)],
             write_head: 0,
             read_head: 0,
         }
@@ -118,8 +120,8 @@ impl DelayEngine {
         let size = size.max(MIN_ACTIVE_LEN);
         self.buffer = vec![0.; size];
         self.active_len = size;
-        self.read_jumps = vec![Jump(size - 1, 0)];
-        self.write_jumps = vec![Jump(size - 1, 0)];
+        self.read_jumps = vec![Jump(size - 1, 0, 0)];
+        self.write_jumps = vec![Jump(size - 1, 0, 0)];
         self.write_head = 0;
         self.read_head = 0;
     }
@@ -185,8 +187,8 @@ impl DelayEngine {
             return;
         }
         self.active_len = clamp_len;
-        self.read_jumps = vec![Jump(clamp_len - 1, 0)];
-        self.write_jumps = vec![Jump(clamp_len - 1, 0)];
+        self.read_jumps = vec![Jump(clamp_len - 1, 0, 0)];
+        self.write_jumps = vec![Jump(clamp_len - 1, 0, 0)];
         self.write_head %= clamp_len;
         self.read_head %= clamp_len;
     }
@@ -220,10 +222,7 @@ impl DelayEngine {
     }
 }
 
-/// A jump inside of the banks. Currently this holds `Jump(from, to)`.
-/// Both are inclusive, so with `Jump(10,100)` the read order will be 8,9,10,100
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Jump(pub usize, pub usize);
+
 
 #[allow(dead_code)]
 pub enum DelayInterpolationMode {
@@ -374,7 +373,7 @@ mod tests {
     #[test]
     fn prev_in_cycle_follows_jumps() {
         let mut engine = DelayEngine::new(10, 1000.);
-        engine.set_raw_read_jumps(&[Jump(9, 0), Jump(2, 5)]);
+        engine.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(2, 5, 1)]);
         engine.set_delay_amount(0.);
         assert_eq!(engine.prev_in_cycle(), 9);
         for _ in 0..4 {
@@ -386,7 +385,7 @@ mod tests {
 
     #[test]
     fn interpolate_nearest_matches_pop_over_shuffled_loop() {
-        let jumps = [Jump(9, 0), Jump(2, 5), Jump(7, 3), Jump(4, 8)];
+        let jumps = [Jump(9, 0, 0), Jump(2, 5, 1), Jump(7, 3, 2), Jump(4, 8, 4)];
         let mut a = DelayEngine::new(10, 44100.);
         let mut b = DelayEngine::new(10, 44100.);
         for i in 0..10 {
@@ -411,8 +410,8 @@ mod tests {
             a.write_sample(i as f32);
             b.write_sample(i as f32);
         }
-        a.set_raw_read_jumps(&[Jump(9, 0), Jump(4, 5)]);
-        b.set_raw_read_jumps(&[Jump(9, 0), Jump(4, 5)]);
+        a.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(4, 5, 1)]);
+        b.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(4, 5, 1)]);
         a.set_delay_amount(2.);
         b.set_delay_amount(2.);
         assert_eq!(
@@ -427,7 +426,7 @@ mod tests {
         for i in 0..10 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(9, 0), Jump(2, 5), Jump(7, 3), Jump(4, 8)]);
+        engine.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(2, 5, 1), Jump(7, 3, 2), Jump(4, 8, 3)]);
         engine.set_delay_amount(2.5);
         let s = engine.interpolate_sample(DelayInterpolationMode::Linear);
         assert!((s - 6.).abs() < 1e-5);
@@ -439,7 +438,7 @@ mod tests {
         for i in 0..12 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(11, 0), Jump(2, 6), Jump(8, 3), Jump(5, 9)]);
+        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3, 2), Jump(5, 9,3)]);
         engine.set_delay_amount(0.);
 
         let mut got = Vec::with_capacity(12);
@@ -456,7 +455,7 @@ mod tests {
         for i in 0..12 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(11, 0), Jump(2, 6), Jump(8, 3), Jump(5, 9)]);
+        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3,2), Jump(5, 9,3)]);
         engine.set_delay_amount(0.);
         for _ in 0..12 {
             engine.set_delay_amount(0.);
@@ -547,7 +546,7 @@ mod tests {
     #[test]
     fn read_jumps() {
         let mut engine = DelayEngine::new(10, 44100.);
-        engine.set_raw_read_jumps(&vec![Jump(9, 0), Jump(2, 5), Jump(7, 3), Jump(4, 8)]);
+        engine.set_raw_read_jumps(&vec![Jump(9, 0,0), Jump(2, 5,1), Jump(7, 3,2), Jump(4, 8,3)]);
 
         engine.write_sample(1.);
         engine.write_sample(2.);

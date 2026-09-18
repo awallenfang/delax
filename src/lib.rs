@@ -212,6 +212,8 @@ impl Plugin for Delax {
         left_delay_engine.set_raw_read_jumps(&jumps_l);
         right_delay_engine.set_raw_read_jumps(&jumps_r);
 
+        self.input_data.publish_jumps(jumps_l.clone(), jumps_r.clone(), jumps_l, jumps_r);
+
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
 
@@ -416,18 +418,19 @@ struct PendingUi {
     clamped_r: bool,
 }
 
-fn set_engine_len(engine: &mut DelayEngine, len: usize) {
+fn set_engine_len(engine: &mut DelayEngine, len: usize) -> bool {
     if len == engine.active_len() {
-        return;
+        return false;
     }
     let old_len = engine.active_len();
     let old_jumps = JumpBuilder::from_jumps(old_len, engine.read_jumps());
     engine.set_active_len(len);
     let new_len = engine.active_len();
     if new_len == old_len {
-        return;
+        return false;
     }
     engine.set_raw_read_jumps(&old_jumps.scaled(new_len).build());
+    true
 }
 
 impl Delax {
@@ -472,8 +475,8 @@ impl Delax {
                 // so it never reads into the inactive tail.
                 let desired =
                     (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
-                set_engine_len(&mut self.left_delay_engine, desired);
-                set_engine_len(&mut self.right_delay_engine, desired);
+                let l_changed = set_engine_len(&mut self.left_delay_engine, desired);
+                let r_changed = set_engine_len(&mut self.right_delay_engine, desired);
                 let max_ms = self.left_delay_engine.max_delay_ms();
                 let clamped = delay_amt > max_ms;
                 let delay_clamped = delay_amt.min(max_ms);
@@ -481,6 +484,13 @@ impl Delax {
                 self.right_delay_engine.set_delay_amount(delay_clamped);
                 pending.clamped_l = clamped;
                 pending.clamped_r = clamped;
+                if l_changed || r_changed {
+                    self.input_data.publish_jumps(
+                        self.left_delay_engine.read_jumps(), 
+                        self.right_delay_engine.read_jumps(), 
+                        self.left_delay_engine.write_jumps(), 
+                        self.right_delay_engine.write_jumps());
+                }
 
                 self.decay_time_s_l = delay_clamped / 1000.;
                 self.decay_time_s_r = delay_clamped / 1000.;
@@ -521,8 +531,15 @@ impl Delax {
                     (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
                 let desired_r =
                     (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
-                set_engine_len(&mut self.left_delay_engine, desired_l);
-                set_engine_len(&mut self.right_delay_engine, desired_r);
+                let l_changed = set_engine_len(&mut self.left_delay_engine, desired_l);
+                let r_changed = set_engine_len(&mut self.right_delay_engine, desired_r);
+                if l_changed || r_changed {
+                    self.input_data.publish_jumps(
+                        self.left_delay_engine.read_jumps(), 
+                        self.right_delay_engine.read_jumps(), 
+                        self.left_delay_engine.write_jumps(), 
+                        self.right_delay_engine.write_jumps());
+                }
                 let max_ms_l = self.left_delay_engine.max_delay_ms();
                 let max_ms_r = self.right_delay_engine.max_delay_ms();
                 let clamped_l = delay_amt_l > max_ms_l;
