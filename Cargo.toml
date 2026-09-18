@@ -22,6 +22,7 @@ baseview = { version = "0.3.1", features = ["opengl"]}
 rustfft = "6.4.1"
 rtrb = "0.4.0"
 rand = "0.9"
+triple_buffer = "9.0.0"
 wgpu = "30.0.1"
 bytemuck = "1.25.2"
 pollster = "1.0.1"

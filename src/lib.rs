@@ -13,8 +13,9 @@ use filters::peak_follower::PeakFollower;
 use filters::simper::SimperSinSVF;
 use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
+use slint_ui::channels::{Channels, Heads};
 use slint_ui::data_transport::{
-    self, DataTransportTx, JumpState, EDITOR_CHUNK_SAMPLES, EditorChunk, InputData, UiBlock,
+    self, DataTransportTx, JumpState, EDITOR_CHUNK_SAMPLES, EditorChunk, UiState, UiFrame,
 };
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
@@ -38,7 +39,8 @@ pub struct Delax {
     input_sin_svf_high_l: SimperSinSVF,
     input_sin_svf_low_r: SimperSinSVF,
     input_sin_svf_high_r: SimperSinSVF,
-    input_data: Arc<InputData>,
+    input_data: Arc<UiState>,
+    ui_block_input: triple_buffer::Input<UiFrame>,
     transport_tx: DataTransportTx,
     peak_in_l: PeakFollower,
     peak_in_r: PeakFollower,
@@ -103,6 +105,7 @@ impl Default for Delax {
         let jump_builder_read_r = JumpBuilder::empty(default_buf);
         let jump_builder_write_l = JumpBuilder::empty(default_buf);
         let jump_builder_write_r = JumpBuilder::empty(default_buf);
+        let (ui_block_input, ui_block_output) = data_transport::ui_block_channel();
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
@@ -112,7 +115,8 @@ impl Default for Delax {
             input_sin_svf_low_r: input_low_r,
             input_sin_svf_high_l: input_high_l,
             input_sin_svf_high_r: input_high_r,
-            input_data: Arc::new(InputData::default()),
+            input_data: Arc::new(UiState::with_output(ui_block_output)),
+            ui_block_input,
             transport_tx,
             peak_in_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
@@ -304,7 +308,6 @@ impl Plugin for Delax {
         let mut meter_in_r = 0.0f32;
         let mut meter_out_l = 0.0f32;
         let mut meter_out_r = 0.0f32;
-        let mut last_wetness = self.params.wetness.value();
         let mut had_samples = false;
 
         self.poll_effect_order();
@@ -375,9 +378,7 @@ impl Plugin for Delax {
             self.editor_peak_l = self.editor_peak_l.max(written_l.abs());
             self.editor_peak_r = self.editor_peak_r.max(written_r.abs());
 
-            // ########### Output ##########
             let wetness = self.params.wetness.smoothed.next();
-            last_wetness = wetness;
 
             *left_sample = *left_sample * (1. - wetness) + pop_left * wetness;
             *right_sample = *right_sample * (1. - wetness) + pop_right * wetness;
@@ -407,33 +408,24 @@ impl Plugin for Delax {
         if had_samples {
             let active_len_l = self.left_delay_engine.active_len();
             let active_len_r = self.right_delay_engine.active_len();
-            let stereo_mode = self.params.delay_params.stereo_delay.value();
-            self.input_data.publish_block(&UiBlock {
-                in_l: meter_in_l,
-                in_r: meter_in_r,
-                out_l: meter_out_l,
-                out_r: meter_out_r,
-                wetness: last_wetness,
-                read_head_l: self.left_delay_engine.read_head() as f32 / active_len_l.max(1) as f32,
-                read_head_r: self.right_delay_engine.read_head() as f32
-                    / active_len_r.max(1) as f32,
-                write_head_l: self.left_delay_engine.write_head() as f32
-                    / active_len_l.max(1) as f32,
-                write_head_r: self.right_delay_engine.write_head() as f32
-                    / active_len_r.max(1) as f32,
-                feedback_l: last_fb_l,
-                feedback_r: last_fb_r,
-                time_s_l: self.decay_time_s_l,
-                time_s_r: self.decay_time_s_r,
+            self.ui_block_input.write(UiFrame {
+                meters_in: Channels::new(meter_in_l, meter_in_r),
+                meters_out: Channels::new(meter_out_l, meter_out_r),
+                heads: Channels::new(
+                    Heads {
+                        read: self.left_delay_engine.read_head() as f32 / active_len_l.max(1) as f32,
+                        write: self.left_delay_engine.write_head() as f32 / active_len_l.max(1) as f32,
+                    },
+                    Heads {
+                        read: self.right_delay_engine.read_head() as f32 / active_len_r.max(1) as f32,
+                        write: self.right_delay_engine.write_head() as f32 / active_len_r.max(1) as f32,
+                    },
+                ),
+                feedback: Channels::new(last_fb_l, last_fb_r),
+                decay: Channels::new(self.decay_time_s_l, self.decay_time_s_r),
                 bpm: pending.bpm,
-                is_stereo: stereo_mode != DelayMode::Mono,
-                is_ping_pong: stereo_mode == DelayMode::PingPong,
-                bpm_bound_l: self.params.delay_params.bpm_bound_l.value(),
-                bpm_bound_r: self.params.delay_params.bpm_bound_r.value(),
-                clamped_l: pending.clamped_l,
-                clamped_r: pending.clamped_r,
-                active_len_l,
-                active_len_r,
+                clamped: Channels::new(pending.clamped_l, pending.clamped_r),
+                active_len: Channels::new(active_len_l, active_len_r),
             });
         }
 
@@ -540,15 +532,22 @@ impl Delax {
     }
 
     fn publish_jump_state(&self) {
+        use crate::slint_ui::data_transport::JumpChannelState;
         self.input_data.publish_jump_state(JumpState {
-            read_l: self.jump_builder_read_l.build(),
-            read_r: self.jump_builder_read_r.build(),
-            write_l: self.jump_builder_write_l.build(),
-            write_r: self.jump_builder_write_r.build(),
-            read_segments_l: self.jump_builder_read_l.segments(),
-            read_segments_r: self.jump_builder_read_r.segments(),
-            write_segments_l: self.jump_builder_write_l.segments(),
-            write_segments_r: self.jump_builder_write_r.segments(),
+            channels: Channels::new(
+                JumpChannelState {
+                    read: self.jump_builder_read_l.build(),
+                    write: self.jump_builder_write_l.build(),
+                    read_segments: self.jump_builder_read_l.segments(),
+                    write_segments: self.jump_builder_write_l.segments(),
+                },
+                JumpChannelState {
+                    read: self.jump_builder_read_r.build(),
+                    write: self.jump_builder_write_r.build(),
+                    read_segments: self.jump_builder_read_r.segments(),
+                    write_segments: self.jump_builder_write_r.segments(),
+                },
+            ),
         });
     }
 

@@ -1,6 +1,6 @@
 use crate::params::DelaxParams;
 use crate::slint_ui;
-use crate::slint_ui::data_transport::{DataTransportRx, InputData};
+use crate::slint_ui::data_transport::{DataTransportRx, UiState};
 use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::param_store;
 use crate::slint_ui::plug_con::host::SlintHost;
@@ -17,13 +17,13 @@ use nice_plug::prelude::ParamPtr;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use slint::private_unstable_api::re_exports::ApproxEq;
-use slint::{Model, PlatformError, SharedString};
+use slint::{PlatformError, SharedString};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::delay_engine::jump_builder::{Jump, JumpBuilder, JumpSegment};
+use crate::delay_engine::jump_builder::{Jump, JumpBuilder};
 use crate::slint_ui::data_transport::BufferChannel;
 
 pub enum UiEvent {
@@ -106,11 +106,12 @@ pub struct BufferEditorState {
 
 impl Default for BufferEditorState {
     fn default() -> Self {
+        let init = JumpBuilder::split_evenly(8, 8).build();
         Self {
-            jumps_l: Mutex::new(vec![]),
-            size_l: AtomicUsize::new(0),
-            jumps_r: Mutex::new(vec![]),
-            size_r: AtomicUsize::new(0),
+            jumps_l: Mutex::new(init.clone()),
+            size_l: AtomicUsize::new(8),
+            jumps_r: Mutex::new(init),
+            size_r: AtomicUsize::new(8),
             version_l: Default::default(),
             version_r: Default::default(),
         }
@@ -155,7 +156,7 @@ impl BufferEditorState {
         assert!(active_len > 0);
         let (jumps, size) = self.snapshot_for(channel);
         if jumps.is_empty() || size == 0 {
-            return JumpBuilder::empty(active_len);
+            return JumpBuilder::split_evenly(active_len, 8);
         }
         if size == active_len {
             JumpBuilder::from_jumps(active_len, jumps)
@@ -242,7 +243,7 @@ pub struct UiConnection {
 
 pub struct DelaxSlintHost {
     params: Arc<DelaxParams>,
-    data: Arc<InputData>,
+    data: Arc<UiState>,
     ui: std::sync::Mutex<UiConnection>,
     event_tx: Sender<UiEvent>,
     event_rx: Receiver<UiEvent>,
@@ -253,7 +254,7 @@ pub struct DelaxSlintHost {
 impl DelaxSlintHost {
     pub fn new(
         params: Arc<DelaxParams>,
-        input_data: Arc<InputData>,
+        input_data: Arc<UiState>,
         transport_rx: DataTransportRx,
         effect_order: Arc<std::sync::RwLock<Vec<String>>>,
     ) -> Self {
@@ -367,7 +368,7 @@ impl SlintHost for DelaxSlintHost {
         Ok(app)
     }
 
-    fn on_event(&self, app: &Self::Component, gui_context: &GuiContext) {
+    fn on_event(&self, _app: &Self::Component, gui_context: &GuiContext) {
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
                 UiEvent::ParamChanged { id, value } => {
