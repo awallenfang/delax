@@ -5,7 +5,7 @@ use nice_plug::prelude::*;
 use crate::filter_pipeline::params::PipelineParams;
 use crate::filters::dattorro::DattorroParams;
 use crate::filters::shifter::ShifterParams;
-use crate::slint_ui::editor::EditorState;
+use crate::slint_ui::editor::{BufferEditorState, EditorState};
 use crate::{delay_engine::params::EngineParams, filters::params::SVFParams};
 
 #[derive(Params)]
@@ -24,7 +24,8 @@ pub struct DelaxParams {
     pub wetness: FloatParam,
     #[persist = "editor-state"]
     pub editor_state: Arc<EditorState>,
-    // TODO: Add BufferEditorState seperate of params in here for simplicity
+    #[persist = "buffer-editor-state"]
+    pub buffer_editor_state: Arc<BufferEditorState>,
 }
 
 impl Default for DelaxParams {
@@ -39,6 +40,7 @@ impl Default for DelaxParams {
                 .with_smoother(SmoothingStyle::Linear(50.))
                 .with_value_to_string(formatters::v2s_f32_rounded(2)),
             editor_state: Arc::new(EditorState::new(550, 350)),
+            buffer_editor_state: Arc::new(BufferEditorState::default()),
         }
     }
 }

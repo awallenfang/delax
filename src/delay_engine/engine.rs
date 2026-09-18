@@ -44,8 +44,8 @@ impl DelayEngine {
             active_len: size,
             sample_rate,
             delay_time: 0.,
-            read_jumps: vec![Jump(size - 1, 0, 0)],
-            write_jumps: vec![Jump(size - 1, 0, 0)],
+            read_jumps: vec![Jump::new(size - 1, 0, 0)],
+            write_jumps: vec![Jump::new(size - 1, 0, 0)],
             write_head: 0,
             read_head: 0,
         }
@@ -82,8 +82,8 @@ impl DelayEngine {
     pub fn write_sample(&mut self, sample: f32) {
         self.buffer[self.write_head] = sample;
 
-        if let Some(jump) = self.check_jumps(self.write_head, &self.write_jumps) {
-            self.write_head = jump.1;
+        if let Some(dest) = self.jump_target(self.write_head, &self.write_jumps) {
+            self.write_head = dest;
         } else {
             self.write_head += 1;
         }
@@ -112,32 +112,23 @@ impl DelayEngine {
     }
 
     #[allow(dead_code)]
-    /// Changes the buffer size.
-    ///
-    /// This allocates and must only be called from `activate()`/init, never
-    /// on the audio thread. Resets the active length to the full capacity.
     pub fn set_buffer_size(&mut self, size: usize) {
         let size = size.max(MIN_ACTIVE_LEN);
         self.buffer = vec![0.; size];
         self.active_len = size;
-        self.read_jumps = vec![Jump(size - 1, 0, 0)];
-        self.write_jumps = vec![Jump(size - 1, 0, 0)];
+        self.read_jumps = vec![Jump::new(size - 1, 0, 0)];
+        self.write_jumps = vec![Jump::new(size - 1, 0, 0)];
         self.write_head = 0;
         self.read_head = 0;
     }
 
-    fn check_jumps(&self, index: usize, jumps: &Vec<Jump>) -> Option<Jump> {
-        for j in jumps {
-            if index == j.0 {
-                return Some(j.clone());
-            }
-        }
-        None
+    fn jump_target(&self, index: usize, jumps: &[Jump]) -> Option<usize> {
+        jumps.iter().find(|j| j.from == index).map(|j| j.to)
     }
 
     fn step_read_head(&mut self) {
-        if let Some(jump) = self.check_jumps(self.read_head, &self.read_jumps) {
-            self.read_head = jump.1;
+        if let Some(dest) = self.jump_target(self.read_head, &self.read_jumps) {
+            self.read_head = dest;
         } else {
             self.read_head += 1;
         }
@@ -145,20 +136,18 @@ impl DelayEngine {
 
     fn prev_in_cycle(&self) -> usize {
         for j in &self.read_jumps {
-            if j.1 == self.read_head {
-                return j.0;
+            if j.to == self.read_head {
+                return j.from;
             }
         }
         (self.read_head + self.active_len - 1) % self.active_len
     }
 
-    /// Set the raw read jump vector. This assumes that the vector of jumps is valid and covers the whole buffer.
     #[allow(dead_code)]
     pub fn set_raw_read_jumps(&mut self, jumps: &[Jump]) {
         self.read_jumps = jumps.to_owned();
     }
 
-    /// Set the raw write jump vector. Symmetric to [DelayEngine::set_raw_read_jumps].
     #[allow(dead_code)]
     pub fn set_raw_write_jumps(&mut self, jumps: &[Jump]) {
         self.write_jumps = jumps.to_owned();
@@ -174,21 +163,14 @@ impl DelayEngine {
             .for_each(|sample| *sample = 0.);
     }
 
-    /// Sets the effective length without reallocating.
-    ///
-    /// Installs a single wrap jump `Jump(len-1, 0)` for both heads so the
-    /// engine only cycles `0..len`. Heads are wrapped into range; call
-    /// [DelayEngine::set_delay_amount()] afterwards to rebase `read_head`
-    /// for the current delay (done by the caller in `update_params`).
-    /// Allocation-free and safe on the audio thread.
     pub fn set_active_len(&mut self, length: usize) {
         let clamp_len = length.clamp(MIN_ACTIVE_LEN, self.buffer.len());
         if clamp_len == self.active_len {
             return;
         }
         self.active_len = clamp_len;
-        self.read_jumps = vec![Jump(clamp_len - 1, 0, 0)];
-        self.write_jumps = vec![Jump(clamp_len - 1, 0, 0)];
+        self.read_jumps = vec![Jump::new(clamp_len - 1, 0, 0)];
+        self.write_jumps = vec![Jump::new(clamp_len - 1, 0, 0)];
         self.write_head %= clamp_len;
         self.read_head %= clamp_len;
     }
@@ -371,7 +353,7 @@ mod tests {
     #[test]
     fn prev_in_cycle_follows_jumps() {
         let mut engine = DelayEngine::new(10, 1000.);
-        engine.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(2, 5, 1)]);
+        engine.set_raw_read_jumps(&[Jump::new(9, 0, 0), Jump::new(2, 5, 1)]);
         engine.set_delay_amount(0.);
         assert_eq!(engine.prev_in_cycle(), 9);
         for _ in 0..4 {
@@ -383,7 +365,12 @@ mod tests {
 
     #[test]
     fn interpolate_nearest_matches_pop_over_shuffled_loop() {
-        let jumps = [Jump(9, 0, 0), Jump(2, 5, 1), Jump(7, 3, 2), Jump(4, 8, 4)];
+        let jumps = [
+            Jump::new(9, 0, 0),
+            Jump::new(2, 5, 1),
+            Jump::new(7, 3, 2),
+            Jump::new(4, 8, 4),
+        ];
         let mut a = DelayEngine::new(10, 44100.);
         let mut b = DelayEngine::new(10, 44100.);
         for i in 0..10 {
@@ -408,8 +395,8 @@ mod tests {
             a.write_sample(i as f32);
             b.write_sample(i as f32);
         }
-        a.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(4, 5, 1)]);
-        b.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(4, 5, 1)]);
+        a.set_raw_read_jumps(&[Jump::new(9, 0, 0), Jump::new(4, 5, 1)]);
+        b.set_raw_read_jumps(&[Jump::new(9, 0, 0), Jump::new(4, 5, 1)]);
         a.set_delay_amount(2.);
         b.set_delay_amount(2.);
         assert_eq!(
@@ -424,7 +411,12 @@ mod tests {
         for i in 0..10 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(9, 0, 0), Jump(2, 5, 1), Jump(7, 3, 2), Jump(4, 8, 3)]);
+        engine.set_raw_read_jumps(&[
+            Jump::new(9, 0, 0),
+            Jump::new(2, 5, 1),
+            Jump::new(7, 3, 2),
+            Jump::new(4, 8, 3),
+        ]);
         engine.set_delay_amount(2.5);
         let s = engine.interpolate_sample(DelayInterpolationMode::Linear);
         assert!((s - 6.).abs() < 1e-5);
@@ -436,7 +428,12 @@ mod tests {
         for i in 0..12 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3, 2), Jump(5, 9, 3)]);
+        engine.set_raw_read_jumps(&[
+            Jump::new(11, 0, 0),
+            Jump::new(2, 6, 1),
+            Jump::new(8, 3, 2),
+            Jump::new(5, 9, 3),
+        ]);
         engine.set_delay_amount(0.);
 
         let mut got = Vec::with_capacity(12);
@@ -453,7 +450,12 @@ mod tests {
         for i in 0..12 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3, 2), Jump(5, 9, 3)]);
+        engine.set_raw_read_jumps(&[
+            Jump::new(11, 0, 0),
+            Jump::new(2, 6, 1),
+            Jump::new(8, 3, 2),
+            Jump::new(5, 9, 3),
+        ]);
         engine.set_delay_amount(0.);
         for _ in 0..12 {
             engine.set_delay_amount(0.);
@@ -545,10 +547,10 @@ mod tests {
     fn read_jumps() {
         let mut engine = DelayEngine::new(10, 44100.);
         engine.set_raw_read_jumps(&vec![
-            Jump(9, 0, 0),
-            Jump(2, 5, 1),
-            Jump(7, 3, 2),
-            Jump(4, 8, 3),
+            Jump::new(9, 0, 0),
+            Jump::new(2, 5, 1),
+            Jump::new(7, 3, 2),
+            Jump::new(4, 8, 3),
         ]);
 
         engine.write_sample(1.);

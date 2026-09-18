@@ -28,10 +28,11 @@ export component EditorPage inherits VerticalLayout {
     in property <[UIJump]> read_jumps_r;
     in property <[UIJump]> write_jumps_l;
     in property <[UIJump]> write_jumps_r;
-    in property <[UIJumpSegment]> read_jump_segments_l;
-    in property <[UIJumpSegment]> read_jump_segments_r;
-    in property <[UIJumpSegment]> write_jump_segments_l;
-    in property <[UIJumpSegment]> write_jump_segments_r;
+    in property <[UIJumpSegment]> read_segments_l;
+    in property <[UIJumpSegment]> read_segments_r;
+    in property <[UIJumpSegment]> write_segments_l;
+    in property <[UIJumpSegment]> write_segments_r;
+    callback segment-swapped(int, int, int);
 
     VerticalLayout {
         vertical-stretch: 1;
@@ -43,6 +44,9 @@ export component EditorPage inherits VerticalLayout {
             write_head <=> root.write_head_l;
             read_jumps: root.read_jumps_l;
             write_jumps: root.write_jumps_l;
+            read_segments: root.read_segments_l;
+            write_segments: root.write_segments_l;
+            segment-swapped(a, b) => { root.segment-swapped(0, a, b); }
         }
         EditorBufferVisualizer {
             horizontal-stretch: 1;
@@ -52,6 +56,9 @@ export component EditorPage inherits VerticalLayout {
             left_channel: true;
             read_jumps: root.read_jumps_r;
             write_jumps: root.write_jumps_r;
+            read_segments: root.read_segments_r;
+            write_segments: root.write_segments_r;
+            segment-swapped(a, b) => { root.segment-swapped(1, a, b); }
         }
     }
     HorizontalLayout {

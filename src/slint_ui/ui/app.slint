@@ -88,6 +88,7 @@ export component AppWindow inherits Window {
     in-out property <float> bpm;
 
     callback effect-order-changed([string]);
+    callback segment-swapped(int, int, int);
 
     private property <int> tab: 0;
 
@@ -224,6 +225,11 @@ export component AppWindow inherits Window {
                     read_jumps_r: root.editor_data.read_jumps_r;
                     write_jumps_l: root.editor_data.write_jumps_l;
                     write_jumps_r: root.editor_data.write_jumps_r;
+                    read_segments_l: root.editor_data.read_segments_l;
+                    read_segments_r: root.editor_data.read_segments_r;
+                    write_segments_l: root.editor_data.write_segments_l;
+                    write_segments_r: root.editor_data.write_segments_r;
+                    segment-swapped(c, a, b) => { root.segment-swapped(c, a, b); }
                 }
             if tab == 3:
                 AboutPage {

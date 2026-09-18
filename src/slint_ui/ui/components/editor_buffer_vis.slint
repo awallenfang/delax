@@ -9,8 +9,10 @@ export component EditorBufferVisualizer inherits Rectangle {
     in property <bool> left_channel;
     in property <[UIJump]> read_jumps;
     in property <[UIJump]> write_jumps;
-    in property <[UIJumpSegment]> read_jump_segments;
-    in property <[UIJumpSegment]> write_jump_segments;
+    in property <[UIJumpSegment]> read_segments;
+    in property <[UIJumpSegment]> write_segments;
+    callback segment-swapped(int, int);
+    private property <int> selected: -1;
     VerticalLayout {
         if !left_channel:
         Rectangle {
@@ -55,42 +57,53 @@ export component EditorBufferVisualizer inherits Rectangle {
                 background: Palette.secondary;
                 clip: false;
             }
-            for jump in read_jumps:
+            for segment[idx] in read_segments:
             Rectangle {
-                x: jump.from * root.width;
-                height: parent.height;
-                width: 1px;
-                background: green;
-                opacity: 0.5;
+                x: segment.start * root.width;
+                height: parent.height / 2;
+                y: 0;
+                width: (segment.end - segment.start) * root.width;
+                background: @linear-gradient(90deg, Palette.primary 0%, #00000000 50%, Palette.primary 100%);
+                opacity: 0.2;
                 clip: false;
+                border-width: root.selected == idx ? 2px : 0px;
+                border-color: Palette.primary;
+                Text {                   
+                    x: parent.width / 2;
+                    y: parent.height / 2;
+                    text: segment.order;
+                    color: Palette.text-muted;
+                }
+                TouchArea {
+                    clicked => {
+                        if (root.selected == -1) {
+                            root.selected = idx;
+                        } else {
+                            if (root.selected != idx) {
+                                root.segment-swapped(root.selected, idx);
+                            }
+                            root.selected = -1;
+                        }
+                    }
+                }
             }
-            for jump in read_jumps:
+            for segment in write_segments:
             Rectangle {
-                x: jump.to * root.width;
-                height: parent.height;
-                width: 1px;
-                background: green;
-                opacity: 0.5;
+                x: segment.start * root.width;
+                height: parent.height / 2;
+                y: parent.height / 2;
+                width: (segment.end - segment.start) * root.width;
+                background: @linear-gradient(90deg, Palette.secondary 0%, #00000000 50%, Palette.secondary 100%);
+                opacity: 0.2;
                 clip: false;
+                Text {
+                    x: parent.width / 2;
+                    y: parent.height / 2;
+                    text: segment.order;
+                    color: Palette.text-muted;
+                }
             }
-            for jump in write_jumps:
-            Rectangle {
-                x: jump.from * root.width;
-                height: parent.height;
-                width: 1px;
-                background: red;
-                opacity: 0.5;
-                clip: false;
-            }
-            for jump in write_jumps:
-            Rectangle {
-                x: jump.to * root.width;
-                height: parent.height;
-                width: 1px;
-                background: red;
-                opacity: 0.5;
-                clip: false;
-            }
+
         }
         if left_channel:
         Rectangle {
