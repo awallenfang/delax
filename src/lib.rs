@@ -5,7 +5,7 @@ use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::slint_ui::editor::DelaxSlintHost;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
-    engine::{DelayEngine, MAX_DELAY_SECS},
+    engine::{DelayEngine, DelayInterpolationMode, MAX_DELAY_SECS},
     params::DelayMode,
 };
 use filters::peak_follower::PeakFollower;
@@ -292,9 +292,12 @@ impl Plugin for Delax {
             let dry_r = *right_sample;
             (meter_in_l, meter_in_r) = self.meter_in(dry_l, dry_r);
 
-            // The output of the banks, stepped through the read jump tables.
-            let pop_left = self.left_delay_engine.pop_sample();
-            let pop_right = self.right_delay_engine.pop_sample();
+            let pop_left = self
+                .left_delay_engine
+                .interpolate_sample(DelayInterpolationMode::Nearest);
+            let pop_right = self
+                .right_delay_engine
+                .interpolate_sample(DelayInterpolationMode::Nearest);
             let (pop_left, pop_right) =
                 self.run_bank_filters(pop_left, pop_right);
             // ####### Feedback loop #########
