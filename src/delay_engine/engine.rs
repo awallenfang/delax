@@ -57,7 +57,6 @@ impl DelayEngine {
     /// let out = engine.pop_sample();
     /// assert_eq!(out, 0.5);
     /// ```
-    #[allow(dead_code)]
     pub fn pop_sample(&mut self) -> f32 {
         let sample = self.buffer[self.read_head];
         if let Some(jump) = self.check_jumps(self.read_head, &self.read_jumps) {
@@ -122,14 +121,10 @@ impl DelayEngine {
         &self.buffer
     }
 
-    /// Changes the delay duration in samples.
-    ///
-    /// Input: Delay time in ms
-    ///
-    /// The delay is clamped to `active_len - 1` so it never reads into the
-    /// inactive tail. Callers needing UI feedback should compare against
-    /// [DelayEngine::max_delay_ms()] to detect clamping.
     pub fn set_delay_amount(&mut self, delay_time: f32) {
+        if delay_time == self.delay_time {
+            return;
+        }
         let delay_samples =
             ms_to_samples(delay_time, self.sample_rate).clamp(0, self.active_len - 1);
         self.read_head = ((self.write_head as i32 - delay_samples as i32)
@@ -239,7 +234,7 @@ impl DelayEngine {
 
 /// A jump inside of the banks. Currently this holds `Jump(from, to)`.
 /// Both are inclusive, so with `Jump(10,100)` the read order will be 8,9,10,100
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Jump(pub usize, pub usize);
 
 #[allow(dead_code)]
@@ -380,6 +375,62 @@ mod interpolation_tests {
 #[cfg(test)]
 mod tests {
     use super::{DelayEngine, Jump};
+    use crate::delay_engine::jump_builder::JumpBuilder;
+
+    #[test]
+    fn set_delay_amount_unchanged_keeps_stepping_head() {
+        let mut engine = DelayEngine::new(12, 1000.);
+        for i in 0..12 {
+            engine.write_sample(i as f32);
+        }
+        engine.set_raw_read_jumps(&[Jump(11, 0), Jump(2, 6), Jump(8, 3), Jump(5, 9)]);
+        engine.set_delay_amount(0.);
+
+        let mut got = Vec::with_capacity(12);
+        for _ in 0..12 {
+            engine.set_delay_amount(0.);
+            got.push(engine.pop_sample() as usize);
+        }
+        assert_eq!(got, vec![0, 1, 2, 6, 7, 8, 3, 4, 5, 9, 10, 11]);
+    }
+
+    #[test]
+    fn set_delay_amount_changed_reanchors_head() {
+        let mut engine = DelayEngine::new(12, 1000.);
+        for i in 0..12 {
+            engine.write_sample(i as f32);
+        }
+        engine.set_raw_read_jumps(&[Jump(11, 0), Jump(2, 6), Jump(8, 3), Jump(5, 9)]);
+        engine.set_delay_amount(0.);
+        for _ in 0..12 {
+            engine.set_delay_amount(0.);
+            engine.pop_sample();
+        }
+        engine.set_delay_amount(3.);
+        assert_eq!(engine.pop_sample() as usize, 9);
+    }
+
+    #[test]
+    fn reinstalled_jumps_after_length_change_cover_new_length() {
+        let mut engine = DelayEngine::new(12, 1000.);
+        for i in 0..12 {
+            engine.write_sample(i as f32);
+        }
+        engine.set_active_len(6);
+        let jumps = JumpBuilder::split_evenly(engine.active_len(), 2)
+            .shuffle_seeded(7)
+            .build();
+        engine.set_raw_read_jumps(&jumps);
+
+        let first = engine.pop_sample() as usize;
+        let mut got = vec![first];
+        for _ in 1..6 {
+            got.push(engine.pop_sample() as usize);
+        }
+        got.sort_unstable();
+        assert_eq!(got, (0..6).collect::<Vec<_>>());
+        assert_eq!(engine.pop_sample() as usize, first);
+    }
 
     #[test]
     fn init() {

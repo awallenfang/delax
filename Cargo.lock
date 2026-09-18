@@ -1432,6 +1432,7 @@ dependencies = [
  "crossbeam",
  "nice-plug",
  "pollster",
+ "rand",
  "rtrb",
  "rustfft",
  "serde",
