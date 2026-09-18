@@ -1,5 +1,5 @@
 use crate::delay_engine::delay_time_from_bpm_and_16th;
-use crate::delay_engine::jump_builder::JumpBuilder;
+use crate::delay_engine::jump_builder::{Jump, JumpBuilder};
 use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::filters::dattorro::DattorroReverb;
 use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
@@ -14,8 +14,9 @@ use filters::simper::SimperSinSVF;
 use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
 use slint_ui::data_transport::{
-    self, DataTransportTx, EDITOR_CHUNK_SAMPLES, EditorChunk, InputData, UiBlock,
+    self, DataTransportTx, JumpState, EDITOR_CHUNK_SAMPLES, EditorChunk, InputData, UiBlock,
 };
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 
 mod delay_engine;
@@ -28,6 +29,10 @@ pub struct Delax {
     params: Arc<DelaxParams>,
     left_delay_engine: DelayEngine,
     right_delay_engine: DelayEngine,
+    jump_builder_read_l: JumpBuilder,
+    jump_builder_write_l: JumpBuilder,
+    jump_builder_read_r: JumpBuilder,
+    jump_builder_write_r: JumpBuilder,
     sample_rate: f32,
     input_sin_svf_low_l: SimperSinSVF,
     input_sin_svf_high_l: SimperSinSVF,
@@ -47,6 +52,8 @@ pub struct Delax {
     editor_tick: u32,
     effect_order: Arc<RwLock<Vec<String>>>,
     applied_effect_order: Vec<String>,
+    applied_jump_version_l: u64,
+    applied_jump_version_r: u64,
 }
 
 impl Default for Delax {
@@ -91,6 +98,11 @@ impl Default for Delax {
         let mut input_high_r = SimperSinSVF::new(44100.);
         input_high_l.set_mode(SVFFilterMode::High);
         input_high_r.set_mode(SVFFilterMode::High);
+
+        let jump_builder_read_l = JumpBuilder::empty(default_buf);
+        let jump_builder_read_r = JumpBuilder::empty(default_buf);
+        let jump_builder_write_l = JumpBuilder::empty(default_buf);
+        let jump_builder_write_r = JumpBuilder::empty(default_buf);
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
@@ -114,6 +126,12 @@ impl Default for Delax {
             editor_tick: 0,
             effect_order: Arc::new(RwLock::new(default_order.clone())),
             applied_effect_order: default_order,
+            jump_builder_read_l,
+            jump_builder_read_r,
+            jump_builder_write_l,
+            jump_builder_write_r,
+            applied_jump_version_l: 0,
+            applied_jump_version_r: 0,
         }
     }
 }
@@ -204,27 +222,28 @@ impl Plugin for Delax {
         let active_r = (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
         left_delay_engine.set_active_len(active_l);
         right_delay_engine.set_active_len(active_r);
-        let builder_read_l = JumpBuilder::split_evenly(active_l, 8).shuffle_seeded(123);
-        let builder_read_r = JumpBuilder::split_evenly(active_r, 8).shuffle_seeded(123);
-        let builder_write_l = JumpBuilder::split_evenly(active_l, 8);
-        let builder_write_r = JumpBuilder::split_evenly(active_r, 8);
-        left_delay_engine.set_raw_read_jumps(&builder_read_l.build());
-        right_delay_engine.set_raw_read_jumps(&builder_read_r.build());
-        left_delay_engine.set_raw_write_jumps(&builder_write_l.build());
-        right_delay_engine.set_raw_write_jumps(&builder_write_r.build());
+        let ((jumps_l, size_l), (jumps_r, size_r)) =
+            self.params.buffer_editor_state.snapshot_jumps();
+        self.jump_builder_read_l = Self::resolve_stored(active_l, jumps_l, size_l);
+        self.jump_builder_read_r = Self::resolve_stored(active_r, jumps_r, size_r);
+        self.jump_builder_write_l = JumpBuilder::empty(active_l);
+        self.jump_builder_write_r = JumpBuilder::empty(active_r);
+        self.applied_jump_version_l = self
+            .params
+            .buffer_editor_state
+            .version_l
+            .load(Ordering::Relaxed);
+        self.applied_jump_version_r = self
+            .params
+            .buffer_editor_state
+            .version_r
+            .load(Ordering::Relaxed);
+        left_delay_engine.set_raw_read_jumps(&self.jump_builder_read_l.build());
+        right_delay_engine.set_raw_read_jumps(&self.jump_builder_read_r.build());
+        left_delay_engine.set_raw_write_jumps(&self.jump_builder_write_l.build());
+        right_delay_engine.set_raw_write_jumps(&self.jump_builder_write_r.build());
 
-        self.input_data.publish_jumps(
-            builder_read_l.build(),
-            builder_read_r.build(),
-            builder_write_l.build(),
-            builder_write_r.build(),
-        );
-        self.input_data.publish_segments(
-            builder_read_l.segments(),
-            builder_read_r.segments(),
-            builder_write_l.segments(),
-            builder_write_r.segments(),
-        );
+        self.publish_jump_state();
 
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
@@ -443,6 +462,14 @@ fn set_engine_len(engine: &mut DelayEngine, len: usize) -> bool {
     true
 }
 
+fn jumps_for_active(active: usize, jumps: Vec<Jump>, size: usize) -> JumpBuilder {
+    if size == active {
+        JumpBuilder::from_jumps(active, jumps)
+    } else {
+        JumpBuilder::from_jumps(size, jumps).scaled(active)
+    }
+}
+
 impl Delax {
     fn poll_effect_order(&mut self) {
         let current: Vec<String> = match self.effect_order.try_read() {
@@ -458,6 +485,83 @@ impl Delax {
         let refs: Vec<&str> = current.iter().map(|s| s.as_str()).collect();
         self.filter_pipeline.set_order(&refs);
         self.applied_effect_order = current;
+    }
+    fn update_jumps(&mut self) {
+        let state = &self.params.buffer_editor_state;
+        let ((jumps_l, size_l), (jumps_r, size_r)) = state.snapshot_jumps();
+        let ver_l = state.version_l.load(Ordering::Relaxed);
+        let ver_r = state.version_r.load(Ordering::Relaxed);
+
+        self.jump_builder_read_l = Self::apply_channel(
+            &mut self.left_delay_engine,
+            jumps_l,
+            size_l,
+            ver_l,
+            self.applied_jump_version_l,
+        );
+        self.jump_builder_read_r = Self::apply_channel(
+            &mut self.right_delay_engine,
+            jumps_r,
+            size_r,
+            ver_r,
+            self.applied_jump_version_r,
+        );
+
+        self.jump_builder_write_l = JumpBuilder::from_jumps(
+            self.left_delay_engine.active_len(),
+            self.left_delay_engine.write_jumps(),
+        );
+        self.jump_builder_write_r = JumpBuilder::from_jumps(
+            self.right_delay_engine.active_len(),
+            self.right_delay_engine.write_jumps(),
+        );
+        self.publish_jump_state();
+        self.applied_jump_version_l = ver_l;
+        self.applied_jump_version_r = ver_r;
+    }
+
+    fn apply_channel(
+        engine: &mut DelayEngine,
+        jumps: Vec<Jump>,
+        size: usize,
+        version: u64,
+        applied_version: u64,
+    ) -> JumpBuilder {
+        let active = engine.active_len();
+        let should_apply = version != applied_version && !jumps.is_empty() && size != 0;
+        if should_apply {
+            let candidate = jumps_for_active(active, jumps, size);
+            if candidate.is_covering() {
+                engine.set_raw_read_jumps(&candidate.build());
+                return candidate;
+            }
+        }
+        JumpBuilder::from_jumps(active, engine.read_jumps())
+    }
+
+    fn publish_jump_state(&self) {
+        self.input_data.publish_jump_state(JumpState {
+            read_l: self.jump_builder_read_l.build(),
+            read_r: self.jump_builder_read_r.build(),
+            write_l: self.jump_builder_write_l.build(),
+            write_r: self.jump_builder_write_r.build(),
+            read_segments_l: self.jump_builder_read_l.segments(),
+            read_segments_r: self.jump_builder_read_r.segments(),
+            write_segments_l: self.jump_builder_write_l.segments(),
+            write_segments_r: self.jump_builder_write_r.segments(),
+        });
+    }
+
+    fn resolve_stored(active: usize, jumps: Vec<Jump>, size: usize) -> JumpBuilder {
+        if jumps.is_empty() || size == 0 {
+            return JumpBuilder::split_evenly(active, 8);
+        }
+        let candidate = jumps_for_active(active, jumps, size);
+        if candidate.is_covering() {
+            candidate
+        } else {
+            JumpBuilder::split_evenly(active, 8)
+        }
     }
 
     fn update_params(&mut self, transport: &Transport, pending: &mut PendingUi) {
@@ -494,13 +598,12 @@ impl Delax {
                 self.right_delay_engine.set_delay_amount(delay_clamped);
                 pending.clamped_l = clamped;
                 pending.clamped_r = clamped;
-                if l_changed || r_changed {
-                    self.input_data.publish_jumps(
-                        self.left_delay_engine.read_jumps(),
-                        self.right_delay_engine.read_jumps(),
-                        self.left_delay_engine.write_jumps(),
-                        self.right_delay_engine.write_jumps(),
-                    );
+                let state = &self.params.buffer_editor_state;
+                let jumps_changed = state.version_l.load(Ordering::Relaxed)
+                    != self.applied_jump_version_l
+                    || state.version_r.load(Ordering::Relaxed) != self.applied_jump_version_r;
+                if l_changed || r_changed || jumps_changed {
+                    self.update_jumps();
                 }
 
                 self.decay_time_s_l = delay_clamped / 1000.;
@@ -554,13 +657,12 @@ impl Delax {
                     (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
                 let l_changed = set_engine_len(&mut self.left_delay_engine, desired_l);
                 let r_changed = set_engine_len(&mut self.right_delay_engine, desired_r);
-                if l_changed || r_changed {
-                    self.input_data.publish_jumps(
-                        self.left_delay_engine.read_jumps(),
-                        self.right_delay_engine.read_jumps(),
-                        self.left_delay_engine.write_jumps(),
-                        self.right_delay_engine.write_jumps(),
-                    );
+                let state = &self.params.buffer_editor_state;
+                let jumps_changed = state.version_l.load(Ordering::Relaxed)
+                    != self.applied_jump_version_l
+                    || state.version_r.load(Ordering::Relaxed) != self.applied_jump_version_r;
+                if l_changed || r_changed || jumps_changed {
+                    self.update_jumps();
                 }
                 let max_ms_l = self.left_delay_engine.max_delay_ms();
                 let max_ms_r = self.right_delay_engine.max_delay_ms();

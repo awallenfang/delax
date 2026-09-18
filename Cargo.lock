@@ -1436,6 +1436,7 @@ dependencies = [
  "rtrb",
  "rustfft",
  "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "wgpu",

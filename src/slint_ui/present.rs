@@ -9,25 +9,28 @@ use crate::slint_ui::renderer::WgpuRegistry;
 use crate::slint_ui::snapshot::{EditorChannel, UiVisualState};
 use crate::slint_ui::{self, EditorData, HeaderData, UIJump, UIJumpSegment};
 
+fn normalize_ratio(value: usize, active_len: usize) -> f32 {
+    value as f32 / active_len.max(1) as f32
+}
+
 fn normalize_jumps(jumps: &[Jump], active_len: usize) -> Vec<UIJump> {
-    let len = active_len.max(1) as f32;
     jumps
         .iter()
         .map(|j| UIJump {
-            from: j.0 as f32 / len,
-            to: j.1 as f32 / len,
-            order: j.2 as i32,
+            from: normalize_ratio(j.from, active_len),
+            to: normalize_ratio(j.to, active_len),
+            order: j.rank as i32,
         })
         .collect()
 }
+
 fn normalize_segments(segments: &[JumpSegment], active_len: usize) -> Vec<UIJumpSegment> {
-    let len = active_len.max(1) as f32;
     segments
         .iter()
-        .map(|j| UIJumpSegment {
-            start: j.start as f32 / len,
-            end: j.end as f32 / len,
-            order: j.order as i32,
+        .map(|s| UIJumpSegment {
+            start: normalize_ratio(s.start, active_len),
+            end: normalize_ratio(s.end, active_len),
+            order: s.order as i32,
         })
         .collect()
 }
@@ -65,43 +68,54 @@ pub fn poll_and_present(
         write_segments_l: app.get_editor_data().write_segments_l,
         write_segments_r: app.get_editor_data().write_segments_r,
     };
+
     let version = data.jump_version.load(Relaxed);
     if version != visual.seen_jump_version {
         visual.seen_jump_version = version;
         let len_l = data.active_len_l.load(Relaxed);
         let len_r = data.active_len_r.load(Relaxed);
-
-        if let Ok(j) = data.read_jumps_l.lock() {
-            editor.read_jumps_l = push_model(editor.read_jumps_l, normalize_jumps(&j, len_l));
-        }
-        if let Ok(j) = data.read_jumps_r.lock() {
-            editor.read_jumps_r = push_model(editor.read_jumps_r, normalize_jumps(&j, len_r));
-        }
-        if let Ok(j) = data.write_jumps_l.lock() {
-            editor.write_jumps_l = push_model(editor.write_jumps_l, normalize_jumps(&j, len_l));
-        }
-        if let Ok(j) = data.write_jumps_r.lock() {
-            editor.write_jumps_r = push_model(editor.write_jumps_r, normalize_jumps(&j, len_r));
-        }
-        if let Ok(j) = data.read_segments_l.lock() {
-            editor.read_segments_l =
-                push_model(editor.read_segments_l, normalize_segments(&j, len_l));
-        }
-        if let Ok(j) = data.read_segments_r.lock() {
-            editor.read_segments_r =
-                push_model(editor.read_segments_r, normalize_segments(&j, len_r));
-        }
-        if let Ok(j) = data.write_segments_l.lock() {
-            editor.write_segments_l =
-                push_model(editor.write_segments_l, normalize_segments(&j, len_l));
-        }
-        if let Ok(j) = data.write_segments_r.lock() {
-            editor.write_segments_r =
-                push_model(editor.write_segments_r, normalize_segments(&j, len_r));
-        }
+        refresh_channel(&mut editor.read_jumps_l, &data.read_jumps_l, len_l, normalize_jumps);
+        refresh_channel(&mut editor.read_jumps_r, &data.read_jumps_r, len_r, normalize_jumps);
+        refresh_channel(&mut editor.write_jumps_l, &data.write_jumps_l, len_l, normalize_jumps);
+        refresh_channel(&mut editor.write_jumps_r, &data.write_jumps_r, len_r, normalize_jumps);
+        refresh_channel(
+            &mut editor.read_segments_l,
+            &data.read_segments_l,
+            len_l,
+            normalize_segments,
+        );
+        refresh_channel(
+            &mut editor.read_segments_r,
+            &data.read_segments_r,
+            len_r,
+            normalize_segments,
+        );
+        refresh_channel(
+            &mut editor.write_segments_l,
+            &data.write_segments_l,
+            len_l,
+            normalize_segments,
+        );
+        refresh_channel(
+            &mut editor.write_segments_r,
+            &data.write_segments_r,
+            len_r,
+            normalize_segments,
+        );
     }
 
     app.set_editor_data(editor);
+}
+
+fn refresh_channel<T, U, F>(target: &mut ModelRc<T>, source: &std::sync::Mutex<Vec<U>>, len: usize, f: F)
+where
+    T: Clone + 'static,
+    U: Clone,
+    F: Fn(&[U], usize) -> Vec<T>,
+{
+    if let Ok(guard) = source.lock() {
+        *target = push_model(std::mem::replace(target, ModelRc::new(VecModel::from(vec![]))), f(&guard, len));
+    }
 }
 
 fn push_model<T: Clone + 'static>(current: ModelRc<T>, values: Vec<T>) -> ModelRc<T> {

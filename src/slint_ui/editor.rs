@@ -14,12 +14,17 @@ use nice_plug::context::gui::GuiContext;
 use nice_plug::params::Params;
 use nice_plug::params::persist::PersistentField;
 use nice_plug::prelude::ParamPtr;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use slint::private_unstable_api::re_exports::ApproxEq;
-use slint::{PlatformError, SharedString};
+use slint::{Model, PlatformError, SharedString};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+use crate::delay_engine::jump_builder::{Jump, JumpBuilder, JumpSegment};
+use crate::slint_ui::data_transport::BufferChannel;
 
 pub enum UiEvent {
     ParamChanged {
@@ -36,6 +41,11 @@ pub enum UiEvent {
     },
     SetEffectOrder {
         order: Vec<String>,
+    },
+    SetSegmentSwap {
+        channel: i32,
+        first_id: i32,
+        second_id: i32,
     },
 }
 #[derive(Deserialize, Serialize)]
@@ -80,6 +90,146 @@ impl<'a> PersistentField<'a, EditorState> for Arc<EditorState> {
     fn map<F, R>(&self, f: F) -> R
     where
         F: Fn(&EditorState) -> R,
+    {
+        f(self)
+    }
+}
+
+pub struct BufferEditorState {
+    pub jumps_l: Mutex<Vec<Jump>>,
+    pub size_l: AtomicUsize,
+    pub jumps_r: Mutex<Vec<Jump>>,
+    pub size_r: AtomicUsize,
+    pub version_l: AtomicU64,
+    pub version_r: AtomicU64,
+}
+
+impl Default for BufferEditorState {
+    fn default() -> Self {
+        Self {
+            jumps_l: Mutex::new(vec![]),
+            size_l: AtomicUsize::new(0),
+            jumps_r: Mutex::new(vec![]),
+            size_r: AtomicUsize::new(0),
+            version_l: Default::default(),
+            version_r: Default::default(),
+        }
+    }
+}
+
+impl BufferEditorState {
+    pub fn snapshot_jumps(&self) -> ((Vec<Jump>, usize), (Vec<Jump>, usize)) {
+        let jl = self.jumps_l.lock().map(|g| g.clone()).unwrap_or_default();
+        let sl = self.size_l.load(Ordering::Relaxed);
+        let jr = self.jumps_r.lock().map(|g| g.clone()).unwrap_or_default();
+        let sr = self.size_r.load(Ordering::Relaxed);
+        ((jl, sl), (jr, sr))
+    }
+
+    pub fn snapshot_for(&self, channel: BufferChannel) -> (Vec<Jump>, usize) {
+        match channel {
+            BufferChannel::Left => (
+                self.jumps_l.lock().map(|g| g.clone()).unwrap_or_default(),
+                self.size_l.load(Ordering::Relaxed),
+            ),
+            BufferChannel::Right => (
+                self.jumps_r.lock().map(|g| g.clone()).unwrap_or_default(),
+                self.size_r.load(Ordering::Relaxed),
+            ),
+        }
+    }
+
+    pub fn store_jumps(&self, channel: BufferChannel, jumps: Vec<Jump>, size: usize) {
+        let (slot, len, ver) = match channel {
+            BufferChannel::Left => (&self.jumps_l, &self.size_l, &self.version_l),
+            BufferChannel::Right => (&self.jumps_r, &self.size_r, &self.version_r),
+        };
+        if let Ok(mut g) = slot.lock() {
+            *g = jumps;
+        }
+        len.store(size, Ordering::Relaxed);
+        ver.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn builder_for(&self, channel: BufferChannel, active_len: usize) -> JumpBuilder {
+        assert!(active_len > 0);
+        let (jumps, size) = self.snapshot_for(channel);
+        if jumps.is_empty() || size == 0 {
+            return JumpBuilder::empty(active_len);
+        }
+        if size == active_len {
+            JumpBuilder::from_jumps(active_len, jumps)
+        } else {
+            JumpBuilder::from_jumps(size, jumps).scaled(active_len)
+        }
+    }
+
+    pub fn store_builder(&self, channel: BufferChannel, builder: JumpBuilder) {
+        let jumps = builder.build();
+        let size = builder.size();
+        self.store_jumps(channel, jumps, size);
+    }
+}
+
+impl Serialize for BufferEditorState {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        let ((jl, sl), (jr, sr)) = self.snapshot_jumps();
+        let mut state = serializer.serialize_struct("BufferEditorState", 4)?;
+        state.serialize_field("jumps_l", &jl)?;
+        state.serialize_field("size_l", &sl)?;
+        state.serialize_field("jumps_r", &jr)?;
+        state.serialize_field("size_r", &sr)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for BufferEditorState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(default)]
+            jumps_l: Vec<Jump>,
+            #[serde(default)]
+            size_l: usize,
+            #[serde(default)]
+            jumps_r: Vec<Jump>,
+            #[serde(default)]
+            size_r: usize,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        Ok(Self {
+            jumps_l: Mutex::new(raw.jumps_l),
+            size_l: AtomicUsize::new(raw.size_l),
+            jumps_r: Mutex::new(raw.jumps_r),
+            size_r: AtomicUsize::new(raw.size_r),
+            version_l: AtomicU64::new(0),
+            version_r: AtomicU64::new(0),
+        })
+    }
+}
+
+impl<'a> PersistentField<'a, BufferEditorState> for Arc<BufferEditorState> {
+    fn set(&self, new_value: BufferEditorState) {
+        let ((jl, sl), (jr, sr)) = new_value.snapshot_jumps();
+        if let Ok(mut g) = self.jumps_l.lock() {
+            *g = jl;
+        }
+        self.size_l.store(sl, Ordering::Relaxed);
+        if let Ok(mut g) = self.jumps_r.lock() {
+            *g = jr;
+        }
+        self.size_r.store(sr, Ordering::Relaxed);
+    }
+
+    fn map<F, R>(&self, f: F) -> R
+    where
+        F: Fn(&BufferEditorState) -> R,
     {
         f(self)
     }
@@ -217,7 +367,7 @@ impl SlintHost for DelaxSlintHost {
         Ok(app)
     }
 
-    fn on_event(&self, _app: &Self::Component, gui_context: &GuiContext) {
+    fn on_event(&self, app: &Self::Component, gui_context: &GuiContext) {
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
                 UiEvent::ParamChanged { id, value } => {
@@ -274,6 +424,22 @@ impl SlintHost for DelaxSlintHost {
                         *shared = order;
                     }
                 }
+                UiEvent::SetSegmentSwap {
+                    channel,
+                    first_id,
+                    second_id,
+                } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let builder = self.params.buffer_editor_state.builder_for(ch, len);
+                    let builder = builder.swap_segments(first_id as usize, second_id as usize);
+                    self.params
+                        .buffer_editor_state
+                        .store_builder(ch, builder);
+                }
             }
         }
     }
@@ -288,5 +454,63 @@ impl SlintHost for DelaxSlintHost {
 
     fn on_resized(&self, width: u32, height: u32) {
         self.params.editor_state.editor_size.store((width, height));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BufferEditorState;
+    use crate::delay_engine::jump_builder::Jump;
+    use nice_plug::params::persist::PersistentField;
+    use std::sync::Arc;
+
+    #[test]
+    fn store_bumps_version_per_channel() {
+        let state = BufferEditorState::default();
+        state.store_jumps(
+            crate::slint_ui::data_transport::BufferChannel::Left,
+            vec![Jump::new(2, 3, 0), Jump::new(5, 0, 1)],
+            6,
+        );
+        state.store_jumps(
+            crate::slint_ui::data_transport::BufferChannel::Right,
+            vec![Jump::new(1, 0, 0)],
+            2,
+        );
+        let ((jl, sl), (jr, sr)) = state.snapshot_jumps();
+        assert_eq!(jl, vec![Jump::new(2, 3, 0), Jump::new(5, 0, 1)]);
+        assert_eq!(sl, 6);
+        assert_eq!(jr, vec![Jump::new(1, 0, 0)]);
+        assert_eq!(sr, 2);
+        assert_eq!(
+            (
+                state.version_l.load(std::sync::atomic::Ordering::Relaxed),
+                state.version_r.load(std::sync::atomic::Ordering::Relaxed)
+            ),
+            (1, 1)
+        );
+    }
+
+    #[test]
+    fn persistent_field_copies_without_swapping_arc() {
+        let state = Arc::new(BufferEditorState::default());
+        state.store_jumps(
+            crate::slint_ui::data_transport::BufferChannel::Left,
+            vec![Jump::new(1, 0, 0)],
+            2,
+        );
+        let fresh = BufferEditorState {
+            jumps_l: std::sync::Mutex::new(vec![Jump::new(0, 1, 0), Jump::new(1, 0, 1)]),
+            size_l: std::sync::atomic::AtomicUsize::new(2),
+            jumps_r: std::sync::Mutex::new(vec![]),
+            size_r: std::sync::atomic::AtomicUsize::new(0),
+            version_l: std::sync::atomic::AtomicU64::new(7),
+            version_r: std::sync::atomic::AtomicU64::new(9),
+        };
+        PersistentField::set(&state, fresh);
+        let ((jl, sl), _) = state.snapshot_jumps();
+        assert_eq!(jl, vec![Jump::new(0, 1, 0), Jump::new(1, 0, 1)]);
+        assert_eq!(sl, 2);
+        assert!(Arc::strong_count(&state) == 1);
     }
 }

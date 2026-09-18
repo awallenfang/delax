@@ -1,8 +1,8 @@
 use nice_plug::prelude::AtomicF32;
 use nice_plug::util::gain_to_db;
+use std::sync::Mutex;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize};
-use std::sync::Mutex;
 
 use crate::delay_engine::jump_builder::{Jump, JumpSegment};
 use crate::slint_ui::uniforms::DecayUniforms;
@@ -15,6 +15,22 @@ pub const SPEC_DECIM: u32 = 8;
 pub const UI_BUFFER_SIZE: usize = 128;
 pub const EDITOR_VIS_SIZE: usize = UI_BUFFER_SIZE * 4;
 pub const EDITOR_CHUNK_SAMPLES: usize = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferChannel {
+    Left,
+    Right,
+}
+
+impl BufferChannel {
+    pub fn from_i32(v: i32) -> Self {
+        if v == 0 {
+            Self::Left
+        } else {
+            Self::Right
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EditorChunk {
@@ -91,7 +107,6 @@ impl DataTransportTx {
         self.wave_peak_dry = self.wave_peak_dry.max(dm);
         self.wave_peak_wet = self.wave_peak_wet.max(wm);
         self.wave_count += 1;
-        // Decimate input
         if self.wave_count >= WAVE_DECIM {
             let _ = self.wave_prod.push(WaveSample {
                 dry: db01(self.wave_peak_dry.max(1e-5)),
@@ -140,6 +155,17 @@ pub struct UiBlock {
     pub clamped_r: bool,
     pub active_len_l: usize,
     pub active_len_r: usize,
+}
+
+pub struct JumpState {
+    pub read_l: Vec<Jump>,
+    pub read_r: Vec<Jump>,
+    pub write_l: Vec<Jump>,
+    pub write_r: Vec<Jump>,
+    pub read_segments_l: Vec<JumpSegment>,
+    pub read_segments_r: Vec<JumpSegment>,
+    pub write_segments_l: Vec<JumpSegment>,
+    pub write_segments_r: Vec<JumpSegment>,
 }
 
 pub struct InputData {
@@ -246,6 +272,34 @@ impl InputData {
         self.active_len_r.store(b.active_len_r, Relaxed);
     }
 
+    pub fn publish_jump_state(&self, s: JumpState) {
+        if let Ok(mut g) = self.read_jumps_l.lock() {
+            *g = s.read_l;
+        }
+        if let Ok(mut g) = self.read_jumps_r.lock() {
+            *g = s.read_r;
+        }
+        if let Ok(mut g) = self.write_jumps_l.lock() {
+            *g = s.write_l;
+        }
+        if let Ok(mut g) = self.write_jumps_r.lock() {
+            *g = s.write_r;
+        }
+        if let Ok(mut g) = self.read_segments_l.lock() {
+            *g = s.read_segments_l;
+        }
+        if let Ok(mut g) = self.read_segments_r.lock() {
+            *g = s.read_segments_r;
+        }
+        if let Ok(mut g) = self.write_segments_l.lock() {
+            *g = s.write_segments_l;
+        }
+        if let Ok(mut g) = self.write_segments_r.lock() {
+            *g = s.write_segments_r;
+        }
+        self.jump_version.fetch_add(1, Relaxed);
+    }
+
     pub fn publish_jumps(
         &self,
         read_l: Vec<Jump>,
@@ -253,20 +307,18 @@ impl InputData {
         write_l: Vec<Jump>,
         write_r: Vec<Jump>,
     ) {
-        if let Ok(mut content) = self.read_jumps_l.lock() {
-            *content = read_l;
-        }
-        if let Ok(mut content) = self.read_jumps_r.lock() {
-            *content = read_r;
-        }
-        if let Ok(mut content) = self.write_jumps_l.lock() {
-            *content = write_l;
-        }
-        if let Ok(mut content) = self.write_jumps_r.lock() {
-            *content = write_r;
-        }
-        self.jump_version.fetch_add(1, Relaxed);
+        self.publish_jump_state(JumpState {
+            read_l,
+            read_r,
+            write_l,
+            write_r,
+            read_segments_l: self.read_segments_l.lock().map(|g| g.clone()).unwrap_or_default(),
+            read_segments_r: self.read_segments_r.lock().map(|g| g.clone()).unwrap_or_default(),
+            write_segments_l: self.write_segments_l.lock().map(|g| g.clone()).unwrap_or_default(),
+            write_segments_r: self.write_segments_r.lock().map(|g| g.clone()).unwrap_or_default(),
+        });
     }
+
     pub fn publish_segments(
         &self,
         read_l: Vec<JumpSegment>,
@@ -274,19 +326,26 @@ impl InputData {
         write_l: Vec<JumpSegment>,
         write_r: Vec<JumpSegment>,
     ) {
-        if let Ok(mut content) = self.read_segments_l.lock() {
-            *content = read_l;
+        if let Ok(mut g) = self.read_segments_l.lock() {
+            *g = read_l;
         }
-        if let Ok(mut content) = self.read_segments_r.lock() {
-            *content = read_r;
+        if let Ok(mut g) = self.read_segments_r.lock() {
+            *g = read_r;
         }
-        if let Ok(mut content) = self.write_segments_l.lock() {
-            *content = write_l;
+        if let Ok(mut g) = self.write_segments_l.lock() {
+            *g = write_l;
         }
-        if let Ok(mut content) = self.write_segments_r.lock() {
-            *content = write_r;
+        if let Ok(mut g) = self.write_segments_r.lock() {
+            *g = write_r;
         }
         self.jump_version.fetch_add(1, Relaxed);
+    }
+
+    pub fn active_len_for(&self, ch: BufferChannel) -> usize {
+        match ch {
+            BufferChannel::Left => self.active_len_l.load(Relaxed),
+            BufferChannel::Right => self.active_len_r.load(Relaxed),
+        }
     }
 
     pub fn reset(&self) {

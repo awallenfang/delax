@@ -1,4 +1,3 @@
-
 use crate::filters::{Filter, StereoFilter};
 
 /// A pipeline to send the signal through different filters in different orders

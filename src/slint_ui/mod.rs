@@ -102,6 +102,16 @@ where
                 let _ = tx_order.send(UiEvent::SetEffectOrder { order });
             });
         }
+        {
+            let tx_swap = tx.clone();
+            self.on_segment_swapped(move |channel, first, second| {
+                let _ = tx_swap.send(UiEvent::SetSegmentSwap {
+                    channel,
+                    first_id: first,
+                    second_id: second,
+                });
+            });
+        }
         bus.on_get_val_by_key(|key, _version| {
             param_store()
                 .read()
