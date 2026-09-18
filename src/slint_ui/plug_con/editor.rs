@@ -1,9 +1,9 @@
-
 use crate::slint_ui::baseview_con::BaseviewWindow;
 use crate::slint_ui::plug_con::host::{SlintHost, to_baseview_host};
 use crate::slint_ui::renderer::WgpuRegistry;
 use baseview::Window;
 use baseview::dpi::PhysicalSize;
+use baseview::gl::GlConfig;
 use nice_plug::context::gui::GuiContext;
 use nice_plug::editor::dpi::NativeSize;
 use nice_plug::editor::{
@@ -13,7 +13,6 @@ use nice_plug::editor::{
 use std::cell::RefCell;
 use std::error::Error;
 use std::sync::Arc;
-use baseview::gl::GlConfig;
 
 pub struct SlintEditor<H: SlintHost> {
     host: Arc<H>,
@@ -23,17 +22,11 @@ pub struct SlintEditor<H: SlintHost> {
 
 impl<H: SlintHost> SlintEditor<H> {
     pub fn new(host: Arc<H>, size: NativeSize<u32>, title: String) -> Self {
-        Self {
-            host,
-            size,
-            title,
-        }
+        Self { host, size, title }
     }
 }
 
-impl<H: SlintHost + 'static> Editor
-    for SlintEditor<H>
-{
+impl<H: SlintHost + 'static> Editor for SlintEditor<H> {
     type Handle = SlintEditorHandle;
 
     fn spawn(
@@ -49,31 +42,31 @@ impl<H: SlintHost + 'static> Editor
             let h = self.host.clone();
             move || h.build()
         };
-        let on_event: Arc<dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>) + Send + Sync> = Arc::new(
-            {
-                let host = self.host.clone();
-                let gui_context = gui_context.clone();
-                move |app, _wgpu| host.on_event(app, &gui_context)
-            }
-        );
-        let on_frame: Arc<dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>) + Send + Sync> = Arc::new(
-            {
-                let host = self.host.clone();
-                move |app, wgpu| host.on_frame(app, wgpu)
-            }
-        );
-        let on_init: Arc<dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>) + Send + Sync> = Arc::new(
-            {
-                let host = self.host.clone();
-                move |app, wgpu| host.on_init(app, wgpu)
-            }
-        );
-        let on_resize: Arc<dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>, u32, u32) + Send + Sync> = Arc::new(
-            {
-                let host = self.host.clone();
-                move |_app, _wgpu, w, h| host.on_resized(w,h)
-            }
-        );
+        let on_event: Arc<
+            dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>) + Send + Sync,
+        > = Arc::new({
+            let host = self.host.clone();
+            let gui_context = gui_context.clone();
+            move |app, _wgpu| host.on_event(app, &gui_context)
+        });
+        let on_frame: Arc<
+            dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>) + Send + Sync,
+        > = Arc::new({
+            let host = self.host.clone();
+            move |app, wgpu| host.on_frame(app, wgpu)
+        });
+        let on_init: Arc<
+            dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>) + Send + Sync,
+        > = Arc::new({
+            let host = self.host.clone();
+            move |app, wgpu| host.on_init(app, wgpu)
+        });
+        let on_resize: Arc<
+            dyn Fn(&<H as SlintHost>::Component, &RefCell<WgpuRegistry>, u32, u32) + Send + Sync,
+        > = Arc::new({
+            let host = self.host.clone();
+            move |_app, _wgpu, w, h| host.on_resized(w, h)
+        });
 
         let window = Window::create_with_host(
             baseview::WindowSettings::new()
@@ -83,8 +76,8 @@ impl<H: SlintHost + 'static> Editor
                 .with_fallback_scale_factor(fallback_scale_factor)
                 .with_wait_for_parent(wait_for_parent)
                 .with_gl_config(Some(GlConfig {
-                    version: (3,2),
-                        ..Default::default()
+                    version: (3, 2),
+                    ..Default::default()
                 })),
             move |window_context| {
                 Ok(BaseviewWindow::new(
@@ -95,7 +88,7 @@ impl<H: SlintHost + 'static> Editor
                     on_event,
                     on_frame,
                     on_resize,
-                    on_init
+                    on_init,
                 )?)
             },
             to_baseview_host(host),
