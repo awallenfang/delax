@@ -1,4 +1,3 @@
-use std::ops::Index;
 
 use crate::filters::{Filter, StereoFilter};
 

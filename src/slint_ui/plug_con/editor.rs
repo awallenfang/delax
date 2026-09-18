@@ -2,7 +2,6 @@ use crate::slint_ui::baseview_con::BaseviewWindow;
 use crate::slint_ui::plug_con::host::{SlintHost, to_baseview_host};
 use crate::slint_ui::renderer::WgpuRegistry;
 use baseview::Window;
-use baseview::dpi::PhysicalSize;
 use baseview::gl::GlConfig;
 use nice_plug::context::gui::GuiContext;
 use nice_plug::editor::dpi::NativeSize;

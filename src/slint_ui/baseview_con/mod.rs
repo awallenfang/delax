@@ -136,7 +136,7 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
                             Some(platform::WindowEvent::PointerMoved { position: log_pos })
                         }
                     }
-                    MouseEvent::ButtonPressed { button, modifiers } => {
+                    MouseEvent::ButtonPressed { button, modifiers: _ } => {
                         let Some(slint_button) = map_button(button) else {
                             return EventStatus::Ignored;
                         };
