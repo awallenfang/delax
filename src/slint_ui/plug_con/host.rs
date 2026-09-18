@@ -1,9 +1,9 @@
-use std::cell::RefCell;
+use crate::slint_ui::renderer::WgpuRegistry;
 use baseview::host::{Host, HostCallbacks};
 use baseview::{HandlerError, WindowSize};
 use nice_plug::context::gui::GuiContext;
 use nice_plug::editor::HostMethods;
-use crate::slint_ui::renderer::WgpuRegistry;
+use std::cell::RefCell;
 
 pub trait SlintHost: Send + Sync {
     type Component: slint::ComponentHandle + 'static;
@@ -16,12 +16,14 @@ pub trait SlintHost: Send + Sync {
 }
 
 struct HostCallbackAdapter {
-    host: Box<dyn nice_plug::editor::HostCallbacks>
+    host: Box<dyn nice_plug::editor::HostCallbacks>,
 }
 
 impl HostCallbacks for HostCallbackAdapter {
     fn request_resize(&mut self, new_size: WindowSize) -> Result<(), HandlerError> {
-        self.host.request_resize(new_size.physical.into(), new_size.scale_factor).map_err(baseview::HandlerError::from_boxed)
+        self.host
+            .request_resize(new_size.physical.into(), new_size.scale_factor)
+            .map_err(baseview::HandlerError::from_boxed)
     }
 
     fn destroyed(&mut self) {
@@ -29,7 +31,9 @@ impl HostCallbacks for HostCallbackAdapter {
     }
 }
 
-struct HostMainThreadCallerAdapter { host: Box<dyn nice_plug::editor::HostMainThreadCaller>}
+struct HostMainThreadCallerAdapter {
+    host: Box<dyn nice_plug::editor::HostMainThreadCaller>,
+}
 impl baseview::host::HostMainThreadCaller for HostMainThreadCallerAdapter {
     fn call_main_thread(&mut self) {
         self.host.call_main_thread();
@@ -37,5 +41,13 @@ impl baseview::host::HostMainThreadCaller for HostMainThreadCallerAdapter {
 }
 
 pub(crate) fn to_baseview_host(host: Option<HostMethods>) -> Option<Host> {
-    host.map(|host| Host::new().with_callbacks(HostCallbackAdapter {host: host.callbacks}).with_main_thread(HostMainThreadCallerAdapter{host: host.main_thread_caller}))
+    host.map(|host| {
+        Host::new()
+            .with_callbacks(HostCallbackAdapter {
+                host: host.callbacks,
+            })
+            .with_main_thread(HostMainThreadCallerAdapter {
+                host: host.main_thread_caller,
+            })
+    })
 }

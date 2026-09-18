@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
-use rand::{rng, SeedableRng};
+use rand::{SeedableRng, rng};
 
 /// A jump inside of the banks. Currently this holds `Jump(from, to, order)`.
 /// Both are inclusive, so with `Jump(10,100, 0)` the read order will be 8,9,10,100

@@ -1,6 +1,6 @@
 pub mod engine;
-pub mod params;
 pub mod jump_builder;
+pub mod params;
 
 pub fn delay_time_from_bpm_and_16th(note_val: f32, bpm: f32) -> f32 {
     // note_val is in units of 16th notes. One 16th = 1/4 beat.

@@ -1,8 +1,8 @@
+use slint::platform::WindowAdapter;
+use slint::{PlatformError, platform};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use slint::{platform, PlatformError};
-use slint::platform::WindowAdapter;
 
 pub struct SlintPlatform {
     current: RefCell<Option<Rc<dyn WindowAdapter>>>,

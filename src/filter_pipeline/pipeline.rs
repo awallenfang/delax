@@ -1,4 +1,3 @@
-
 use std::ops::Index;
 
 use crate::filters::{Filter, StereoFilter};
@@ -28,8 +27,11 @@ impl FilterPipeline {
         filter_r: Box<dyn Filter>,
         id: &'static str,
     ) {
-        self.registered_filters
-            .push((FilterPipelineElement::StereoMonoFilter(filter_l, filter_r), id, true));
+        self.registered_filters.push((
+            FilterPipelineElement::StereoMonoFilter(filter_l, filter_r),
+            id,
+            true,
+        ));
         self.order.push(self.registered_filters.len() - 1);
     }
 
@@ -44,7 +46,7 @@ impl FilterPipeline {
     /// Register a mono filter
     /// Running this in stereo will cast all audio data to mono
     #[allow(dead_code)]
-    pub fn register_mono(&mut self, filter: Box<dyn Filter>,  id: &'static str) {
+    pub fn register_mono(&mut self, filter: Box<dyn Filter>, id: &'static str) {
         self.registered_filters
             .push((FilterPipelineElement::Mono(filter), id, true));
         self.order.push(self.registered_filters.len() - 1);
@@ -57,7 +59,11 @@ impl FilterPipeline {
 
         for i in &self.order {
             match self.registered_filters[*i] {
-                (FilterPipelineElement::StereoMonoFilter(ref mut filter_l, ref mut filter_r), _, active) => {
+                (
+                    FilterPipelineElement::StereoMonoFilter(ref mut filter_l, ref mut filter_r),
+                    _,
+                    active,
+                ) => {
                     if active {
                         l = filter_l.process(l);
                         r = filter_r.process(r);
@@ -133,7 +139,13 @@ impl FilterPipeline {
     fn id_order_to_index(&self, order_str: &[&str]) -> Vec<usize> {
         let mut order = Vec::new();
         for id in order_str {
-            let entry = self.registered_filters.iter().enumerate().filter(|e| e.1.1 == *id).map(|e|e.0).nth(0);
+            let entry = self
+                .registered_filters
+                .iter()
+                .enumerate()
+                .filter(|e| e.1.1 == *id)
+                .map(|e| e.0)
+                .nth(0);
             if let Some(idx) = entry {
                 order.push(idx);
             }

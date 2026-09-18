@@ -1,10 +1,10 @@
 use nice_plug::prelude::AtomicF32;
 use nice_plug::util::gain_to_db;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize};
 use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize};
+use std::sync::{Arc, Mutex};
 
-use crate::delay_engine::jump_builder::Jump;
+use crate::delay_engine::jump_builder::{Jump, JumpSegment};
 use crate::slint_ui::uniforms::DecayUniforms;
 
 pub const SPECTRUM_RING_SIZE: usize = 1024;
@@ -174,7 +174,12 @@ pub struct InputData {
     pub write_jumps_l: Mutex<Vec<Jump>>,
     pub write_jumps_r: Mutex<Vec<Jump>>,
 
-    pub jump_version: AtomicU64
+    pub read_segments_l: Mutex<Vec<JumpSegment>>,
+    pub read_segments_r: Mutex<Vec<JumpSegment>>,
+    pub write_segments_l: Mutex<Vec<JumpSegment>>,
+    pub write_segments_r: Mutex<Vec<JumpSegment>>,
+
+    pub jump_version: AtomicU64,
 }
 
 impl Default for InputData {
@@ -206,7 +211,11 @@ impl Default for InputData {
             read_jumps_r: Mutex::new(vec![]),
             write_jumps_l: Mutex::new(vec![]),
             write_jumps_r: Mutex::new(vec![]),
-            jump_version: AtomicU64::new(0)
+            read_segments_l: Mutex::new(vec![]),
+            read_segments_r: Mutex::new(vec![]),
+            write_segments_l: Mutex::new(vec![]),
+            write_segments_r: Mutex::new(vec![]),
+            jump_version: AtomicU64::new(0),
         }
     }
 }
@@ -237,7 +246,13 @@ impl InputData {
         self.active_len_r.store(b.active_len_r, Relaxed);
     }
 
-    pub fn publish_jumps(&self, read_l: Vec<Jump>, read_r: Vec<Jump>, write_l: Vec<Jump>, write_r: Vec<Jump>) {
+    pub fn publish_jumps(
+        &self,
+        read_l: Vec<Jump>,
+        read_r: Vec<Jump>,
+        write_l: Vec<Jump>,
+        write_r: Vec<Jump>,
+    ) {
         if let Ok(mut content) = self.read_jumps_l.lock() {
             *content = read_l;
         }
@@ -248,6 +263,27 @@ impl InputData {
             *content = write_l;
         }
         if let Ok(mut content) = self.write_jumps_r.lock() {
+            *content = write_r;
+        }
+        self.jump_version.fetch_add(1, Relaxed);
+    }
+    pub fn publish_segments(
+        &self,
+        read_l: Vec<JumpSegment>,
+        read_r: Vec<JumpSegment>,
+        write_l: Vec<JumpSegment>,
+        write_r: Vec<JumpSegment>,
+    ) {
+        if let Ok(mut content) = self.read_segments_l.lock() {
+            *content = read_l;
+        }
+        if let Ok(mut content) = self.read_segments_r.lock() {
+            *content = read_r;
+        }
+        if let Ok(mut content) = self.write_segments_l.lock() {
+            *content = write_l;
+        }
+        if let Ok(mut content) = self.write_segments_r.lock() {
             *content = write_r;
         }
         self.jump_version.fetch_add(1, Relaxed);
@@ -277,4 +313,3 @@ impl InputData {
         })
     }
 }
-

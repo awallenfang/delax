@@ -8,7 +8,7 @@ import {
 import { ParamKnob } from "../components/param_knob.slint";
 import { ParamBus } from "../events.slint";
 import { ParamSwitch } from "../components/param_switch.slint";
-import { Palette, UIJump } from "../global.slint";
+import { Palette, UIJump, UIJumpSegment } from "../global.slint";
 import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
@@ -28,6 +28,10 @@ export component EditorPage inherits VerticalLayout {
     in property <[UIJump]> read_jumps_r;
     in property <[UIJump]> write_jumps_l;
     in property <[UIJump]> write_jumps_r;
+    in property <[UIJumpSegment]> read_jump_segments_l;
+    in property <[UIJumpSegment]> read_jump_segments_r;
+    in property <[UIJumpSegment]> write_jump_segments_l;
+    in property <[UIJumpSegment]> write_jump_segments_r;
 
     VerticalLayout {
         vertical-stretch: 1;

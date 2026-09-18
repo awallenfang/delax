@@ -1,34 +1,46 @@
+use baseview::WindowContext;
 use slint::platform::femtovg_renderer::OpenGLInterface;
 use std::error::Error;
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::num::NonZeroU32;
-use baseview::WindowContext;
 pub(crate) struct SlintOpenGLInterface {
     gl: baseview::gl::GlContext,
 }
 
 impl SlintOpenGLInterface {
-    pub(crate) fn new(window_context: WindowContext, _width: u32, _height: u32) -> Result<Self, String> {
+    pub(crate) fn new(
+        window_context: WindowContext,
+        _width: u32,
+        _height: u32,
+    ) -> Result<Self, String> {
         let gl = window_context.gl_context().unwrap();
         unsafe {
             gl.make_current().map_err(|e| e.to_string())?;
         }
-        Ok(Self {
-            gl
-        })
+        Ok(Self { gl })
     }
 }
 
 unsafe impl OpenGLInterface for SlintOpenGLInterface {
     fn ensure_current(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        unsafe {self.gl.make_current().map_err(|e| Box::<dyn Error + Send + Sync>::from(e.to_string())) }
+        unsafe {
+            self.gl
+                .make_current()
+                .map_err(|e| Box::<dyn Error + Send + Sync>::from(e.to_string()))
+        }
     }
 
     fn swap_buffers(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.gl.swap_buffers().map_err(|e| Box::<dyn Error + Send + Sync>::from(e.to_string()))
+        self.gl
+            .swap_buffers()
+            .map_err(|e| Box::<dyn Error + Send + Sync>::from(e.to_string()))
     }
 
-    fn resize(&self, _width: NonZeroU32, _height: NonZeroU32) -> Result<(), Box<dyn Error + Send + Sync>> {
+    fn resize(
+        &self,
+        _width: NonZeroU32,
+        _height: NonZeroU32,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // self.ctx.borrow().resize(PhysicalSize::new(width.get(), height.get())).expect("Resize failed in gl_interface");
         Ok(())
     }
@@ -37,4 +49,3 @@ unsafe impl OpenGLInterface for SlintOpenGLInterface {
         self.gl.get_proc_address(name)
     }
 }
-

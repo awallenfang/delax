@@ -1,14 +1,17 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
-use baseview::{Event, EventStatus, HandlerError, MouseEvent, ScrollDelta, WindowContext, WindowEvent, WindowHandler, WindowSize};
-use slint::{platform, PlatformError};
-use slint::platform::WindowAdapter;
 use crate::slint_ui::gpu_context::GpuContext;
 use crate::slint_ui::renderer::WgpuRegistry;
 use crate::slint_ui::slint_con::adapter::SlintAdapter;
 use crate::slint_ui::slint_con::platform::global_platform;
+use baseview::{
+    Event, EventStatus, HandlerError, MouseEvent, ScrollDelta, WindowContext, WindowEvent,
+    WindowHandler, WindowSize,
+};
+use slint::platform::WindowAdapter;
 use slint::private_unstable_api::re_exports::ApproxEq;
+use slint::{PlatformError, platform};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) fn map_button(button: baseview::MouseButton) -> Option<platform::PointerEventButton> {
     match button {
@@ -47,8 +50,10 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
 
         platform.set_current(adapter.clone());
 
-        let root = builder().map_err(|e| PlatformError::Other(format!("Failed to build Slint component: {e}")))?;
-        root.show().map_err(|e| PlatformError::Other(format!("Failed to show Slint component: {e}")))?;
+        let root = builder()
+            .map_err(|e| PlatformError::Other(format!("Failed to build Slint component: {e}")))?;
+        root.show()
+            .map_err(|e| PlatformError::Other(format!("Failed to show Slint component: {e}")))?;
 
         let gpu_context = match GpuContext::ensure_initialized() {
             Ok(ctx) => ctx,
@@ -67,7 +72,7 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
         Ok(Self {
             adapter,
             root: RefCell::new(root),
-            last_pos: RefCell::new(slint::LogicalPosition::new(0.,0.)),
+            last_pos: RefCell::new(slint::LogicalPosition::new(0., 0.)),
             wgpu_registry,
             on_event_closure: on_event.clone(),
             on_frame_closure: on_frame.clone(),
@@ -102,7 +107,7 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
         let h = new_size.physical.height;
         let root = self.root.borrow();
         (self.on_resize_closure)(&root, &self.wgpu_registry, w, h);
-        self.adapter.resize(w,h);
+        self.adapter.resize(w, h);
         Ok(())
     }
 
@@ -110,7 +115,8 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
         match event {
             Event::Window(window_event) => match window_event {
                 WindowEvent::WillClose => {
-                    self.adapter.window()
+                    self.adapter
+                        .window()
                         .dispatch_event(platform::WindowEvent::CloseRequested);
                     EventStatus::Captured
                 }
@@ -119,8 +125,11 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
             Event::Mouse(mouse_event) => {
                 let slint_event = match mouse_event {
                     MouseEvent::CursorMoved { position, .. } => {
-                        let log_pos = slint::LogicalPosition::new(position.x as f32, position.y as f32);
-                        if self.last_pos.borrow().x.approx_eq(&log_pos.x) &&  self.last_pos.borrow().y.approx_eq(&log_pos.y) {
+                        let log_pos =
+                            slint::LogicalPosition::new(position.x as f32, position.y as f32);
+                        if self.last_pos.borrow().x.approx_eq(&log_pos.x)
+                            && self.last_pos.borrow().y.approx_eq(&log_pos.y)
+                        {
                             None
                         } else {
                             *self.last_pos.borrow_mut() = log_pos;
