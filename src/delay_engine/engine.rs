@@ -49,52 +49,24 @@ impl DelayEngine {
         }
     }
 
-    /// Outputs a sample and advances the read position in the internal banks.
-    /// Usage:
-    /// ```rs
-    /// let mut engine = DelayEngine::new(44100);
-    /// engine.write_sample(0.5);
-    /// let out = engine.pop_sample();
-    /// assert_eq!(out, 0.5);
-    /// ```
     pub fn pop_sample(&mut self) -> f32 {
         let sample = self.buffer[self.read_head];
-        if let Some(jump) = self.check_jumps(self.read_head, &self.read_jumps) {
-            self.read_head = jump.1;
-        } else {
-            self.read_head += 1;
-        }
-
+        self.step_read_head();
         sample
     }
 
-    /// Interpolate the buffer at the current delay time using the method specified as interpolation mode.
-    pub fn interpolate_sample(&self, interpolation_mode: DelayInterpolationMode) -> f32 {
-        match interpolation_mode {
-            DelayInterpolationMode::Nearest => {
-                let mut index = self.write_head as i32
-                    - ms_to_samples(self.delay_time, self.sample_rate) as i32;
-                index = index.rem_euclid(self.active_len as i32);
-
-                self.buffer[index as usize]
-            }
+    pub fn interpolate_sample(&mut self, interpolation_mode: DelayInterpolationMode) -> f32 {
+        let sample = match interpolation_mode {
+            DelayInterpolationMode::Nearest => self.buffer[self.read_head],
             DelayInterpolationMode::Linear => {
-                let upper_index = (self.write_head as i32
-                    - ms_to_samples(self.delay_time, self.sample_rate) as i32)
-                    .rem_euclid(self.active_len as i32);
-                let lower_index = (upper_index - 1).rem_euclid(self.active_len as i32);
-
-                let lower_sample = self.buffer[lower_index as usize];
-                let upper_sample = self.buffer[upper_index as usize];
-
+                let upper_sample = self.buffer[self.read_head];
+                let lower_sample = self.buffer[self.prev_in_cycle()];
                 let interpolation_factor = ((self.delay_time / 1000.) * self.sample_rate).fract();
-
-                // upper is the sample closest to write_head (least delayed),
-                // lower is one sample older. For integer delay fract==0 we must
-                // return upper to match Nearest.
                 upper_sample * (1. - interpolation_factor) + lower_sample * interpolation_factor
             }
-        }
+        };
+        self.step_read_head();
+        sample
     }
 
     /// Writes a sample into the internal banks and advances the write position in the internal banks.
@@ -152,7 +124,6 @@ impl DelayEngine {
         self.read_head = 0;
     }
 
-    /// Check if there is a jump in the current index. If there is a jump, return it.
     fn check_jumps(&self, index: usize, jumps: &Vec<Jump>) -> Option<Jump> {
         for j in jumps {
             if index == j.0 {
@@ -160,6 +131,23 @@ impl DelayEngine {
             }
         }
         None
+    }
+
+    fn step_read_head(&mut self) {
+        if let Some(jump) = self.check_jumps(self.read_head, &self.read_jumps) {
+            self.read_head = jump.1;
+        } else {
+            self.read_head += 1;
+        }
+    }
+
+    fn prev_in_cycle(&self) -> usize {
+        for j in &self.read_jumps {
+            if j.1 == self.read_head {
+                return j.0;
+            }
+        }
+        (self.read_head + self.active_len - 1) % self.active_len
     }
 
     /// Set the raw read jump vector. This assumes that the vector of jumps is valid and covers the whole buffer.
@@ -295,18 +283,24 @@ mod interpolation_tests {
 
     #[test]
     fn linear_integer_delay_matches_nearest() {
-        let mut e = make_ramp_engine(10, 1000.);
-        e.set_delay_amount(3.);
-        let nearest = e.interpolate_sample(DelayInterpolationMode::Nearest);
-        let linear = e.interpolate_sample(DelayInterpolationMode::Linear);
-        assert_eq!(linear, nearest);
+        let mut a = make_ramp_engine(10, 1000.);
+        let mut b = make_ramp_engine(10, 1000.);
+        a.set_delay_amount(3.);
+        b.set_delay_amount(3.);
+        assert_eq!(
+            a.interpolate_sample(DelayInterpolationMode::Nearest),
+            b.interpolate_sample(DelayInterpolationMode::Linear)
+        );
         let mut e2 = DelayEngine::new(10, 1000.);
+        let mut e3 = DelayEngine::new(10, 1000.);
         for i in 0..5 {
             e2.write_sample(i as f32 * 10.);
+            e3.write_sample(i as f32 * 10.);
         }
         e2.set_delay_amount(2.);
+        e3.set_delay_amount(2.);
         assert_eq!(e2.interpolate_sample(DelayInterpolationMode::Nearest), 30.);
-        assert_eq!(e2.interpolate_sample(DelayInterpolationMode::Linear), 30.);
+        assert_eq!(e3.interpolate_sample(DelayInterpolationMode::Linear), 30.);
     }
 
     #[test]
@@ -374,8 +368,70 @@ mod interpolation_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{DelayEngine, Jump};
+    use super::{DelayEngine, DelayInterpolationMode, Jump};
     use crate::delay_engine::jump_builder::JumpBuilder;
+
+    #[test]
+    fn prev_in_cycle_follows_jumps() {
+        let mut engine = DelayEngine::new(10, 1000.);
+        engine.set_raw_read_jumps(&[Jump(9, 0), Jump(2, 5)]);
+        engine.set_delay_amount(0.);
+        assert_eq!(engine.prev_in_cycle(), 9);
+        for _ in 0..4 {
+            engine.pop_sample();
+        }
+        assert_eq!(engine.read_head(), 6);
+        assert_eq!(engine.prev_in_cycle(), 5);
+    }
+
+    #[test]
+    fn interpolate_nearest_matches_pop_over_shuffled_loop() {
+        let jumps = [Jump(9, 0), Jump(2, 5), Jump(7, 3), Jump(4, 8)];
+        let mut a = DelayEngine::new(10, 44100.);
+        let mut b = DelayEngine::new(10, 44100.);
+        for i in 0..10 {
+            a.write_sample(i as f32);
+            b.write_sample(i as f32);
+        }
+        a.set_raw_read_jumps(&jumps);
+        b.set_raw_read_jumps(&jumps);
+        for _ in 0..20 {
+            assert_eq!(
+                a.interpolate_sample(DelayInterpolationMode::Nearest),
+                b.pop_sample()
+            );
+        }
+    }
+
+    #[test]
+    fn interpolate_linear_matches_nearest_at_integer_delay_with_jumps() {
+        let mut a = DelayEngine::new(10, 1000.);
+        let mut b = DelayEngine::new(10, 1000.);
+        for i in 0..10 {
+            a.write_sample(i as f32);
+            b.write_sample(i as f32);
+        }
+        a.set_raw_read_jumps(&[Jump(9, 0), Jump(4, 5)]);
+        b.set_raw_read_jumps(&[Jump(9, 0), Jump(4, 5)]);
+        a.set_delay_amount(2.);
+        b.set_delay_amount(2.);
+        assert_eq!(
+            a.interpolate_sample(DelayInterpolationMode::Nearest),
+            b.interpolate_sample(DelayInterpolationMode::Linear)
+        );
+    }
+
+    #[test]
+    fn interpolate_linear_blend_across_jump() {
+        let mut engine = DelayEngine::new(10, 1000.);
+        for i in 0..10 {
+            engine.write_sample(i as f32);
+        }
+        engine.set_raw_read_jumps(&[Jump(9, 0), Jump(2, 5), Jump(7, 3), Jump(4, 8)]);
+        engine.set_delay_amount(2.5);
+        let s = engine.interpolate_sample(DelayInterpolationMode::Linear);
+        assert!((s - 6.).abs() < 1e-5);
+    }
 
     #[test]
     fn set_delay_amount_unchanged_keeps_stepping_head() {
