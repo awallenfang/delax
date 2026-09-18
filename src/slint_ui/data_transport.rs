@@ -2,7 +2,7 @@ use nice_plug::prelude::AtomicF32;
 use nice_plug::util::gain_to_db;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crate::delay_engine::jump_builder::{Jump, JumpSegment};
 use crate::slint_ui::uniforms::DecayUniforms;
