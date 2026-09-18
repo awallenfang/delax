@@ -194,7 +194,7 @@ impl DelayEngine {
     }
 
     pub fn write_head(&self) -> usize {
-        return self.write_head
+        return self.write_head;
     }
 
     pub fn read_head(&self) -> usize {
@@ -221,8 +221,6 @@ impl DelayEngine {
         &self.buffer[..self.active_len]
     }
 }
-
-
 
 #[allow(dead_code)]
 pub enum DelayInterpolationMode {
@@ -438,7 +436,7 @@ mod tests {
         for i in 0..12 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3, 2), Jump(5, 9,3)]);
+        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3, 2), Jump(5, 9, 3)]);
         engine.set_delay_amount(0.);
 
         let mut got = Vec::with_capacity(12);
@@ -455,7 +453,7 @@ mod tests {
         for i in 0..12 {
             engine.write_sample(i as f32);
         }
-        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3,2), Jump(5, 9,3)]);
+        engine.set_raw_read_jumps(&[Jump(11, 0, 0), Jump(2, 6, 1), Jump(8, 3, 2), Jump(5, 9, 3)]);
         engine.set_delay_amount(0.);
         for _ in 0..12 {
             engine.set_delay_amount(0.);
@@ -546,7 +544,12 @@ mod tests {
     #[test]
     fn read_jumps() {
         let mut engine = DelayEngine::new(10, 44100.);
-        engine.set_raw_read_jumps(&vec![Jump(9, 0,0), Jump(2, 5,1), Jump(7, 3,2), Jump(4, 8,3)]);
+        engine.set_raw_read_jumps(&vec![
+            Jump(9, 0, 0),
+            Jump(2, 5, 1),
+            Jump(7, 3, 2),
+            Jump(4, 8, 3),
+        ]);
 
         engine.write_sample(1.);
         engine.write_sample(2.);

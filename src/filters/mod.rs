@@ -1,11 +1,10 @@
-
 pub mod dattorro;
 pub mod params;
 pub mod peak_follower;
-pub mod simper;
 pub mod shifter;
+pub mod simper;
 
-pub trait Filter: Send + Sync  {
+pub trait Filter: Send + Sync {
     fn process(&mut self, input: f32) -> f32;
     fn set_param(&mut self, param_id: &'static str, val: f32);
 }

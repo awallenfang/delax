@@ -1,10 +1,10 @@
+use crate::slint_ui::slint_con::gl_interface::SlintOpenGLInterface;
+use baseview::WindowContext;
 use slint::platform::femtovg_renderer::FemtoVGRenderer;
 use slint::platform::{Renderer, WindowAdapter};
 use slint::{PhysicalSize, Window};
 use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
-use baseview::WindowContext;
-use crate::slint_ui::slint_con::gl_interface::SlintOpenGLInterface;
 
 pub struct SlintAdapter {
     window: Window,

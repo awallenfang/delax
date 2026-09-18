@@ -1,10 +1,10 @@
 use nice_plug::util;
 use nice_plug::util::window::hann;
-use rustfft::{Fft, FftPlanner};
 use rustfft::num_complex::Complex32;
+use rustfft::{Fft, FftPlanner};
 
 use crate::slint_ui::data_transport::{
-    DataTransportRx, InputData, EDITOR_VIS_SIZE, UI_BUFFER_SIZE,
+    DataTransportRx, EDITOR_VIS_SIZE, InputData, UI_BUFFER_SIZE,
 };
 use crate::slint_ui::uniforms::{BufferUniforms, DoubleBufferUniforms, SpectrumUniforms};
 
@@ -49,7 +49,7 @@ impl Default for UiVisualState {
             wave_wet: [0.; UI_BUFFER_SIZE],
             wave_pos: 0,
             wave_filled: 0,
-            seen_jump_version: 0
+            seen_jump_version: 0,
         }
     }
 }
@@ -167,13 +167,13 @@ impl UiVisualState {
         }
         while let Ok(chunk) = rx.editor_cons.pop() {
             if cur_l > 0 {
-                let bin = ((chunk.pos_l as usize * EDITOR_VIS_SIZE) / cur_l)
-                    .min(EDITOR_VIS_SIZE - 1);
+                let bin =
+                    ((chunk.pos_l as usize * EDITOR_VIS_SIZE) / cur_l).min(EDITOR_VIS_SIZE - 1);
                 self.editor_l[bin] = chunk.l.clamp(0., 1.);
             }
             if cur_r > 0 {
-                let bin = ((chunk.pos_r as usize * EDITOR_VIS_SIZE) / cur_r)
-                    .min(EDITOR_VIS_SIZE - 1);
+                let bin =
+                    ((chunk.pos_r as usize * EDITOR_VIS_SIZE) / cur_r).min(EDITOR_VIS_SIZE - 1);
                 self.editor_r[bin] = chunk.r.clamp(0., 1.);
             }
         }
@@ -190,12 +190,7 @@ impl UiVisualState {
         };
         let mut levels = [[0.0f32; 4]; EDITOR_VIS_SIZE / 4];
         for i in 0..EDITOR_VIS_SIZE / 4 {
-            levels[i] = [
-                src[i * 4],
-                src[i * 4 + 1],
-                src[i * 4 + 2],
-                src[i * 4 + 3],
-            ];
+            levels[i] = [src[i * 4], src[i * 4 + 1], src[i * 4 + 2], src[i * 4 + 3]];
         }
         Some(BufferUniforms {
             levels,

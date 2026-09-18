@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use nice_plug::prelude::*;
 
-use crate::slint_ui::editor::EditorState;
-use crate::{delay_engine::params::EngineParams, filters::params::SVFParams};
 use crate::filter_pipeline::params::PipelineParams;
 use crate::filters::dattorro::DattorroParams;
 use crate::filters::shifter::ShifterParams;
+use crate::slint_ui::editor::EditorState;
+use crate::{delay_engine::params::EngineParams, filters::params::SVFParams};
 
 #[derive(Params)]
 pub struct DelaxParams {
@@ -24,6 +24,7 @@ pub struct DelaxParams {
     pub wetness: FloatParam,
     #[persist = "editor-state"]
     pub editor_state: Arc<EditorState>,
+    // TODO: Add BufferEditorState seperate of params in here for simplicity
 }
 
 impl Default for DelaxParams {

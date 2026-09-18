@@ -117,7 +117,10 @@ impl Default for DattorroParams {
 impl StereoFilter for DattorroReverb {
     fn process_stereo(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
         let (out_l, out_r) = self.process_stereo(input_l, input_r);
-         (out_l * self.mix + input_l * (1.0 - self.mix), out_r * self.mix + input_r * (1.0 - self.mix))
+        (
+            out_l * self.mix + input_l * (1.0 - self.mix),
+            out_r * self.mix + input_r * (1.0 - self.mix),
+        )
     }
 
     fn set_param(&mut self, param_id: &'static str, val: (f32, f32)) {

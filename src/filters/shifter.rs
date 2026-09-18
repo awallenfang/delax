@@ -79,7 +79,7 @@ impl FrequencyShifter {
             frequency,
             sample_rate,
             hilbert: HilbertTransformer::new(),
-            mix: 1.
+            mix: 1.,
         }
     }
 

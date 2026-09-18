@@ -2,20 +2,34 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use slint::{Model, ModelRc, VecModel};
 
-use crate::delay_engine::jump_builder::Jump;
+use crate::delay_engine::jump_builder::{Jump, JumpSegment};
 use crate::slint_ui::data_transport::{DataTransportRx, InputData};
-use crate::slint_ui::snapshot::{EditorChannel, UiVisualState};
 use crate::slint_ui::elements::ElementId;
 use crate::slint_ui::renderer::WgpuRegistry;
-use crate::slint_ui::{self, EditorData, HeaderData, UIJump};
+use crate::slint_ui::snapshot::{EditorChannel, UiVisualState};
+use crate::slint_ui::{self, EditorData, HeaderData, UIJump, UIJumpSegment};
 
 fn normalize_jumps(jumps: &[Jump], active_len: usize) -> Vec<UIJump> {
-    let len = active_len.max(1)  as f32;
-    jumps.iter().map(|j| UIJump {
-        from: j.0 as f32 / len,
-        to: j.1 as f32 / len,
-        order: j.2 as i32
-    }).collect()
+    let len = active_len.max(1) as f32;
+    jumps
+        .iter()
+        .map(|j| UIJump {
+            from: j.0 as f32 / len,
+            to: j.1 as f32 / len,
+            order: j.2 as i32,
+        })
+        .collect()
+}
+fn normalize_segments(segments: &[JumpSegment], active_len: usize) -> Vec<UIJumpSegment> {
+    let len = active_len.max(1) as f32;
+    segments
+        .iter()
+        .map(|j| UIJumpSegment {
+            start: j.start as f32 / len,
+            end: j.end as f32 / len,
+            order: j.order as i32,
+        })
+        .collect()
 }
 
 pub fn poll_and_present(
@@ -46,6 +60,10 @@ pub fn poll_and_present(
         read_jumps_r: app.get_editor_data().read_jumps_r,
         write_jumps_l: app.get_editor_data().write_jumps_l,
         write_jumps_r: app.get_editor_data().write_jumps_r,
+        read_segments_l: app.get_editor_data().read_segments_l,
+        read_segments_r: app.get_editor_data().read_segments_r,
+        write_segments_l: app.get_editor_data().write_segments_l,
+        write_segments_r: app.get_editor_data().write_segments_r,
     };
     let version = data.jump_version.load(Relaxed);
     if version != visual.seen_jump_version {
@@ -64,6 +82,22 @@ pub fn poll_and_present(
         }
         if let Ok(j) = data.write_jumps_r.lock() {
             editor.write_jumps_r = push_model(editor.write_jumps_r, normalize_jumps(&j, len_r));
+        }
+        if let Ok(j) = data.read_segments_l.lock() {
+            editor.read_segments_l =
+                push_model(editor.read_segments_l, normalize_segments(&j, len_l));
+        }
+        if let Ok(j) = data.read_segments_r.lock() {
+            editor.read_segments_r =
+                push_model(editor.read_segments_r, normalize_segments(&j, len_r));
+        }
+        if let Ok(j) = data.write_segments_l.lock() {
+            editor.write_segments_l =
+                push_model(editor.write_segments_l, normalize_segments(&j, len_l));
+        }
+        if let Ok(j) = data.write_segments_r.lock() {
+            editor.write_segments_r =
+                push_model(editor.write_segments_r, normalize_segments(&j, len_r));
         }
     }
 

@@ -55,22 +55,19 @@ impl WGPURenderer {
             mapped_at_creation: false,
         });
 
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: None,
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: std::num::NonZeroU64::new(
-                            spec.uniform_size.max(16) as u64,
-                        ),
-                    },
-                    count: None,
-                }],
-            });
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: std::num::NonZeroU64::new(spec.uniform_size.max(16) as u64),
+                },
+                count: None,
+            }],
+        });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -159,7 +156,9 @@ impl WGPURenderer {
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
-            let view = self.texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let view = self
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
             let mut renderpass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -226,11 +225,9 @@ impl WGPURenderer {
 
         let mapped = std::sync::Arc::new(AtomicBool::new(false));
         let mapped_cb = mapped.clone();
-        buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |_| {
-                mapped_cb.store(true, Ordering::SeqCst);
-            });
+        buffer.slice(..).map_async(wgpu::MapMode::Read, move |_| {
+            mapped_cb.store(true, Ordering::SeqCst);
+        });
         if self
             .device
             .poll(wgpu::PollType::wait_indefinitely())
@@ -281,7 +278,7 @@ pub struct WgpuRegistry {
     ctx: std::sync::Arc<GpuContext>,
     specs: HashMap<ElementId, ElementSpec>,
     renderers: HashMap<ElementId, WGPURenderer>,
-    render_cache: HashMap<ElementId, Vec<u8>>
+    render_cache: HashMap<ElementId, Vec<u8>>,
 }
 
 impl WgpuRegistry {
@@ -290,7 +287,7 @@ impl WgpuRegistry {
             ctx,
             specs: HashMap::new(),
             renderers: HashMap::new(),
-            render_cache: HashMap::new()
+            render_cache: HashMap::new(),
         }
     }
 
@@ -335,8 +332,8 @@ impl WgpuRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slint_ui::elements::{SPECTRUM_SHADER, DECAY_SHADER, BUFFER_SHADER};
-    use crate::slint_ui::uniforms::{SpectrumUniforms, DecayUniforms, BufferUniforms};
+    use crate::slint_ui::elements::{BUFFER_SHADER, DECAY_SHADER, SPECTRUM_SHADER};
+    use crate::slint_ui::uniforms::{BufferUniforms, DecayUniforms, SpectrumUniforms};
 
     #[test]
     fn render_yellow_square_to_slint_image() {
@@ -346,13 +343,8 @@ mod tests {
             uniform_size: std::mem::size_of::<SpectrumUniforms>() as u32,
         };
 
-        let mut renderer = WGPURenderer::with_device_queue(
-            ctx.device.clone(),
-            ctx.queue.clone(),
-            &spec,
-            100,
-            40,
-        );
+        let mut renderer =
+            WGPURenderer::with_device_queue(ctx.device.clone(), ctx.queue.clone(), &spec, 100, 40);
 
         // Flat zero levels: everything is background, which stays transparent
         // so the image can overlay Slint UI.
@@ -361,7 +353,9 @@ mod tests {
             primary_col: [1.0, 1.0, 0.0, 1.0],
         };
         renderer.render(100, 40, bytemuck::bytes_of(&uniforms));
-        let img = renderer.to_image().expect("render + readback should succeed");
+        let img = renderer
+            .to_image()
+            .expect("render + readback should succeed");
 
         let pixel_buffer = img.to_rgba8().expect("expected a shared (CPU) image back");
 
@@ -375,7 +369,9 @@ mod tests {
             primary_col: [1.0, 1.0, 0.0, 1.0],
         };
         renderer.render(100, 40, bytemuck::bytes_of(&uniforms));
-        let img = renderer.to_image().expect("render + readback should succeed");
+        let img = renderer
+            .to_image()
+            .expect("render + readback should succeed");
         let pixel_buffer = img.to_rgba8().expect("expected a shared (CPU) image back");
         let data = pixel_buffer.as_bytes();
         let bar_idx = (20 * 100 + 1) * 4;
@@ -409,7 +405,11 @@ mod tests {
 
         let pixel_buffer = img.to_rgba8().unwrap();
         assert_eq!((pixel_buffer.width(), pixel_buffer.height()), (100, 40));
-        assert_eq!(&pixel_buffer.as_bytes()[0..4], &[0, 255, 0, 0], "green pixel");
+        assert_eq!(
+            &pixel_buffer.as_bytes()[0..4],
+            &[0, 255, 0, 0],
+            "green pixel"
+        );
     }
 
     #[test]

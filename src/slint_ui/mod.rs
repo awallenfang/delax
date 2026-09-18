@@ -1,23 +1,23 @@
-pub mod param_component;
+mod baseview_con;
 pub mod data_transport;
-pub mod snapshot;
-pub mod present;
+pub mod editor;
 pub mod elements;
 pub mod gpu_context;
-pub mod renderer;
-pub mod uniforms;
-mod baseview_con;
-mod slint_con;
+pub mod param_component;
 pub mod plug_con;
-pub mod editor;
+pub mod present;
+pub mod renderer;
+mod slint_con;
+pub mod snapshot;
+pub mod uniforms;
 
+use crate::slint_ui::editor::UiEvent;
 use crate::slint_ui::param_component::ParamComponent;
 use nice_plug::params::Params;
-use slint::SharedString;
 use slint::Model;
+use slint::SharedString;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
-use crate::slint_ui::editor::UiEvent;
 
 slint::include_modules!();
 
@@ -98,8 +98,7 @@ where
         {
             let tx_order = tx.clone();
             self.on_effect_order_changed(move |order| {
-                let order: Vec<String> =
-                    order.iter().map(|s| s.to_string()).collect();
+                let order: Vec<String> = order.iter().map(|s| s.to_string()).collect();
                 let _ = tx_order.send(UiEvent::SetEffectOrder { order });
             });
         }

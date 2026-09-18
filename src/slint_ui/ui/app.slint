@@ -10,7 +10,7 @@ import {
 import { ParamKnob } from "components/param_knob.slint";
 import { ParamBus } from "events.slint";
 import { ParamSwitch } from "components/param_switch.slint";
-import { Palette, UIJump } from "./global.slint";
+import { Palette, UIJump, UIJumpSegment } from "./global.slint";
 import { PeakMeter } from "components/peak_meter.slint";
 import { SpectrumAnalyzer } from "components/spectrum_analyzer.slint";
 import { Button } from "components/button.slint";
@@ -51,6 +51,10 @@ export struct EditorData {
     read_jumps_r: [UIJump],
     write_jumps_l: [UIJump],
     write_jumps_r: [UIJump], 
+    read_segments_l: [UIJumpSegment],
+    read_segments_r: [UIJumpSegment],
+    write_segments_l: [UIJumpSegment],
+    write_segments_r: [UIJumpSegment], 
 }
 
 export struct Textures {

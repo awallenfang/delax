@@ -1,25 +1,25 @@
 use crate::params::DelaxParams;
 use crate::slint_ui;
 use crate::slint_ui::data_transport::{DataTransportRx, InputData};
-use crate::slint_ui::snapshot::UiVisualState;
-use crate::slint_ui::present;
 use crate::slint_ui::param_component::ParamComponent;
+use crate::slint_ui::param_store;
 use crate::slint_ui::plug_con::host::SlintHost;
+use crate::slint_ui::present;
 use crate::slint_ui::renderer::WgpuRegistry;
+use crate::slint_ui::snapshot::UiVisualState;
 use baseview::dpi::PhysicalSize;
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{Receiver, Sender, unbounded};
 use nice_plug::context::gui::GuiContext;
 use nice_plug::params::Params;
 use nice_plug::params::persist::PersistentField;
+use nice_plug::prelude::ParamPtr;
 use serde::{Deserialize, Serialize};
+use slint::private_unstable_api::re_exports::ApproxEq;
 use slint::{PlatformError, SharedString};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use nice_plug::prelude::ParamPtr;
-use crate::slint_ui::param_store;
-use slint::private_unstable_api::re_exports::ApproxEq;
 
 pub enum UiEvent {
     ParamChanged {
@@ -108,17 +108,22 @@ impl DelaxSlintHost {
         effect_order: Arc<std::sync::RwLock<Vec<String>>>,
     ) -> Self {
         let (event_tx, event_rx) = unbounded();
-        let param_index = params.param_map().into_iter().map(|(id, ptr, _)| (id, ptr)).collect();
+        let param_index = params
+            .param_map()
+            .into_iter()
+            .map(|(id, ptr, _)| (id, ptr))
+            .collect();
 
         // Build param cache once on creation
         for (p_id, param_ptr, _) in params.param_map().iter() {
             let val = unsafe { param_ptr.unmodulated_normalized_value() };
             let display_val =
-                unsafe {
-                    SharedString::from(param_ptr.normalized_value_to_string(val, true))
-                };
+                unsafe { SharedString::from(param_ptr.normalized_value_to_string(val, true)) };
 
-            param_store().write().unwrap().insert(p_id.clone(), (val, display_val));
+            param_store()
+                .write()
+                .unwrap()
+                .insert(p_id.clone(), (val, display_val));
         }
         Self {
             params,
@@ -144,9 +149,7 @@ impl DelaxSlintHost {
             let cached = param_store().read().unwrap().get(p_id).cloned();
             let display_val = match cached {
                 Some((cache_val, cache_display)) if cache_val.approx_eq(&val) => cache_display,
-                _ => unsafe {
-                    SharedString::from(param_ptr.normalized_value_to_string(val, true))
-                }
+                _ => unsafe { SharedString::from(param_ptr.normalized_value_to_string(val, true)) },
             };
             <slint_ui::AppWindow as ParamComponent<DelaxParams>>::set_param_from_host(
                 app,
@@ -187,7 +190,11 @@ impl DelaxSlintHost {
         app.set_timing_factor_r(factor_r);
     }
 
-    fn render_vis(&self, app: &<DelaxSlintHost as SlintHost>::Component, wgpu: &RefCell<WgpuRegistry>) {
+    fn render_vis(
+        &self,
+        app: &<DelaxSlintHost as SlintHost>::Component,
+        wgpu: &RefCell<WgpuRegistry>,
+    ) {
         let Ok(ui) = self.ui.lock() else { return };
         let mut registry = wgpu.borrow_mut();
         present::render_all(&self.data, &ui.visual, app, &mut registry);

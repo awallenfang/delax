@@ -16,25 +16,18 @@ impl GpuContext {
             ..wgpu::InstanceDescriptor::new_without_display_handle_from_env()
         });
 
-        let adapter = pollster::block_on(instance.request_adapter(
-            &wgpu::RequestAdapterOptions::default(),
-        ))
-        .map_err(|e| {
-            format!(
-                "wgpu could not find any Vulkan adapter: {e}."
-            )
-        })?;
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .map_err(|e| format!("wgpu could not find any Vulkan adapter: {e}."))?;
 
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                memory_hints: wgpu::MemoryHints::default(),
-                required_limits: wgpu::Limits::default(),
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                trace: wgpu::Trace::Off,
-            },
-        ))
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: None,
+            required_features: wgpu::Features::empty(),
+            memory_hints: wgpu::MemoryHints::default(),
+            required_limits: wgpu::Limits::default(),
+            experimental_features: wgpu::ExperimentalFeatures::default(),
+            trace: wgpu::Trace::Off,
+        }))
         .map_err(|e| format!("wgpu: request_device failed: {e:?}"))?;
 
         Ok(Self {

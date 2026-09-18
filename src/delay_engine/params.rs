@@ -6,7 +6,7 @@ use crate::delay_engine::engine::MAX_DELAY_SECS;
 pub enum DelayMode {
     Mono,
     Stereo,
-    PingPong
+    PingPong,
 }
 
 #[derive(Enum, PartialEq, Clone, Copy)]

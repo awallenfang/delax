@@ -1,5 +1,5 @@
-use bytemuck::{Pod, Zeroable};
 use crate::slint_ui::data_transport::{EDITOR_VIS_SIZE, UI_BUFFER_SIZE};
+use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
@@ -34,4 +34,3 @@ pub struct DecayUniforms {
     pub color_secondary: [f32; 4],
     pub grid: [f32; 4],
 }
-

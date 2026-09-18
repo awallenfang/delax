@@ -1,7 +1,8 @@
-use crate::delay_engine::jump_builder::JumpBuilder;
-use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
 use crate::delay_engine::delay_time_from_bpm_and_16th;
+use crate::delay_engine::jump_builder::JumpBuilder;
 use crate::filter_pipeline::pipeline::FilterPipeline;
+use crate::filters::dattorro::DattorroReverb;
+use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
 use crate::slint_ui::editor::DelaxSlintHost;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
@@ -13,17 +14,15 @@ use filters::simper::SimperSinSVF;
 use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
 use slint_ui::data_transport::{
-    self, DataTransportTx, EditorChunk, InputData, UiBlock, EDITOR_CHUNK_SAMPLES,
+    self, DataTransportTx, EDITOR_CHUNK_SAMPLES, EditorChunk, InputData, UiBlock,
 };
 use std::sync::{Arc, RwLock};
-use crate::filters::dattorro::DattorroReverb;
 
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
 mod params;
 mod slint_ui;
-
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -72,8 +71,10 @@ impl Default for Delax {
             "shimmer",
         );
         filter_pipeline.register_stereo(
-            Box::new(DattorroReverb::new(0.5, 44100., 0.2, 0.0, 0.7, 0.8, 0.65, 0.8, 8., 1.1)),
-            "diffusor"
+            Box::new(DattorroReverb::new(
+                0.5, 44100., 0.2, 0.0, 0.7, 0.8, 0.65, 0.8, 8., 1.1,
+            )),
+            "diffusor",
         );
 
         let (transport_tx, _dropped_rx) = data_transport::channel();
@@ -116,8 +117,6 @@ impl Default for Delax {
         }
     }
 }
-
-
 
 impl Plugin for Delax {
     const NAME: &'static str = "Delax";
@@ -201,18 +200,31 @@ impl Plugin for Delax {
 
         // Re-apply persisted effective lengths (secs -> samples) so a saved
         // session / sample-rate change keeps the Editor setting.
-        let active_l =
-            (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
-        let active_r =
-            (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
+        let active_l = (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
+        let active_r = (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
         left_delay_engine.set_active_len(active_l);
         right_delay_engine.set_active_len(active_r);
-        let jumps_l = JumpBuilder::split_evenly(active_l, 8).shuffle().build();
-        let jumps_r = JumpBuilder::split_evenly(active_r, 8).shuffle().build();
-        left_delay_engine.set_raw_read_jumps(&jumps_l);
-        right_delay_engine.set_raw_read_jumps(&jumps_r);
+        let builder_read_l = JumpBuilder::split_evenly(active_l, 8).shuffle_seeded(123);
+        let builder_read_r = JumpBuilder::split_evenly(active_r, 8).shuffle_seeded(123);
+        let builder_write_l = JumpBuilder::split_evenly(active_l, 8);
+        let builder_write_r = JumpBuilder::split_evenly(active_r, 8);
+        left_delay_engine.set_raw_read_jumps(&builder_read_l.build());
+        right_delay_engine.set_raw_read_jumps(&builder_read_r.build());
+        left_delay_engine.set_raw_write_jumps(&builder_write_l.build());
+        right_delay_engine.set_raw_write_jumps(&builder_write_r.build());
 
-        self.input_data.publish_jumps(jumps_l.clone(), jumps_r.clone(), jumps_l, jumps_r);
+        self.input_data.publish_jumps(
+            builder_read_l.build(),
+            builder_read_r.build(),
+            builder_write_l.build(),
+            builder_write_r.build(),
+        );
+        self.input_data.publish_segments(
+            builder_read_l.segments(),
+            builder_read_r.segments(),
+            builder_write_l.segments(),
+            builder_write_r.segments(),
+        );
 
         self.left_delay_engine = left_delay_engine;
         self.right_delay_engine = right_delay_engine;
@@ -300,8 +312,7 @@ impl Plugin for Delax {
             let pop_right = self
                 .right_delay_engine
                 .interpolate_sample(DelayInterpolationMode::Nearest);
-            let (pop_left, pop_right) =
-                self.run_bank_filters(pop_left, pop_right);
+            let (pop_left, pop_right) = self.run_bank_filters(pop_left, pop_right);
             // ####### Feedback loop #########
             // The feedback values, used for the feedback loop.
             let feedbacked_left;
@@ -384,8 +395,7 @@ impl Plugin for Delax {
                 out_l: meter_out_l,
                 out_r: meter_out_r,
                 wetness: last_wetness,
-                read_head_l: self.left_delay_engine.read_head() as f32
-                    / active_len_l.max(1) as f32,
+                read_head_l: self.left_delay_engine.read_head() as f32 / active_len_l.max(1) as f32,
                 read_head_r: self.right_delay_engine.read_head() as f32
                     / active_len_r.max(1) as f32,
                 write_head_l: self.left_delay_engine.write_head() as f32
@@ -486,17 +496,28 @@ impl Delax {
                 pending.clamped_r = clamped;
                 if l_changed || r_changed {
                     self.input_data.publish_jumps(
-                        self.left_delay_engine.read_jumps(), 
-                        self.right_delay_engine.read_jumps(), 
-                        self.left_delay_engine.write_jumps(), 
-                        self.right_delay_engine.write_jumps());
+                        self.left_delay_engine.read_jumps(),
+                        self.right_delay_engine.read_jumps(),
+                        self.left_delay_engine.write_jumps(),
+                        self.right_delay_engine.write_jumps(),
+                    );
                 }
 
                 self.decay_time_s_l = delay_clamped / 1000.;
                 self.decay_time_s_r = delay_clamped / 1000.;
 
-                let cutoff_low_l = self.params.svf_params.input_svf_cutoff_low_l.smoothed.next();
-                let cutoff_high_l = self.params.svf_params.input_svf_cutoff_high_l.smoothed.next();
+                let cutoff_low_l = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_low_l
+                    .smoothed
+                    .next();
+                let cutoff_high_l = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_high_l
+                    .smoothed
+                    .next();
                 self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
                 self.input_sin_svf_low_r.set_cutoff(cutoff_low_l);
                 self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
@@ -535,10 +556,11 @@ impl Delax {
                 let r_changed = set_engine_len(&mut self.right_delay_engine, desired_r);
                 if l_changed || r_changed {
                     self.input_data.publish_jumps(
-                        self.left_delay_engine.read_jumps(), 
-                        self.right_delay_engine.read_jumps(), 
-                        self.left_delay_engine.write_jumps(), 
-                        self.right_delay_engine.write_jumps());
+                        self.left_delay_engine.read_jumps(),
+                        self.right_delay_engine.read_jumps(),
+                        self.left_delay_engine.write_jumps(),
+                        self.right_delay_engine.write_jumps(),
+                    );
                 }
                 let max_ms_l = self.left_delay_engine.max_delay_ms();
                 let max_ms_r = self.right_delay_engine.max_delay_ms();
@@ -554,10 +576,30 @@ impl Delax {
                 self.decay_time_s_l = delay_clamped_l / 1000.;
                 self.decay_time_s_r = delay_clamped_r / 1000.;
 
-                let cutoff_low_l = self.params.svf_params.input_svf_cutoff_low_l.smoothed.next();
-                let cutoff_high_l = self.params.svf_params.input_svf_cutoff_high_l.smoothed.next();
-                let cutoff_low_r = self.params.svf_params.input_svf_cutoff_low_r.smoothed.next();
-                let cutoff_high_r = self.params.svf_params.input_svf_cutoff_high_r.smoothed.next();
+                let cutoff_low_l = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_low_l
+                    .smoothed
+                    .next();
+                let cutoff_high_l = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_high_l
+                    .smoothed
+                    .next();
+                let cutoff_low_r = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_low_r
+                    .smoothed
+                    .next();
+                let cutoff_high_r = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_high_r
+                    .smoothed
+                    .next();
                 self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
                 self.input_sin_svf_low_r.set_cutoff(cutoff_low_r);
                 self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
@@ -574,28 +616,39 @@ impl Delax {
         let dattorro_input_smear = self.params.dattorro_params.input_smear.smoothed.next();
         let dattorro_tank_smear = self.params.dattorro_params.tank_smear.smoothed.next();
 
-        self.filter_pipeline.set_param("diffusor", "mix", dattorro_mix);
-        self.filter_pipeline.set_param("diffusor", "size", dattorro_size);
-        self.filter_pipeline.set_param("diffusor", "decay", dattorro_decay);
-        self.filter_pipeline.set_param("diffusor", "pre_delay", dattorro_pre_delay);
-        self.filter_pipeline.set_param("diffusor", "damping", dattorro_damping);
-        self.filter_pipeline.set_param("diffusor", "brightness", dattorro_brightness);
-        self.filter_pipeline.set_param("diffusor", "lushness", dattorro_lushness);
-        self.filter_pipeline.set_param("diffusor", "input_smear", dattorro_input_smear);
-        self.filter_pipeline.set_param("diffusor", "tank_smear", dattorro_tank_smear);
+        self.filter_pipeline
+            .set_param("diffusor", "mix", dattorro_mix);
+        self.filter_pipeline
+            .set_param("diffusor", "size", dattorro_size);
+        self.filter_pipeline
+            .set_param("diffusor", "decay", dattorro_decay);
+        self.filter_pipeline
+            .set_param("diffusor", "pre_delay", dattorro_pre_delay);
+        self.filter_pipeline
+            .set_param("diffusor", "damping", dattorro_damping);
+        self.filter_pipeline
+            .set_param("diffusor", "brightness", dattorro_brightness);
+        self.filter_pipeline
+            .set_param("diffusor", "lushness", dattorro_lushness);
+        self.filter_pipeline
+            .set_param("diffusor", "input_smear", dattorro_input_smear);
+        self.filter_pipeline
+            .set_param("diffusor", "tank_smear", dattorro_tank_smear);
         match self.params.svf_params.svf_stereo_mode.value() {
             filters::params::SVFStereoMode::Mono => {
                 // `smoothed.next()` once for mono – keeps L/R smoothers in sync.
                 let res = self.params.svf_params.svf_res_l.smoothed.next();
                 let cutoff = self.params.svf_params.svf_cutoff_l.smoothed.next();
-                let mode = self.params.svf_params.svf_filter_mode_l.modulated_normalized_value();
+                let mode = self
+                    .params
+                    .svf_params
+                    .svf_filter_mode_l
+                    .modulated_normalized_value();
                 let mix = self.params.svf_params.svf_mix_l.value();
                 self.filter_pipeline.set_param("filter", "res", res);
-                self.filter_pipeline
-                    .set_param("filter", "cutoff", cutoff);
+                self.filter_pipeline.set_param("filter", "cutoff", cutoff);
                 self.filter_pipeline.set_param("filter", "mix", mix);
                 self.filter_pipeline.set_param("filter", "mode", mode);
-
             }
             filters::params::SVFStereoMode::Stereo => {
                 let res_l = self.params.svf_params.svf_res_l.smoothed.next();
@@ -604,8 +657,16 @@ impl Delax {
                 let cutoff_r = self.params.svf_params.svf_cutoff_r.smoothed.next();
                 let mix_l = self.params.svf_params.svf_mix_l.smoothed.next();
                 let mix_r = self.params.svf_params.svf_mix_r.smoothed.next();
-                let mode_l = self.params.svf_params.svf_filter_mode_l.modulated_normalized_value();
-                let mode_r = self.params.svf_params.svf_filter_mode_r.modulated_normalized_value();
+                let mode_l = self
+                    .params
+                    .svf_params
+                    .svf_filter_mode_l
+                    .modulated_normalized_value();
+                let mode_r = self
+                    .params
+                    .svf_params
+                    .svf_filter_mode_r
+                    .modulated_normalized_value();
                 self.filter_pipeline
                     .set_param_stereo("filter", "res", (res_l, res_r));
                 self.filter_pipeline
@@ -614,18 +675,25 @@ impl Delax {
                     .set_param_stereo("filter", "mix", (mix_l, mix_r));
                 self.filter_pipeline
                     .set_param_stereo("filter", "mode", (mode_l, mode_r));
-
             }
         }
-        self.filter_pipeline.set_active("filter", self.params.pipeline_params.eq_active.value());
-        self.filter_pipeline.set_active("diffusor", self.params.pipeline_params.diffusor_active.value());
-        self.filter_pipeline.set_active("shimmer", self.params.pipeline_params.shimmer_active.value());
+        self.filter_pipeline
+            .set_active("filter", self.params.pipeline_params.eq_active.value());
+        self.filter_pipeline.set_active(
+            "diffusor",
+            self.params.pipeline_params.diffusor_active.value(),
+        );
+        self.filter_pipeline.set_active(
+            "shimmer",
+            self.params.pipeline_params.shimmer_active.value(),
+        );
 
         if self.params.shimmer_params.shimmer_stereo.value() {
             let shift_l = self.params.shimmer_params.shift_l.value();
             let shift_r = self.params.shimmer_params.shift_r.value();
 
-            self.filter_pipeline.set_param_stereo("shimmer", "shift", (shift_l, shift_r));
+            self.filter_pipeline
+                .set_param_stereo("shimmer", "shift", (shift_l, shift_r));
         } else {
             let shift_l = self.params.shimmer_params.shift_l.value();
 
@@ -641,8 +709,14 @@ impl Delax {
     /// Run the filter chain on the input signal. This can probably be refactored out down the line. But for now it doesn't work correctly without
     fn run_input_filters(&mut self, input_l: f32, input_r: f32) -> (f32, f32) {
         use filters::Filter;
-        let (l,r)  = (self.input_sin_svf_high_l.process(input_l), self.input_sin_svf_high_r.process(input_r));
-        let (l,r)  = (self.input_sin_svf_low_l.process(l), self.input_sin_svf_low_r.process(r));
+        let (l, r) = (
+            self.input_sin_svf_high_l.process(input_l),
+            self.input_sin_svf_high_r.process(input_r),
+        );
+        let (l, r) = (
+            self.input_sin_svf_low_l.process(l),
+            self.input_sin_svf_low_r.process(r),
+        );
         (l, r)
     }
 
