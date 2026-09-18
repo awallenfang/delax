@@ -1,10 +1,9 @@
-use nice_plug::prelude::AtomicF32;
 use nice_plug::util::gain_to_db;
 use std::sync::Mutex;
-use std::sync::atomic::Ordering::Relaxed;
-use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 use crate::delay_engine::jump_builder::{Jump, JumpSegment};
+use crate::slint_ui::channels::{Channels, Heads};
 use crate::slint_ui::uniforms::DecayUniforms;
 
 pub const SPECTRUM_RING_SIZE: usize = 1024;
@@ -131,244 +130,205 @@ impl DataTransportTx {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct UiBlock {
-    pub in_l: f32,
-    pub in_r: f32,
-    pub out_l: f32,
-    pub out_r: f32,
-    pub wetness: f32,
-    pub read_head_l: f32,
-    pub read_head_r: f32,
-    pub write_head_l: f32,
-    pub write_head_r: f32,
-    pub feedback_l: f32,
-    pub feedback_r: f32,
-    pub time_s_l: f32,
-    pub time_s_r: f32,
+#[derive(Debug, Clone, PartialEq)]
+pub struct UiFrame {
+    pub meters_in: Channels<f32>,
+    pub meters_out: Channels<f32>,
+    pub heads: Channels<Heads>,
+    pub feedback: Channels<f32>,
+    pub decay: Channels<f32>,
     pub bpm: f32,
-    pub is_stereo: bool,
-    pub is_ping_pong: bool,
-    pub bpm_bound_l: bool,
-    pub bpm_bound_r: bool,
-    pub clamped_l: bool,
-    pub clamped_r: bool,
-    pub active_len_l: usize,
-    pub active_len_r: usize,
+    pub clamped: Channels<bool>,
+    pub active_len: Channels<usize>,
 }
 
-pub struct JumpState {
-    pub read_l: Vec<Jump>,
-    pub read_r: Vec<Jump>,
-    pub write_l: Vec<Jump>,
-    pub write_r: Vec<Jump>,
-    pub read_segments_l: Vec<JumpSegment>,
-    pub read_segments_r: Vec<JumpSegment>,
-    pub write_segments_l: Vec<JumpSegment>,
-    pub write_segments_r: Vec<JumpSegment>,
-}
-
-pub struct InputData {
-    pub in_l: AtomicF32,
-    pub in_r: AtomicF32,
-    pub out_l: AtomicF32,
-    pub out_r: AtomicF32,
-    pub bpm: AtomicF32,
-    pub wetness: AtomicF32,
-
-    pub read_head_l: AtomicF32,
-    pub read_head_r: AtomicF32,
-    pub write_head_l: AtomicF32,
-    pub write_head_r: AtomicF32,
-
-    pub feedback_l: AtomicF32,
-    pub feedback_r: AtomicF32,
-    pub time_s_l: AtomicF32,
-    pub time_s_r: AtomicF32,
-    pub is_stereo: AtomicU8,
-    pub is_ping_pong: AtomicU8,
-    pub bpm_bound_l: AtomicU8,
-    pub bpm_bound_r: AtomicU8,
-    pub clamped_l: AtomicU8,
-    pub clamped_r: AtomicU8,
-
-    pub active_len_l: AtomicUsize,
-    pub active_len_r: AtomicUsize,
-
-    pub read_jumps_l: Mutex<Vec<Jump>>,
-    pub read_jumps_r: Mutex<Vec<Jump>>,
-    pub write_jumps_l: Mutex<Vec<Jump>>,
-    pub write_jumps_r: Mutex<Vec<Jump>>,
-
-    pub read_segments_l: Mutex<Vec<JumpSegment>>,
-    pub read_segments_r: Mutex<Vec<JumpSegment>>,
-    pub write_segments_l: Mutex<Vec<JumpSegment>>,
-    pub write_segments_r: Mutex<Vec<JumpSegment>>,
-
-    pub jump_version: AtomicU64,
-}
-
-impl Default for InputData {
+impl Default for UiFrame {
     fn default() -> Self {
         Self {
-            in_l: AtomicF32::new(0.),
-            in_r: AtomicF32::new(0.),
-            out_l: AtomicF32::new(0.),
-            out_r: AtomicF32::new(0.),
-            bpm: AtomicF32::new(120.),
-            active_len_l: AtomicUsize::new(0),
-            active_len_r: AtomicUsize::new(0),
-            wetness: AtomicF32::new(0.5),
-            feedback_l: AtomicF32::new(0.5),
-            feedback_r: AtomicF32::new(0.5),
-            time_s_l: AtomicF32::new(0.5),
-            time_s_r: AtomicF32::new(0.5),
-            is_stereo: AtomicU8::new(0),
-            is_ping_pong: AtomicU8::new(0),
-            bpm_bound_l: AtomicU8::new(0),
-            bpm_bound_r: AtomicU8::new(0),
-            clamped_l: AtomicU8::new(0),
-            clamped_r: AtomicU8::new(0),
-            read_head_l: AtomicF32::new(0.),
-            read_head_r: AtomicF32::new(0.),
-            write_head_l: AtomicF32::new(0.),
-            write_head_r: AtomicF32::new(0.),
-            read_jumps_l: Mutex::new(vec![]),
-            read_jumps_r: Mutex::new(vec![]),
-            write_jumps_l: Mutex::new(vec![]),
-            write_jumps_r: Mutex::new(vec![]),
-            read_segments_l: Mutex::new(vec![]),
-            read_segments_r: Mutex::new(vec![]),
-            write_segments_l: Mutex::new(vec![]),
-            write_segments_r: Mutex::new(vec![]),
-            jump_version: AtomicU64::new(0),
+            meters_in: Channels::default(),
+            meters_out: Channels::default(),
+            heads: Channels::default(),
+            feedback: Channels::default(),
+            decay: Channels::default(),
+            bpm: 120.,
+            clamped: Channels::default(),
+            active_len: Channels::default(),
         }
     }
 }
 
-impl InputData {
-    pub fn publish_block(&self, b: &UiBlock) {
-        self.in_l.store(b.in_l, Relaxed);
-        self.in_r.store(b.in_r, Relaxed);
-        self.out_l.store(b.out_l, Relaxed);
-        self.out_r.store(b.out_r, Relaxed);
-        self.wetness.store(b.wetness, Relaxed);
-        self.read_head_l.store(b.read_head_l, Relaxed);
-        self.read_head_r.store(b.read_head_r, Relaxed);
-        self.write_head_l.store(b.write_head_l, Relaxed);
-        self.write_head_r.store(b.write_head_r, Relaxed);
-        self.feedback_l.store(b.feedback_l, Relaxed);
-        self.feedback_r.store(b.feedback_r, Relaxed);
-        self.time_s_l.store(b.time_s_l, Relaxed);
-        self.time_s_r.store(b.time_s_r, Relaxed);
-        self.bpm.store(b.bpm, Relaxed);
-        self.is_stereo.store(b.is_stereo as u8, Relaxed);
-        self.is_ping_pong.store(b.is_ping_pong as u8, Relaxed);
-        self.bpm_bound_l.store(b.bpm_bound_l as u8, Relaxed);
-        self.bpm_bound_r.store(b.bpm_bound_r as u8, Relaxed);
-        self.clamped_l.store(b.clamped_l as u8, Relaxed);
-        self.clamped_r.store(b.clamped_r as u8, Relaxed);
-        self.active_len_l.store(b.active_len_l, Relaxed);
-        self.active_len_r.store(b.active_len_r, Relaxed);
+pub fn ui_block_channel() -> (
+    triple_buffer::Input<UiFrame>,
+    triple_buffer::Output<UiFrame>,
+) {
+    triple_buffer::TripleBuffer::new(&UiFrame::default()).split()
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct JumpChannelState {
+    pub read: Vec<Jump>,
+    pub write: Vec<Jump>,
+    pub read_segments: Vec<JumpSegment>,
+    pub write_segments: Vec<JumpSegment>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct JumpState {
+    pub channels: Channels<JumpChannelState>,
+}
+
+pub struct JumpCache {
+    read_jumps: Channels<Mutex<Vec<Jump>>>,
+    write_jumps: Channels<Mutex<Vec<Jump>>>,
+    read_segments: Channels<Mutex<Vec<JumpSegment>>>,
+    write_segments: Channels<Mutex<Vec<JumpSegment>>>,
+    version: AtomicU64,
+}
+
+impl Default for JumpCache {
+    fn default() -> Self {
+        Self {
+            read_jumps: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
+            write_jumps: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
+            read_segments: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
+            write_segments: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
+            version: AtomicU64::new(0),
+        }
+    }
+}
+
+impl JumpCache {
+    pub fn publish(&self, state: JumpState) {
+        for ch in [BufferChannel::Left, BufferChannel::Right] {
+            let s = state.channels.get(ch);
+            if let Ok(mut g) = self.read_jumps.get(ch).lock() {
+                *g = s.read.clone();
+            }
+            if let Ok(mut g) = self.write_jumps.get(ch).lock() {
+                *g = s.write.clone();
+            }
+            if let Ok(mut g) = self.read_segments.get(ch).lock() {
+                *g = s.read_segments.clone();
+            }
+            if let Ok(mut g) = self.write_segments.get(ch).lock() {
+                *g = s.write_segments.clone();
+            }
+        }
+        self.version.fetch_add(1, Relaxed);
     }
 
+    pub fn version(&self) -> u64 {
+        self.version.load(Relaxed)
+    }
+
+    pub fn read_jumps(&self, ch: BufferChannel) -> Vec<Jump> {
+        self.read_jumps
+            .get(ch)
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn read_segments(&self, ch: BufferChannel) -> Vec<JumpSegment> {
+        self.read_segments
+            .get(ch)
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn write_jumps(&self, ch: BufferChannel) -> Vec<Jump> {
+        self.write_jumps
+            .get(ch)
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn write_segments(&self, ch: BufferChannel) -> Vec<JumpSegment> {
+        self.write_segments
+            .get(ch)
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+}
+
+pub struct UiState {
+    block_output: Mutex<triple_buffer::Output<UiFrame>>,
+    pub jumps: JumpCache,
+}
+
+impl UiState {
+    pub fn with_output(output: triple_buffer::Output<UiFrame>) -> Self {
+        Self {
+            block_output: Mutex::new(output),
+            jumps: JumpCache::default(),
+        }
+    }
+
+    pub fn read_block(&self) -> UiFrame {
+        self.block_output
+            .lock()
+            .map(|mut o| o.read().clone())
+            .unwrap_or_default()
+    }
+
+    pub fn jump_version(&self) -> u64 {
+        self.jumps.version()
+    }
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        let (_, output) = ui_block_channel();
+        Self::with_output(output)
+    }
+}
+
+impl UiState {
     pub fn publish_jump_state(&self, s: JumpState) {
-        if let Ok(mut g) = self.read_jumps_l.lock() {
-            *g = s.read_l;
-        }
-        if let Ok(mut g) = self.read_jumps_r.lock() {
-            *g = s.read_r;
-        }
-        if let Ok(mut g) = self.write_jumps_l.lock() {
-            *g = s.write_l;
-        }
-        if let Ok(mut g) = self.write_jumps_r.lock() {
-            *g = s.write_r;
-        }
-        if let Ok(mut g) = self.read_segments_l.lock() {
-            *g = s.read_segments_l;
-        }
-        if let Ok(mut g) = self.read_segments_r.lock() {
-            *g = s.read_segments_r;
-        }
-        if let Ok(mut g) = self.write_segments_l.lock() {
-            *g = s.write_segments_l;
-        }
-        if let Ok(mut g) = self.write_segments_r.lock() {
-            *g = s.write_segments_r;
-        }
-        self.jump_version.fetch_add(1, Relaxed);
-    }
-
-    pub fn publish_jumps(
-        &self,
-        read_l: Vec<Jump>,
-        read_r: Vec<Jump>,
-        write_l: Vec<Jump>,
-        write_r: Vec<Jump>,
-    ) {
-        self.publish_jump_state(JumpState {
-            read_l,
-            read_r,
-            write_l,
-            write_r,
-            read_segments_l: self.read_segments_l.lock().map(|g| g.clone()).unwrap_or_default(),
-            read_segments_r: self.read_segments_r.lock().map(|g| g.clone()).unwrap_or_default(),
-            write_segments_l: self.write_segments_l.lock().map(|g| g.clone()).unwrap_or_default(),
-            write_segments_r: self.write_segments_r.lock().map(|g| g.clone()).unwrap_or_default(),
-        });
-    }
-
-    pub fn publish_segments(
-        &self,
-        read_l: Vec<JumpSegment>,
-        read_r: Vec<JumpSegment>,
-        write_l: Vec<JumpSegment>,
-        write_r: Vec<JumpSegment>,
-    ) {
-        if let Ok(mut g) = self.read_segments_l.lock() {
-            *g = read_l;
-        }
-        if let Ok(mut g) = self.read_segments_r.lock() {
-            *g = read_r;
-        }
-        if let Ok(mut g) = self.write_segments_l.lock() {
-            *g = write_l;
-        }
-        if let Ok(mut g) = self.write_segments_r.lock() {
-            *g = write_r;
-        }
-        self.jump_version.fetch_add(1, Relaxed);
+        self.jumps.publish(s);
     }
 
     pub fn active_len_for(&self, ch: BufferChannel) -> usize {
-        match ch {
-            BufferChannel::Left => self.active_len_l.load(Relaxed),
-            BufferChannel::Right => self.active_len_r.load(Relaxed),
-        }
+        *self.read_block().active_len.get(ch)
     }
 
-    pub fn reset(&self) {
-        self.in_l.store(0., Relaxed);
-        self.in_r.store(0., Relaxed);
-        self.out_l.store(0., Relaxed);
-        self.out_r.store(0., Relaxed);
-    }
+    pub fn reset(&self) {}
 
     pub fn decay_uniform(&self) -> Option<DecayUniforms> {
-        let bpm = self.bpm.load(Relaxed);
+        let block = self.read_block();
         Some(DecayUniforms {
-            feedback: [self.feedback_l.load(Relaxed), self.feedback_r.load(Relaxed)],
-            time_s: [self.time_s_l.load(Relaxed), self.time_s_r.load(Relaxed)],
+            feedback: [block.feedback.left, block.feedback.right],
+            time_s: [block.decay.left, block.decay.right],
+            flags: [0., 0., 0., 0.],
+            color_primary: [1.0, 214. / 255., 10. / 255., 0.5],
+            color_secondary: [0.0, 143. / 255., 186. / 255., 0.5],
+            grid: [240.0 / block.bpm.max(1.0), 0.0, 0.0, 0.0],
+        })
+    }
+
+    pub fn decay_uniform_with_flags(
+        &self,
+        is_stereo: bool,
+        is_ping_pong: bool,
+        bpm_bound_l: bool,
+        bpm_bound_r: bool,
+    ) -> Option<DecayUniforms> {
+        let block = self.read_block();
+        Some(DecayUniforms {
+            feedback: [block.feedback.left, block.feedback.right],
+            time_s: [block.decay.left, block.decay.right],
             flags: [
-                self.is_stereo.load(Relaxed) as f32,
-                self.is_ping_pong.load(Relaxed) as f32,
-                self.bpm_bound_l.load(Relaxed) as f32,
-                self.bpm_bound_r.load(Relaxed) as f32,
+                is_stereo as u8 as f32,
+                is_ping_pong as u8 as f32,
+                bpm_bound_l as u8 as f32,
+                bpm_bound_r as u8 as f32,
             ],
             color_primary: [1.0, 214. / 255., 10. / 255., 0.5],
             color_secondary: [0.0, 143. / 255., 186. / 255., 0.5],
-            grid: [240.0 / bpm.max(1.0), 0.0, 0.0, 0.0],
+            grid: [240.0 / block.bpm.max(1.0), 0.0, 0.0, 0.0],
         })
     }
 }

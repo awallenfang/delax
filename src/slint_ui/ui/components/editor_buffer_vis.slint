@@ -71,7 +71,7 @@ export component EditorBufferVisualizer inherits Rectangle {
                 Text {                   
                     x: parent.width / 2;
                     y: parent.height / 2;
-                    text: segment.order;
+                    text: segment.order + 1;
                     color: Palette.text-muted;
                 }
                 TouchArea {
@@ -99,7 +99,7 @@ export component EditorBufferVisualizer inherits Rectangle {
                 Text {
                     x: parent.width / 2;
                     y: parent.height / 2;
-                    text: segment.order;
+                    text: segment.order + 1;
                     color: Palette.text-muted;
                 }
             }

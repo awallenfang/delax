@@ -1,9 +1,7 @@
-use std::sync::atomic::Ordering::Relaxed;
-
 use slint::{Model, ModelRc, VecModel};
 
 use crate::delay_engine::jump_builder::{Jump, JumpSegment};
-use crate::slint_ui::data_transport::{DataTransportRx, InputData};
+use crate::slint_ui::data_transport::{BufferChannel, DataTransportRx, UiState};
 use crate::slint_ui::elements::ElementId;
 use crate::slint_ui::renderer::WgpuRegistry;
 use crate::slint_ui::snapshot::{EditorChannel, UiVisualState};
@@ -36,7 +34,7 @@ fn normalize_segments(segments: &[JumpSegment], active_len: usize) -> Vec<UIJump
 }
 
 pub fn poll_and_present(
-    data: &InputData,
+    data: &UiState,
     visual: &mut UiVisualState,
     rx: &mut DataTransportRx,
     app: &slint_ui::AppWindow,
@@ -46,19 +44,20 @@ pub fn poll_and_present(
     push_waveforms(visual, app);
     visual.poll_editor(rx, data);
 
+    let block = data.read_block();
     app.set_header_data(HeaderData {
-        in_level_l: data.in_l.load(Relaxed),
-        in_level_r: data.in_r.load(Relaxed),
-        out_level_l: data.out_l.load(Relaxed),
-        out_level_r: data.out_r.load(Relaxed),
+        in_level_l: block.meters_in.left,
+        in_level_r: block.meters_in.right,
+        out_level_l: block.meters_out.left,
+        out_level_r: block.meters_out.right,
     });
-    app.set_bpm(data.bpm.load(Relaxed));
+    app.set_bpm(block.bpm);
 
     let mut editor = EditorData {
-        write_head_l: data.write_head_l.load(Relaxed),
-        write_head_r: data.write_head_r.load(Relaxed),
-        read_head_l: data.read_head_l.load(Relaxed),
-        read_head_r: data.read_head_r.load(Relaxed),
+        write_head_l: block.heads.left.write,
+        write_head_r: block.heads.right.write,
+        read_head_l: block.heads.left.read,
+        read_head_r: block.heads.right.read,
         read_jumps_l: app.get_editor_data().read_jumps_l,
         read_jumps_r: app.get_editor_data().read_jumps_r,
         write_jumps_l: app.get_editor_data().write_jumps_l,
@@ -69,53 +68,50 @@ pub fn poll_and_present(
         write_segments_r: app.get_editor_data().write_segments_r,
     };
 
-    let version = data.jump_version.load(Relaxed);
+    let version = data.jumps.version();
     if version != visual.seen_jump_version {
         visual.seen_jump_version = version;
-        let len_l = data.active_len_l.load(Relaxed);
-        let len_r = data.active_len_r.load(Relaxed);
-        refresh_channel(&mut editor.read_jumps_l, &data.read_jumps_l, len_l, normalize_jumps);
-        refresh_channel(&mut editor.read_jumps_r, &data.read_jumps_r, len_r, normalize_jumps);
-        refresh_channel(&mut editor.write_jumps_l, &data.write_jumps_l, len_l, normalize_jumps);
-        refresh_channel(&mut editor.write_jumps_r, &data.write_jumps_r, len_r, normalize_jumps);
-        refresh_channel(
-            &mut editor.read_segments_l,
-            &data.read_segments_l,
-            len_l,
-            normalize_segments,
-        );
-        refresh_channel(
-            &mut editor.read_segments_r,
-            &data.read_segments_r,
-            len_r,
-            normalize_segments,
-        );
-        refresh_channel(
-            &mut editor.write_segments_l,
-            &data.write_segments_l,
-            len_l,
-            normalize_segments,
-        );
-        refresh_channel(
-            &mut editor.write_segments_r,
-            &data.write_segments_r,
-            len_r,
-            normalize_segments,
-        );
+        let lens = block.active_len;
+        for ch in [BufferChannel::Left, BufferChannel::Right] {
+            let len = *lens.get(ch);
+            let read_jumps = data.jumps.read_jumps(ch);
+            let write_jumps = data.jumps.write_jumps(ch);
+            let read_segs = data.jumps.read_segments(ch);
+            let write_segs = data.jumps.write_segments(ch);
+            let (target_read, target_write, target_read_seg, target_write_seg) = match ch {
+                BufferChannel::Left => (
+                    &mut editor.read_jumps_l,
+                    &mut editor.write_jumps_l,
+                    &mut editor.read_segments_l,
+                    &mut editor.write_segments_l,
+                ),
+                BufferChannel::Right => (
+                    &mut editor.read_jumps_r,
+                    &mut editor.write_jumps_r,
+                    &mut editor.read_segments_r,
+                    &mut editor.write_segments_r,
+                ),
+            };
+            *target_read = push_model(
+                std::mem::replace(target_read, ModelRc::new(VecModel::from(vec![]))),
+                normalize_jumps(&read_jumps, len),
+            );
+            *target_write = push_model(
+                std::mem::replace(target_write, ModelRc::new(VecModel::from(vec![]))),
+                normalize_jumps(&write_jumps, len),
+            );
+            *target_read_seg = push_model(
+                std::mem::replace(target_read_seg, ModelRc::new(VecModel::from(vec![]))),
+                normalize_segments(&read_segs, len),
+            );
+            *target_write_seg = push_model(
+                std::mem::replace(target_write_seg, ModelRc::new(VecModel::from(vec![]))),
+                normalize_segments(&write_segs, len),
+            );
+        }
     }
 
     app.set_editor_data(editor);
-}
-
-fn refresh_channel<T, U, F>(target: &mut ModelRc<T>, source: &std::sync::Mutex<Vec<U>>, len: usize, f: F)
-where
-    T: Clone + 'static,
-    U: Clone,
-    F: Fn(&[U], usize) -> Vec<T>,
-{
-    if let Ok(guard) = source.lock() {
-        *target = push_model(std::mem::replace(target, ModelRc::new(VecModel::from(vec![]))), f(&guard, len));
-    }
 }
 
 fn push_model<T: Clone + 'static>(current: ModelRc<T>, values: Vec<T>) -> ModelRc<T> {
@@ -134,8 +130,17 @@ pub fn push_waveforms(visual: &UiVisualState, app: &slint_ui::AppWindow) {
     app.set_wet_buffer(push_model(app.get_wet_buffer(), wet.to_vec()));
 }
 
+fn wetness_from_params() -> f32 {
+    crate::slint_ui::param_store()
+        .read()
+        .unwrap()
+        .get("wetness")
+        .map(|(v, _)| *v)
+        .unwrap_or(0.5)
+}
+
 pub fn render_all(
-    data: &InputData,
+    data: &UiState,
     visual: &UiVisualState,
     app: &slint_ui::AppWindow,
     registry: &mut WgpuRegistry,
@@ -151,7 +156,7 @@ pub fn render_all(
                 .map(bytemuck::bytes_of)
                 .and_then(|b| registry.render_to_image(element, 100, 40, b)),
             ElementId::Buffer => {
-                let wetness = data.wetness.load(Relaxed);
+                let wetness = wetness_from_params();
                 visual
                     .buffer_uniform(wetness)
                     .as_ref()
@@ -177,14 +182,21 @@ pub fn render_all(
                     let (w, h) = element.default_size();
                     registry.render_to_image(element, w, h, b)
                 }),
-            ElementId::Decay => data
-                .decay_uniform()
-                .as_ref()
-                .map(bytemuck::bytes_of)
-                .and_then(|b| {
-                    let (w, h) = element.default_size();
-                    registry.render_to_image(element, w, h, b)
-                }),
+            ElementId::Decay => {
+                let store = crate::slint_ui::param_store().read().unwrap();
+                let is_stereo = store.get("stereo").map(|(v, _)| *v > 0.3).unwrap_or(false);
+                let is_ping_pong = store.get("stereo").map(|(v, _)| *v > 0.8).unwrap_or(false);
+                let bpm_bound_l = store.get("bpm_bound_l").map(|(v, _)| *v > 0.5).unwrap_or(false);
+                let bpm_bound_r = store.get("bpm_bound_r").map(|(v, _)| *v > 0.5).unwrap_or(false);
+                drop(store);
+                data.decay_uniform_with_flags(is_stereo, is_ping_pong, bpm_bound_l, bpm_bound_r)
+                    .as_ref()
+                    .map(bytemuck::bytes_of)
+                    .and_then(|b| {
+                        let (w, h) = element.default_size();
+                        registry.render_to_image(element, w, h, b)
+                    })
+            }
             ElementId::Peak => continue,
         };
         let Some(image) = rendered else { continue };

@@ -4,7 +4,7 @@ use rustfft::num_complex::Complex32;
 use rustfft::{Fft, FftPlanner};
 
 use crate::slint_ui::data_transport::{
-    DataTransportRx, EDITOR_VIS_SIZE, InputData, UI_BUFFER_SIZE,
+    DataTransportRx, EDITOR_VIS_SIZE, UiState, UI_BUFFER_SIZE,
 };
 use crate::slint_ui::uniforms::{BufferUniforms, DoubleBufferUniforms, SpectrumUniforms};
 
@@ -156,10 +156,10 @@ impl UiVisualState {
         })
     }
 
-    pub fn poll_editor(&mut self, rx: &mut DataTransportRx, data: &InputData) {
-        use std::sync::atomic::Ordering::Relaxed;
-        let cur_l = data.active_len_l.load(Relaxed);
-        let cur_r = data.active_len_r.load(Relaxed);
+    pub fn poll_editor(&mut self, rx: &mut DataTransportRx, data: &UiState) {
+        let block = data.read_block();
+        let cur_l = block.active_len.left;
+        let cur_r = block.active_len.right;
         if self.seen_editor_len != (cur_l, cur_r) {
             self.seen_editor_len = (cur_l, cur_r);
             self.editor_l.fill(0.);

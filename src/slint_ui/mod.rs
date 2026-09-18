@@ -1,4 +1,5 @@
 mod baseview_con;
+pub mod channels;
 pub mod data_transport;
 pub mod editor;
 pub mod elements;
