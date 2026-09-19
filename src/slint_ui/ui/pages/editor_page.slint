@@ -61,6 +61,10 @@ export component EditorPage inherits VerticalLayout {
             segment-swapped(a, b) => { root.segment-swapped(1, a, b); }
         }
     }
+    Text {
+        text: "Press segment to swap";
+        color: Palette.text;
+    }
     HorizontalLayout {
         height: 25px;
         width: 10%;
@@ -112,12 +116,13 @@ export component EditorPage inherits VerticalLayout {
     HorizontalLayout {
         ParamKnob {
             param_name: "buffer_len_l";
-            label: "Buffer_len_l";
+            label: "Buffer L";
             val: ParamBus.read_val("buffer_len_l");
         }
+        if is_stereo:
         ParamKnob {
             param_name: "buffer_len_r";
-            label: "Buffer_len_r";
+            label: "Buffer R";
             val: ParamBus.read_val("buffer_len_r");
         }
     }

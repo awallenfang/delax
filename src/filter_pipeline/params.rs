@@ -12,9 +12,9 @@ pub struct PipelineParams {
 impl Default for PipelineParams {
     fn default() -> Self {
         Self {
-            eq_active: BoolParam::new("eq_active", true),
-            diffusor_active: BoolParam::new("diffusor_active", true),
-            shimmer_active: BoolParam::new("shimmer_active", true),
+            eq_active: BoolParam::new("eq_active", false),
+            diffusor_active: BoolParam::new("diffusor_active", false),
+            shimmer_active: BoolParam::new("shimmer_active", false),
         }
     }
 }
