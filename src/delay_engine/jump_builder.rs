@@ -207,12 +207,13 @@ impl JumpBuilder {
         self.jumps.clone()
     }
 
-    pub fn from_jumps(size: usize, jumps: Vec<Jump>) -> Self {
+    /// This currently clones the jumps. So keep this out of the audio path
+    pub fn from_jumps(size: usize, jumps: &[Jump]) -> Self {
         assert!(size > 0);
         if jumps.is_empty() {
             return Self::empty(size);
         }
-        JumpBuilder { size, jumps }
+        JumpBuilder { size, jumps: jumps.to_owned() }
     }
 
     pub fn scaled(&self, new_size: usize) -> Self {
@@ -709,10 +710,10 @@ mod tests {
 
     #[test]
     fn is_covering_rejects_broken_tables() {
-        assert!(!JumpBuilder::from_jumps(10, vec![Jump::new(4, 0, 0)]).is_covering());
-        assert!(!JumpBuilder::from_jumps(10, vec![Jump::new(2, 2, 0)]).is_covering());
-        assert!(!JumpBuilder::from_jumps(5, vec![Jump::new(9, 0, 0)]).is_covering());
-        assert!(JumpBuilder::from_jumps(6, vec![]).is_covering());
+        assert!(!JumpBuilder::from_jumps(10, &[Jump::new(4, 0, 0)]).is_covering());
+        assert!(!JumpBuilder::from_jumps(10, &[Jump::new(2, 2, 0)]).is_covering());
+        assert!(!JumpBuilder::from_jumps(5, &[Jump::new(9, 0, 0)]).is_covering());
+        assert!(JumpBuilder::from_jumps(6, &[]).is_covering());
     }
 
     #[test]
@@ -752,7 +753,7 @@ mod tests {
     }
 
     fn visit_order(size: usize, jumps: &[Jump]) -> Vec<usize> {
-        let b = JumpBuilder::from_jumps(size, jumps.to_vec());
+        let b = JumpBuilder::from_jumps(size, jumps);
         let starts = b.segment_starts();
         b.cycle_order(&starts)
     }
@@ -836,7 +837,7 @@ mod tests {
     #[test]
     fn scaled_collapse_to_single() {
         assert_eq!(
-            JumpBuilder::from_jumps(6, vec![]).build(),
+            JumpBuilder::from_jumps(6, &[]).build(),
             vec![Jump::new(5, 0, 0)]
         );
         assert_eq!(
@@ -857,7 +858,7 @@ mod tests {
     #[test]
     fn from_jumps_empty_falls_back() {
         assert_eq!(
-            JumpBuilder::from_jumps(6, vec![]).build(),
+            JumpBuilder::from_jumps(6, &[]).build(),
             vec![Jump::new(5, 0, 0)]
         );
     }

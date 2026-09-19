@@ -456,9 +456,9 @@ fn set_engine_len(engine: &mut DelayEngine, len: usize) -> bool {
 
 fn jumps_for_active(active: usize, jumps: Vec<Jump>, size: usize) -> JumpBuilder {
     if size == active {
-        JumpBuilder::from_jumps(active, jumps)
+        JumpBuilder::from_jumps(active, &jumps)
     } else {
-        JumpBuilder::from_jumps(size, jumps).scaled(active)
+        JumpBuilder::from_jumps(size, &jumps).scaled(active)
     }
 }
 

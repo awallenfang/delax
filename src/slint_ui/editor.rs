@@ -159,9 +159,9 @@ impl BufferEditorState {
             return JumpBuilder::split_evenly(active_len, 8);
         }
         if size == active_len {
-            JumpBuilder::from_jumps(active_len, jumps)
+            JumpBuilder::from_jumps(active_len, &jumps)
         } else {
-            JumpBuilder::from_jumps(size, jumps).scaled(active_len)
+            JumpBuilder::from_jumps(size, &jumps).scaled(active_len)
         }
     }
 

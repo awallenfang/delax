@@ -22,6 +22,10 @@ pub struct DelayEngine {
     sample_rate: f32,
     /// The delay time in ms
     delay_time: f32,
+    /// Cached integer delay in samples (floor of clamped delay_time)
+    delay_samples: usize,
+    /// Cached fractional part of the clamped delay (for Linear interpolation)
+    delay_frac: f32,
     /// The positions at which the read head should jump
     read_jumps: Vec<Jump>,
     /// The positions at which the write head should jump
@@ -35,8 +39,6 @@ pub struct DelayEngine {
 impl DelayEngine {
     /// Initialize the engine using the size.
     /// The given size is the maximum size of the buffer and describes the maximum amount of data that can be held per bank.
-    ///
-    /// The buffer size can later be changed using [DelayEngine::set_buffer_size()].
     pub fn new(size: usize, sample_rate: f32) -> Self {
         let size = size.max(MIN_ACTIVE_LEN);
         Self {
@@ -44,6 +46,8 @@ impl DelayEngine {
             active_len: size,
             sample_rate,
             delay_time: 0.,
+            delay_samples: 0,
+            delay_frac: 0.,
             read_jumps: vec![Jump::new(size - 1, 0, 0)],
             write_jumps: vec![Jump::new(size - 1, 0, 0)],
             write_head: 0,
@@ -63,7 +67,7 @@ impl DelayEngine {
             DelayInterpolationMode::Linear => {
                 let upper_sample = self.buffer[self.read_head];
                 let lower_sample = self.buffer[self.prev_in_cycle()];
-                let interpolation_factor = ((self.delay_time / 1000.) * self.sample_rate).fract();
+                let interpolation_factor = self.delay_frac;
                 upper_sample * (1. - interpolation_factor) + lower_sample * interpolation_factor
             }
         };
@@ -85,7 +89,7 @@ impl DelayEngine {
         if let Some(dest) = self.jump_target(self.write_head, &self.write_jumps) {
             self.write_head = dest;
         } else {
-            self.write_head += 1;
+            self.write_head = (self.write_head + 1) % self.active_len;
         }
     }
 
@@ -96,22 +100,31 @@ impl DelayEngine {
     }
 
     pub fn set_delay_amount(&mut self, delay_time: f32) {
-        if delay_time == self.delay_time {
+        let samples_f = (delay_time / 1000. * self.sample_rate).clamp(0., (self.active_len - 1) as f32);
+        let samples = samples_f.floor() as usize;
+        let frac = samples_f.fract();
+
+        let int_unchanged = samples == self.delay_samples;
+
+        self.delay_time = delay_time;
+        self.delay_frac = frac;
+
+        if int_unchanged {
             return;
         }
-        let delay_samples =
-            ms_to_samples(delay_time, self.sample_rate).clamp(0, self.active_len - 1);
-        self.read_head = ((self.write_head as i32 - delay_samples as i32)
+
+        self.delay_samples = samples;
+        self.read_head = ((self.write_head as i32 - samples as i32)
             .rem_euclid(self.active_len as i32)) as usize;
-        self.delay_time = delay_time;
     }
 
     /// Maximum delay in ms that fits into the current active length.
     pub fn max_delay_ms(&self) -> f32 {
-        ((self.active_len.saturating_sub(1)) as f32 / self.sample_rate) * 1000.
+        (self.active_len as f32 / self.sample_rate) * 1000.
     }
 
     #[allow(dead_code)]
+    /// This currently allocates. Avoid using it in the audio path
     pub fn set_buffer_size(&mut self, size: usize) {
         let size = size.max(MIN_ACTIVE_LEN);
         self.buffer = vec![0.; size];
@@ -173,6 +186,7 @@ impl DelayEngine {
         self.write_jumps = vec![Jump::new(clamp_len - 1, 0, 0)];
         self.write_head %= clamp_len;
         self.read_head %= clamp_len;
+        self.delay_samples = usize::MAX;
     }
 
     pub fn write_head(&self) -> usize {
@@ -191,12 +205,12 @@ impl DelayEngine {
         self.buffer.len()
     }
 
-    pub fn read_jumps(&self) -> Vec<Jump> {
-        self.read_jumps.clone()
+    pub fn read_jumps(&self) -> &[Jump] {
+        &self.read_jumps
     }
 
-    pub fn write_jumps(&self) -> Vec<Jump> {
-        self.write_jumps.clone()
+    pub fn write_jumps(&self) -> &[Jump] {
+        &self.write_jumps
     }
 
     pub fn get_active_ptr(&self) -> &[f32] {
