@@ -3,6 +3,7 @@ use crate::delay_engine::jump_builder::{Jump, JumpBuilder};
 use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::filters::dattorro::DattorroReverb;
 use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
+use crate::param_cache::ParamCache;
 use crate::slint_ui::editor::DelaxSlintHost;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
@@ -25,6 +26,7 @@ mod filter_pipeline;
 pub mod filters;
 mod params;
 mod slint_ui;
+mod param_cache;
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -56,6 +58,7 @@ pub struct Delax {
     applied_effect_order: Vec<String>,
     applied_jump_version_l: u64,
     applied_jump_version_r: u64,
+    param_cache_f32: param_cache::ParamCache,
 }
 
 impl Default for Delax {
@@ -136,6 +139,7 @@ impl Default for Delax {
             jump_builder_write_r,
             applied_jump_version_l: 0,
             applied_jump_version_r: 0,
+            param_cache_f32: ParamCache::new(32, 1e-4)
         }
     }
 }
@@ -312,10 +316,11 @@ impl Plugin for Delax {
 
         self.poll_effect_order();
 
+        self.update_block_params(_context.transport(), &mut pending);
         for channel_samples in buffer.iter_samples() {
+            self.update_sample_params(&mut pending);
             had_samples = true;
             // Update all the elements to the current params
-            self.update_params(_context.transport(), &mut pending);
             // ########## Input ###########
             // Read the values sample by sample for now
             let mut channel_iter = channel_samples.into_iter();
@@ -563,40 +568,15 @@ impl Delax {
         }
     }
 
-    fn update_params(&mut self, transport: &Transport, pending: &mut PendingUi) {
+    fn update_block_params(&mut self, transport: &Transport, pending: &mut PendingUi) {
         pending.bpm = transport.tempo.unwrap_or(120.) as f32;
+
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
-                let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
-                let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
-                let count_l = self.params.delay_params.delay_note_l.smoothed.next();
-                let _count_r = self.params.delay_params.delay_note_r.smoothed.next();
-                let _ = (ms_r, _count_r);
-                let div_factor_l = self.params.delay_params.delay_div_l.value().factor();
-                let bpm_bound = self.params.delay_params.bpm_bound_l.value();
-                let mut bpm = 120.;
-                if let Some(t) = transport.tempo {
-                    bpm = t;
-                }
-                let delay_amt = if bpm_bound {
-                    let total_l = count_l * div_factor_l;
-                    delay_time_from_bpm_and_16th(total_l, bpm as f32)
-                } else {
-                    ms_l
-                };
-                // Effective length first (allocation-free), then clamp delay
-                // so it never reads into the inactive tail.
                 let desired =
                     (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
                 let l_changed = set_engine_len(&mut self.left_delay_engine, desired);
                 let r_changed = set_engine_len(&mut self.right_delay_engine, desired);
-                let max_ms = self.left_delay_engine.max_delay_ms();
-                let clamped = delay_amt > max_ms;
-                let delay_clamped = delay_amt.min(max_ms);
-                self.left_delay_engine.set_delay_amount(delay_clamped);
-                self.right_delay_engine.set_delay_amount(delay_clamped);
-                pending.clamped_l = clamped;
-                pending.clamped_r = clamped;
                 let state = &self.params.buffer_editor_state;
                 let jumps_changed = state.version_l.load(Ordering::Relaxed)
                     != self.applied_jump_version_l
@@ -604,52 +584,8 @@ impl Delax {
                 if l_changed || r_changed || jumps_changed {
                     self.update_jumps();
                 }
-
-                self.decay_time_s_l = delay_clamped / 1000.;
-                self.decay_time_s_r = delay_clamped / 1000.;
-
-                let cutoff_low_l = self
-                    .params
-                    .svf_params
-                    .input_svf_cutoff_low_l
-                    .smoothed
-                    .next();
-                let cutoff_high_l = self
-                    .params
-                    .svf_params
-                    .input_svf_cutoff_high_l
-                    .smoothed
-                    .next();
-                self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
-                self.input_sin_svf_low_r.set_cutoff(cutoff_low_l);
-                self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
-                self.input_sin_svf_high_r.set_cutoff(cutoff_high_l);
             }
             DelayMode::Stereo | DelayMode::PingPong => {
-                let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
-                let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
-                let count_l = self.params.delay_params.delay_note_l.smoothed.next();
-                let count_r = self.params.delay_params.delay_note_r.smoothed.next();
-                let div_factor_l = self.params.delay_params.delay_div_l.value().factor();
-                let div_factor_r = self.params.delay_params.delay_div_r.value().factor();
-                let bpm_bound_l = self.params.delay_params.bpm_bound_l.value();
-                let bpm_bound_r = self.params.delay_params.bpm_bound_r.value();
-                let mut bpm = 120.;
-                if let Some(t) = transport.tempo {
-                    bpm = t;
-                }
-                let delay_amt_l = if bpm_bound_l {
-                    let total_l = count_l * div_factor_l;
-                    delay_time_from_bpm_and_16th(total_l, bpm as f32)
-                } else {
-                    ms_l
-                };
-                let delay_amt_r = if bpm_bound_r {
-                    let total_r = count_r * div_factor_r;
-                    delay_time_from_bpm_and_16th(total_r, bpm as f32)
-                } else {
-                    ms_r
-                };
                 let desired_l =
                     (self.params.delay_params.buffer_len_l.value() * self.sample_rate) as usize;
                 let desired_r =
@@ -663,6 +599,101 @@ impl Delax {
                 if l_changed || r_changed || jumps_changed {
                     self.update_jumps();
                 }
+            }
+        }
+
+        let eq_active = self.params.pipeline_params.eq_active.value();
+        if self
+            .param_cache_f32
+            .changed("pipeline:eq_active", if eq_active { 1.0 } else { 0.0 })
+        {
+            self.filter_pipeline.set_active("filter", eq_active);
+        }
+        let diffusor_active = self.params.pipeline_params.diffusor_active.value();
+        if self.param_cache_f32.changed(
+            "pipeline:diffusor_active",
+            if diffusor_active { 1.0 } else { 0.0 },
+        ) {
+            self.filter_pipeline
+                .set_active("diffusor", diffusor_active);
+        }
+        let shimmer_active = self.params.pipeline_params.shimmer_active.value();
+        if self.param_cache_f32.changed(
+            "pipeline:shimmer_active",
+            if shimmer_active { 1.0 } else { 0.0 },
+        ) {
+            self.filter_pipeline
+                .set_active("shimmer", shimmer_active);
+        }
+
+        let shimmer_stereo = self.params.shimmer_params.shimmer_stereo.value();
+        let shimmer_stereo_f = if shimmer_stereo { 1.0 } else { 0.0 };
+        let stereo_changed = self
+            .param_cache_f32
+            .changed("shimmer:stereo", shimmer_stereo_f);
+        if shimmer_stereo {
+            let shift_l = self.params.shimmer_params.shift_l.value();
+            let shift_r = self.params.shimmer_params.shift_r.value();
+            let l_changed = self.param_cache_f32.changed("shimmer:shift:l", shift_l);
+            let r_changed = self.param_cache_f32.changed("shimmer:shift:r", shift_r);
+            if stereo_changed || l_changed || r_changed {
+                self.filter_pipeline
+                    .set_param_stereo("shimmer", "shift", (shift_l, shift_r));
+            }
+        } else {
+            let shift_l = self.params.shimmer_params.shift_l.value();
+            if stereo_changed || self.param_cache_f32.changed("shimmer:shift:l", shift_l) {
+                self.filter_pipeline
+                    .set_param("shimmer", "shift", shift_l);
+            }
+        }
+    }
+
+    fn update_sample_params(&mut self, pending: &mut PendingUi) {
+        let bpm = pending.bpm;
+        match self.params.delay_params.stereo_delay.value() {
+            DelayMode::Mono => {
+                let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
+                let count_l = self.params.delay_params.delay_note_l.smoothed.next();
+                let div_factor_l = self.params.delay_params.delay_div_l.value().factor();
+                let bpm_bound = self.params.delay_params.bpm_bound_l.value();
+                let delay_amt = if bpm_bound {
+                    let total_l = count_l * div_factor_l;
+                    delay_time_from_bpm_and_16th(total_l, bpm)
+                } else {
+                    ms_l
+                };
+                let max_ms = self.left_delay_engine.max_delay_ms();
+                let clamped = delay_amt > max_ms;
+                let delay_clamped = delay_amt.min(max_ms);
+                self.left_delay_engine.set_delay_amount(delay_clamped);
+                self.right_delay_engine.set_delay_amount(delay_clamped);
+                pending.clamped_l = clamped;
+                pending.clamped_r = clamped;
+                self.decay_time_s_l = delay_clamped / 1000.;
+                self.decay_time_s_r = delay_clamped / 1000.;
+            }
+            DelayMode::Stereo | DelayMode::PingPong => {
+                let ms_l = self.params.delay_params.delay_len_l.smoothed.next();
+                let ms_r = self.params.delay_params.delay_len_r.smoothed.next();
+                let count_l = self.params.delay_params.delay_note_l.smoothed.next();
+                let count_r = self.params.delay_params.delay_note_r.smoothed.next();
+                let div_factor_l = self.params.delay_params.delay_div_l.value().factor();
+                let div_factor_r = self.params.delay_params.delay_div_r.value().factor();
+                let bpm_bound_l = self.params.delay_params.bpm_bound_l.value();
+                let bpm_bound_r = self.params.delay_params.bpm_bound_r.value();
+                let delay_amt_l = if bpm_bound_l {
+                    let total_l = count_l * div_factor_l;
+                    delay_time_from_bpm_and_16th(total_l, bpm)
+                } else {
+                    ms_l
+                };
+                let delay_amt_r = if bpm_bound_r {
+                    let total_r = count_r * div_factor_r;
+                    delay_time_from_bpm_and_16th(total_r, bpm)
+                } else {
+                    ms_r
+                };
                 let max_ms_l = self.left_delay_engine.max_delay_ms();
                 let max_ms_r = self.right_delay_engine.max_delay_ms();
                 let clamped_l = delay_amt_l > max_ms_l;
@@ -673,10 +704,54 @@ impl Delax {
                 self.right_delay_engine.set_delay_amount(delay_clamped_r);
                 pending.clamped_l = clamped_l;
                 pending.clamped_r = clamped_r;
-
                 self.decay_time_s_l = delay_clamped_l / 1000.;
                 self.decay_time_s_r = delay_clamped_r / 1000.;
+            }
+        }
 
+        match self.params.delay_params.stereo_delay.value() {
+            DelayMode::Mono => {
+                let cutoff_low_l = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_low_l
+                    .smoothed
+                    .next();
+                let cutoff_high_l = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_high_l
+                    .smoothed
+                    .next();
+                if self
+                    .param_cache_f32
+                    .changed("input:low:l", cutoff_low_l)
+                {
+                    self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
+                    self.input_sin_svf_low_r.set_cutoff(cutoff_low_l);
+                }
+                if self
+                    .param_cache_f32
+                    .changed("input:high:l", cutoff_high_l)
+                {
+                    self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
+                    self.input_sin_svf_high_r.set_cutoff(cutoff_high_l);
+                }
+                // Run smoothers to keep them synced. But take the value only in the block updates
+                let _ = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_low_r
+                    .smoothed
+                    .next();
+                let _ = self
+                    .params
+                    .svf_params
+                    .input_svf_cutoff_high_r
+                    .smoothed
+                    .next();
+            }
+            DelayMode::Stereo | DelayMode::PingPong => {
                 let cutoff_low_l = self
                     .params
                     .svf_params
@@ -701,10 +776,30 @@ impl Delax {
                     .input_svf_cutoff_high_r
                     .smoothed
                     .next();
-                self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
-                self.input_sin_svf_low_r.set_cutoff(cutoff_low_r);
-                self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
-                self.input_sin_svf_high_r.set_cutoff(cutoff_high_r);
+                if self
+                    .param_cache_f32
+                    .changed("input:low:l", cutoff_low_l)
+                {
+                    self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
+                }
+                if self
+                    .param_cache_f32
+                    .changed("input:low:r", cutoff_low_r)
+                {
+                    self.input_sin_svf_low_r.set_cutoff(cutoff_low_r);
+                }
+                if self
+                    .param_cache_f32
+                    .changed("input:high:l", cutoff_high_l)
+                {
+                    self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
+                }
+                if self
+                    .param_cache_f32
+                    .changed("input:high:r", cutoff_high_r)
+                {
+                    self.input_sin_svf_high_r.set_cutoff(cutoff_high_r);
+                }
             }
         }
         let dattorro_mix = self.params.dattorro_params.mix.smoothed.next();
@@ -717,24 +812,60 @@ impl Delax {
         let dattorro_input_smear = self.params.dattorro_params.input_smear.smoothed.next();
         let dattorro_tank_smear = self.params.dattorro_params.tank_smear.smoothed.next();
 
-        self.filter_pipeline
-            .set_param("diffusor", "mix", dattorro_mix);
-        self.filter_pipeline
-            .set_param("diffusor", "size", dattorro_size);
-        self.filter_pipeline
-            .set_param("diffusor", "decay", dattorro_decay);
-        self.filter_pipeline
-            .set_param("diffusor", "pre_delay", dattorro_pre_delay);
-        self.filter_pipeline
-            .set_param("diffusor", "damping", dattorro_damping);
-        self.filter_pipeline
-            .set_param("diffusor", "brightness", dattorro_brightness);
-        self.filter_pipeline
-            .set_param("diffusor", "lushness", dattorro_lushness);
-        self.filter_pipeline
-            .set_param("diffusor", "input_smear", dattorro_input_smear);
-        self.filter_pipeline
-            .set_param("diffusor", "tank_smear", dattorro_tank_smear);
+        if self.param_cache_f32.changed("diffusor:mix", dattorro_mix) {
+            self.filter_pipeline
+                .set_param("diffusor", "mix", dattorro_mix);
+        }
+        if self.param_cache_f32.changed("diffusor:size", dattorro_size) {
+            self.filter_pipeline
+                .set_param("diffusor", "size", dattorro_size);
+        }
+        if self.param_cache_f32.changed("diffusor:decay", dattorro_decay) {
+            self.filter_pipeline
+                .set_param("diffusor", "decay", dattorro_decay);
+        }
+        if self
+            .param_cache_f32
+            .changed("diffusor:pre_delay", dattorro_pre_delay)
+        {
+            self.filter_pipeline
+                .set_param("diffusor", "pre_delay", dattorro_pre_delay);
+        }
+        if self
+            .param_cache_f32
+            .changed("diffusor:damping", dattorro_damping)
+        {
+            self.filter_pipeline
+                .set_param("diffusor", "damping", dattorro_damping);
+        }
+        if self
+            .param_cache_f32
+            .changed("diffusor:brightness", dattorro_brightness)
+        {
+            self.filter_pipeline
+                .set_param("diffusor", "brightness", dattorro_brightness);
+        }
+        if self
+            .param_cache_f32
+            .changed("diffusor:lushness", dattorro_lushness)
+        {
+            self.filter_pipeline
+                .set_param("diffusor", "lushness", dattorro_lushness);
+        }
+        if self
+            .param_cache_f32
+            .changed("diffusor:input_smear", dattorro_input_smear)
+        {
+            self.filter_pipeline
+                .set_param("diffusor", "input_smear", dattorro_input_smear);
+        }
+        if self
+            .param_cache_f32
+            .changed("diffusor:tank_smear", dattorro_tank_smear)
+        {
+            self.filter_pipeline
+                .set_param("diffusor", "tank_smear", dattorro_tank_smear);
+        }
         match self.params.svf_params.svf_stereo_mode.value() {
             filters::params::SVFStereoMode::Mono => {
                 // `smoothed.next()` once for mono – keeps L/R smoothers in sync.
@@ -746,10 +877,21 @@ impl Delax {
                     .svf_filter_mode_l
                     .modulated_normalized_value();
                 let mix = self.params.svf_params.svf_mix_l.value();
-                self.filter_pipeline.set_param("filter", "res", res);
-                self.filter_pipeline.set_param("filter", "cutoff", cutoff);
-                self.filter_pipeline.set_param("filter", "mix", mix);
-                self.filter_pipeline.set_param("filter", "mode", mode);
+                if self.param_cache_f32.changed("filter:res", res) {
+                    self.filter_pipeline.set_param("filter", "res", res);
+                }
+                if self.param_cache_f32.changed("filter:cutoff", cutoff) {
+                    self.filter_pipeline.set_param("filter", "cutoff", cutoff);
+                }
+                if self.param_cache_f32.changed("filter:mix", mix) {
+                    self.filter_pipeline.set_param("filter", "mix", mix);
+                }
+                if self.param_cache_f32.changed("filter:mode", mode) {
+                    self.filter_pipeline.set_param("filter", "mode", mode);
+                }
+                let _ = self.params.svf_params.svf_res_r.smoothed.next();
+                let _ = self.params.svf_params.svf_cutoff_r.smoothed.next();
+                let _ = self.params.svf_params.svf_mix_r.smoothed.next();
             }
             filters::params::SVFStereoMode::Stereo => {
                 let res_l = self.params.svf_params.svf_res_l.smoothed.next();
@@ -768,38 +910,35 @@ impl Delax {
                     .svf_params
                     .svf_filter_mode_r
                     .modulated_normalized_value();
-                self.filter_pipeline
-                    .set_param_stereo("filter", "res", (res_l, res_r));
-                self.filter_pipeline
-                    .set_param_stereo("filter", "cutoff", (cutoff_l, cutoff_r));
-                self.filter_pipeline
-                    .set_param_stereo("filter", "mix", (mix_l, mix_r));
-                self.filter_pipeline
-                    .set_param_stereo("filter", "mode", (mode_l, mode_r));
+                let res_changed = self.param_cache_f32.changed("filter:res:l", res_l)
+                    | self.param_cache_f32.changed("filter:res:r", res_r);
+                if res_changed {
+                    self.filter_pipeline
+                        .set_param_stereo("filter", "res", (res_l, res_r));
+                }
+                let cutoff_changed = self.param_cache_f32.changed("filter:cutoff:l", cutoff_l)
+                    | self.param_cache_f32.changed("filter:cutoff:r", cutoff_r);
+                if cutoff_changed {
+                    self.filter_pipeline
+                        .set_param_stereo("filter", "cutoff", (cutoff_l, cutoff_r));
+                }
+                let mix_changed = self.param_cache_f32.changed("filter:mix:l", mix_l)
+                    | self.param_cache_f32.changed("filter:mix:r", mix_r);
+                if mix_changed {
+                    self.filter_pipeline
+                        .set_param_stereo("filter", "mix", (mix_l, mix_r));
+                }
+                let mode_changed = self.param_cache_f32.changed("filter:mode:l", mode_l)
+                    | self.param_cache_f32.changed("filter:mode:r", mode_r);
+                if mode_changed {
+                    self.filter_pipeline
+                        .set_param_stereo("filter", "mode", (mode_l, mode_r));
+                }
             }
         }
-        self.filter_pipeline
-            .set_active("filter", self.params.pipeline_params.eq_active.value());
-        self.filter_pipeline.set_active(
-            "diffusor",
-            self.params.pipeline_params.diffusor_active.value(),
-        );
-        self.filter_pipeline.set_active(
-            "shimmer",
-            self.params.pipeline_params.shimmer_active.value(),
-        );
+        
 
-        if self.params.shimmer_params.shimmer_stereo.value() {
-            let shift_l = self.params.shimmer_params.shift_l.value();
-            let shift_r = self.params.shimmer_params.shift_r.value();
-
-            self.filter_pipeline
-                .set_param_stereo("shimmer", "shift", (shift_l, shift_r));
-        } else {
-            let shift_l = self.params.shimmer_params.shift_l.value();
-
-            self.filter_pipeline.set_param("shimmer", "shift", shift_l);
-        }
+        
     }
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.
