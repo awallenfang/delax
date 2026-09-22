@@ -5,6 +5,7 @@ import { Palette } from "../global.slint";
 import { IconButton } from "icon_button.slint";
 
 export component FilterEffect inherits Rectangle {
+    max-height: 1000px;
     property <int> tab: 0;
     property <bool> active: ParamBus.read_val("eq_active") > 0.5;
     property <bool> is_stereo: ParamBus.read_val("svf_stereo_mode") > 0.5;

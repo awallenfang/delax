@@ -5,6 +5,7 @@ import { Palette } from "../global.slint";
 import { IconButton } from "icon_button.slint";
 
 export component ShimmerEffect inherits Rectangle {
+    max-height: 1000px;
     property <int> tab: 0;
     property <bool> active: ParamBus.read_val("shimmer_active") > 0.5;
     property <bool> is_stereo: ParamBus.read_val("shimmer_stereo") > 0.5;

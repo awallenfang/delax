@@ -58,6 +58,7 @@ export component FilterPage inherits Rectangle {
             for entry[idx] in root.effect-order: HorizontalLayout {
                 spacing: 6px;
                 alignment: LayoutAlignment.stretch;
+                vertical-stretch: 1;
 
                 if (entry == "filter"): FilterEffect {
                     horizontal-stretch: 1;
@@ -100,10 +101,6 @@ export component FilterPage inherits Rectangle {
                         }
                     }
                 }
-            }
-
-            VerticalLayout {
-                vertical-stretch: 1;
             }
         }
 }
