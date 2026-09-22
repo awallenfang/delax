@@ -48,11 +48,13 @@ jobs:
         targets: ${{ matrix.target }}
 
     - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        command: xtask
-        args: bundle delax --release --target ${{ matrix.target }}
-        use-cross: ${{ matrix.build == 'linux' }}
+      shell: bash
+      run: |
+        if [[ "${{ matrix.build }}" == "linux" ]]; then
+          cross xtask bundle delax --release --target "${{ matrix.target }}"
+        else
+          cargo xtask bundle delax --release --target "${{ matrix.target }}"
+        fi
     - name: Build archive
       shell: bash
       run: |
