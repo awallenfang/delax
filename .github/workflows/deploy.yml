@@ -46,6 +46,11 @@ jobs:
       with:
         # Make Rust compile to our target (defined in the matrix)
         targets: ${{ matrix.target }}
+    - name: Install cross
+      if: matrix.build == 'linux'
+      shell: bash
+      run: |
+        cargo install cross --git https://github.com/cross-rs/cross --locked
 
     - name: Build
       shell: bash
