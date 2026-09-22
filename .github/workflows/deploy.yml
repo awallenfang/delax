@@ -17,7 +17,7 @@ jobs:
         include:
           - build: linux
             os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
+            target: x86_64-unknown-linux-gnu
 
           - build: macos
             os: macos-latest
@@ -46,15 +46,13 @@ jobs:
       with:
         # Make Rust compile to our target (defined in the matrix)
         targets: ${{ matrix.target }}
-    - name: Install cross
+    - name: Install Linux dependencies
       if: matrix.build == 'linux'
-      shell: bash
       run: |
-        cargo install cross --git https://github.com/cross-rs/cross --locked
-
-    - name: Install musl tools
-      if: matrix.build == 'linux'
-      run: sudo apt-get update && sudo apt-get install -y musl-tools
+        sudo apt-get update
+        sudo apt-get install -y \
+          libfontconfig1-dev \
+          pkg-config
 
     - name: Build
       shell: bash
