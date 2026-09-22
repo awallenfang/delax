@@ -27,9 +27,19 @@ jobs:
           libjack-dev \
           libx11-xcb-dev \
           libxcb-dri2-0-dev \
-          libxcb-icccm4-dev
+          libxcb-icccm4-dev \
+          libvulkan1 \
+          mesa-vulkan-drivers \
+          vulkan-tools
+
+    - name: Configure headless Vulkan
+      run: |
+        echo "WGPU_BACKENDS=vulkan" >> "$GITHUB_ENV"
+        echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
+        vulkaninfo --summary
 
     - name: Build
-      run: sudo apt install libasound2-dev libgl-dev libxcursor-dev libjack-dev libx11-xcb-dev libxcb-dri2-0-dev libxcb-icccm4-dev && cargo build --verbose
+      run: cargo build --verbose
+
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose -- --test-threads=1
