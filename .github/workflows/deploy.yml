@@ -50,14 +50,14 @@ jobs:
     - name: Build
       uses: actions-rs/cargo@v1
       with:
-        use-cross: true
         command: xtask
         args: bundle delax --release --target ${{ matrix.target }}
+        use-cross: ${{ matrix.build == 'linux' }}
     - name: Build archive
       shell: bash
       run: |
         # Replace with the name of your binary
-        binary_name="<BINARY_NAME>"
+        binary_name="delax"
 
         dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}"
         mkdir "$dirname"
