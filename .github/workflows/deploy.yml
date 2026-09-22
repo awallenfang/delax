@@ -52,14 +52,16 @@ jobs:
       run: |
         cargo install cross --git https://github.com/cross-rs/cross --locked
 
+    - name: Install musl tools
+      if: matrix.build == 'linux'
+      run: sudo apt-get update && sudo apt-get install -y musl-tools
+
     - name: Build
       shell: bash
       run: |
-        if [[ "${{ matrix.build }}" == "linux" ]]; then
-          cross xtask bundle delax --release --target "${{ matrix.target }}"
-        else
-          cargo xtask bundle delax --release --target "${{ matrix.target }}"
-        fi
+        cargo xtask bundle delax \
+          --release \
+          --target "${{ matrix.target }}"
     - name: Build archive
       shell: bash
       run: |
