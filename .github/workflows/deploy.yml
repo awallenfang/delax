@@ -1,4 +1,4 @@
-name: Deploy
+Wname: Deploy
 
 on:
   push:
@@ -7,8 +7,6 @@ on:
 permissions:
   contents: write
 jobs:
-  # ...
-
   build-and-upload:
     name: Build and upload
     runs-on: ${{ matrix.os }}
@@ -29,11 +27,16 @@ jobs:
             target: x86_64-pc-windows-gnu
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Get the release version from the tag
+    - name: Set version
       shell: bash
-      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      run: |
+        if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+          echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+        else
+          echo "VERSION=$(git describe --always --tags)" >> $GITHUB_ENV
+        fi
     
     - name: Install Rust
       # Or @nightly if you want
@@ -70,8 +73,13 @@ jobs:
           tar -czf "$dirname.tar.gz" "$dirname"
           echo "ASSET=$dirname.tar.gz" >> $GITHUB_ENV
         fi
-    - name: Upload the binaries
-      uses: softprops/action-gh-release@v1
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
       with:
-        files: |
-          ${{ env.ASSET }}
+        name: delax-${{ matrix.target }}
+        path: ${{ env.ASSET }}
+    # - name: Upload the binaries
+    #   uses: softprops/action-gh-release@v1
+    #   with:
+    #     files: |
+    #       ${{ env.ASSET }}
