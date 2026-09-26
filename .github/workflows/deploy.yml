@@ -68,10 +68,10 @@ jobs:
         # Replace with the name of your binary
         binary_name="Delax.clap"
 
-        dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}"
+        dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}.clap"
         mkdir "$dirname"
         mv "target/bundled/$binary_name" "$dirname"
-        echo "ASSET=$dirname.zip" >> $GITHUB_ENV
+        echo "ASSET=$dirname" >> $GITHUB_ENV
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
