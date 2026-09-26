@@ -71,7 +71,7 @@ jobs:
         dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}"
         mkdir "$dirname"
         mv "target/bundled/$binary_name" "$dirname"
-        echo "ASSET=$dirname/$binary_name" >> $GITHUB_ENV
+        echo "ASSET=$dirname" >> $GITHUB_ENV
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
