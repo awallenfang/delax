@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-    branches: [ "main" ]
+    # branches: [ "main" ]
 permissions:
   contents: write
 jobs:
@@ -77,8 +77,8 @@ jobs:
       with:
         name: delax-${{ matrix.target }}
         path: ${{ env.ASSET }}
-    # - name: Upload the binaries
-    #   uses: softprops/action-gh-release@v1
-    #   with:
-    #     files: |
-    #       ${{ env.ASSET }}
+    - name: Upload the binaries
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ${{ env.ASSET }}
