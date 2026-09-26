@@ -37,6 +37,7 @@ export component EditorPage inherits VerticalLayout {
     VerticalLayout {
         vertical-stretch: 1;
         spacing: 4px;
+        alignment: center;
         EditorBufferVisualizer {
             horizontal-stretch: 1;
             texture: root.editor_tex_l;
@@ -67,7 +68,7 @@ export component EditorPage inherits VerticalLayout {
     }
     HorizontalLayout {
         height: 25px;
-        width: 10%;
+        width: 100%;
         alignment: LayoutAlignment.center;
         spacing: 10px;
         IconButton {
