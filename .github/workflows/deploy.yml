@@ -71,14 +71,7 @@ jobs:
         dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}"
         mkdir "$dirname"
         mv "target/bundled/$binary_name" "$dirname"
-
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          7z a "$dirname.zip" "$dirname"
-          echo "ASSET=$dirname.zip" >> $GITHUB_ENV
-        else
-          tar -czf "$dirname.tar.gz" "$dirname"
-          echo "ASSET=$dirname.tar.gz" >> $GITHUB_ENV
-        fi
+        echo "ASSET=$dirname.zip" >> $GITHUB_ENV
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
