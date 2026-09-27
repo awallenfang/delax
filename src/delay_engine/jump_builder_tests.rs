@@ -404,13 +404,13 @@ fn jump_serde_accepts_both_forms() {
 #[test]
 fn construction_invariants() {
     assert_eq!(
-        SegmentEditor::single(8).materialize(),
+        SegmentEditor::single(8).build_jumps(),
         JumpBuilder::empty(8).build()
     );
 
     for (size, splits) in [(12usize, 3u32), (10, 3), (3, 5), (6, 1), (16, 4), (80, 8)] {
         assert_eq!(
-            SegmentEditor::split_evenly(size, splits).materialize(),
+            SegmentEditor::split_evenly(size, splits).build_jumps(),
             JumpBuilder::split_evenly(size, splits).build(),
             "size {size} splits {splits} diverged from JumpBuilder"
         );
@@ -423,7 +423,7 @@ fn construction_invariants() {
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.swap_segments(0, 1);
-    let jumps = e.materialize();
+    let jumps = e.build_jumps();
     assert_eq!(jumps.len(), 3);
     let segs = e.segments();
     let ends: Vec<usize> = segs.iter().map(|s| s.end).collect();
@@ -447,7 +447,7 @@ fn construction_invariants() {
     e.swap_segments(0, 2);
     e.move_boundary(2, 5);
     assert!(e.validate_cycle());
-    assert_full_coverage(&e.materialize(), 12);
+    assert_full_coverage(&e.build_jumps(), 12);
 
     assert!(SegmentEditor::validate_table(
         8,
@@ -466,7 +466,7 @@ fn construction_invariants() {
         let e = SegmentEditor::split_evenly(24, splits);
         assert_eq!(
             e.validate_cycle(),
-            SegmentEditor::validate_table(24, &e.materialize())
+            SegmentEditor::validate_table(24, &e.build_jumps())
         );
     }
 }
@@ -509,7 +509,7 @@ fn visit_cycle_properties() {
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.swap_segments(0, 1);
-    let jumps = e.materialize();
+    let jumps = e.build_jumps();
     let cycle = e.visit_cycle();
     assert_eq!(cycle, walk_table(&jumps, 12, 12));
     for pair in cycle.windows(2) {
@@ -551,12 +551,12 @@ fn visit_cycle_properties() {
 #[test]
 fn unglue_reweld_lifecycle() {
     let e = SegmentEditor::split_evenly(12, 3);
-    let before = e.materialize();
+    let before = e.build_jumps();
     let mut unglued = e;
     unglued.unglue(1);
     assert_eq!(unglued.portals()[1], Some(Portal { exit: 3, entry: 4 }));
     assert!(unglued.is_unglued(1));
-    assert_eq!(unglued.materialize(), before);
+    assert_eq!(unglued.build_jumps(), before);
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.unglue(1);
@@ -570,18 +570,18 @@ fn unglue_reweld_lifecycle() {
     assert!(
         refused || e.validate_cycle(),
         "unglue left duplicate `from`: {:?}",
-        e.materialize()
+        e.build_jumps()
     );
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.unglue(1);
     e.move_exit(1, 0);
     e.move_entry(1, 9);
-    assert!(!JumpBuilder::from_jumps(12, &e.materialize()).is_covering());
+    assert!(!JumpBuilder::from_jumps(12, &e.build_jumps()).is_covering());
     e.reweld(1);
     assert!(!e.is_unglued(1));
     assert_eq!(e.portals()[1], None);
-    assert_full_coverage(&e.materialize(), 12);
+    assert_full_coverage(&e.build_jumps(), 12);
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.unglue(1);
@@ -589,7 +589,7 @@ fn unglue_reweld_lifecycle() {
     e.reweld(1);
     e.move_boundary(1, 5);
     assert_eq!(e.starts()[1], 5);
-    assert_full_coverage(&e.materialize(), 12);
+    assert_full_coverage(&e.build_jumps(), 12);
 }
 
 #[test]
@@ -600,7 +600,7 @@ fn move_boundary_properties() {
     e.move_boundary(2, 6);
     assert_eq!(e.starts(), &[0, 5, 6, 7]);
     assert!(e.validate_cycle());
-    assert_full_coverage(&e.materialize(), 12);
+    assert_full_coverage(&e.build_jumps(), 12);
 
     let mut e = SegmentEditor::split_evenly(12, 4);
     e.move_boundary(2, 0);
@@ -613,7 +613,7 @@ fn move_boundary_properties() {
     assert_eq!(e.starts(), &[0, 3, 4]);
     e.move_boundary(1, 0);
     assert_eq!(e.starts(), &[0, 1, 4]);
-    assert_full_coverage(&e.materialize(), 6);
+    assert_full_coverage(&e.build_jumps(), 6);
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.move_boundary(0, 5);
@@ -662,7 +662,7 @@ fn swap_segments_properties() {
     e.swap_segments(0, 1);
     assert_eq!(e.order(), &[0, 2, 1]);
     assert_eq!(
-        e.materialize(),
+        e.build_jumps(),
         vec![Jump::new(3, 8, 0), Jump::new(11, 4, 1), Jump::new(7, 0, 2)]
     );
     assert_eq!(e.visit_cycle(), vec![0, 1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7]);
@@ -676,7 +676,7 @@ fn swap_segments_properties() {
     e.swap_segments(0, 3);
     e.swap_segments(1, 2);
     assert!(e.validate_cycle());
-    assert_full_coverage(&e.materialize(), 12);
+    assert_full_coverage(&e.build_jumps(), 12);
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.unglue(1);
@@ -694,7 +694,7 @@ fn swap_segments_properties() {
     e.swap_segments(0, 1);
     assert_eq!(
         e.validate_cycle(),
-        SegmentEditor::validate_table(12, &e.materialize())
+        SegmentEditor::validate_table(12, &e.build_jumps())
     );
 }
 
@@ -704,12 +704,12 @@ fn split_segment_properties() {
     e.split_segment(1);
     assert_eq!(e.starts(), &[0, 4, 6, 8]);
     assert_eq!(e.portals().len(), 4);
-    assert_full_coverage(&e.materialize(), 12);
+    assert_full_coverage(&e.build_jumps(), 12);
 
     let mut e = SegmentEditor::split_evenly(9, 3);
     e.split_segment(0);
     assert_eq!(e.starts(), &[0, 1, 3, 6]);
-    assert_full_coverage(&e.materialize(), 9);
+    assert_full_coverage(&e.build_jumps(), 9);
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.split_segment(1);
@@ -729,7 +729,7 @@ fn split_segment_properties() {
     assert_eq!(e.starts(), &[0, 1, 2]);
     e.split_segment(1);
     assert_eq!(e.starts(), &[0, 1, 2]);
-    assert_full_coverage(&e.materialize(), 6);
+    assert_full_coverage(&e.build_jumps(), 6);
 
     let mut e = SegmentEditor::split_evenly(12, 4);
     e.unglue(2);
@@ -754,7 +754,7 @@ fn merge_segments_properties() {
     let segs = e.segments();
     assert_eq!((segs[1].start, segs[1].end), (3, 8));
     assert_eq!(segs[1].order, 1);
-    assert_full_coverage(&e.materialize(), 12);
+    assert_full_coverage(&e.build_jumps(), 12);
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.unglue(1);
@@ -780,7 +780,7 @@ fn preset_split_resets_state() {
     e.swap_segments(0, 1);
     e.preset_split(3);
     assert_eq!(e.order(), &[0, 1, 2]);
-    assert_eq!(e.materialize(), JumpBuilder::split_evenly(12, 3).build());
+    assert_eq!(e.build_jumps(), JumpBuilder::split_evenly(12, 3).build());
 
     let mut e = SegmentEditor::split_evenly(12, 4);
     e.unglue(1);
@@ -792,7 +792,7 @@ fn preset_split_resets_state() {
     let mut e = SegmentEditor::single(4);
     e.preset_split(99);
     assert_eq!(e.starts().len(), 4);
-    assert_full_coverage(&e.materialize(), 4);
+    assert_full_coverage(&e.build_jumps(), 4);
 }
 
 #[test]
@@ -801,7 +801,7 @@ fn scaled_welded_parity() {
         let mut a = SegmentEditor::split_evenly(from, 4);
         a.swap_segments(0, 2);
         assert_eq!(
-            a.scaled(to).materialize(),
+            a.scaled(to).build_jumps(),
             JumpBuilder::split_evenly(from, 4)
                 .swap_segments(0, 2)
                 .scaled(to)
@@ -826,7 +826,7 @@ fn scaled_welded_parity() {
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.swap_segments(0, 1);
-    assert_eq!(e.scaled(24).scaled(12).materialize(), e.materialize());
+    assert_eq!(e.scaled(24).scaled(12).build_jumps(), e.build_jumps());
 }
 
 #[test]
@@ -872,7 +872,7 @@ fn serde_roundtrips() {
     let json = serde_json::to_string(&e).unwrap();
     let back: SegmentEditor = serde_json::from_str(&json).unwrap();
     assert_eq!(back, e);
-    assert_eq!(back.materialize(), e.materialize());
+    assert_eq!(back.build_jumps(), e.build_jumps());
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.unglue(1);
@@ -881,7 +881,7 @@ fn serde_roundtrips() {
     let json = serde_json::to_string(&e).unwrap();
     let back: SegmentEditor = serde_json::from_str(&json).unwrap();
     assert_eq!(back.portals()[1], Some(Portal { exit: 1, entry: 9 }));
-    assert_eq!(back.materialize(), e.materialize());
+    assert_eq!(back.build_jumps(), e.build_jumps());
 }
 
 #[test]
@@ -907,7 +907,7 @@ fn from_jumps_recovers_and_falls_back() {
             };
             let e = SegmentEditor::from_jumps(size, &legacy);
             assert_eq!(
-                e.materialize(),
+                e.build_jumps(),
                 legacy,
                 "size {size} splits {splits} seed {seed} did not round trip"
             );
@@ -917,7 +917,7 @@ fn from_jumps_recovers_and_falls_back() {
     let e = SegmentEditor::from_jumps(16, &[]);
     assert_eq!(e.starts().len(), 8);
     assert!(e.validate_cycle());
-    assert_full_coverage(&e.materialize(), 16);
+    assert_full_coverage(&e.build_jumps(), 16);
 
     for broken in [
         vec![Jump::new(4, 0, 0)],
@@ -929,7 +929,7 @@ fn from_jumps_recovers_and_falls_back() {
             e.validate_cycle(),
             "broken table must load playable: {broken:?}"
         );
-        assert_in_bounds(&e.materialize(), 10);
+        assert_in_bounds(&e.build_jumps(), 10);
     }
 }
 
@@ -937,13 +937,13 @@ fn from_jumps_recovers_and_falls_back() {
 fn engine_read_follows_visit_cycle() {
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.swap_segments(0, 1);
-    assert_eq!(engine_read_order(&e.materialize(), 12), e.visit_cycle());
+    assert_eq!(engine_read_order(&e.build_jumps(), 12), e.visit_cycle());
 
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.unglue(1);
     e.move_exit(1, 1);
     let cycle = e.visit_cycle();
-    let got = read_positions(&e.materialize(), 12, cycle.len() * 2);
+    let got = read_positions(&e.build_jumps(), 12, cycle.len() * 2);
     assert_eq!(&got[..cycle.len()], cycle.as_slice());
     assert_eq!(&got[cycle.len()..], cycle.as_slice());
 
@@ -951,7 +951,21 @@ fn engine_read_follows_visit_cycle() {
     e.unglue(1);
     e.move_entry(1, 6);
     assert_eq!(
-        read_positions(&e.materialize(), 12, e.visit_cycle().len()),
+        read_positions(&e.build_jumps(), 12, e.visit_cycle().len()),
         e.visit_cycle()
     );
+}
+
+#[test]
+fn portal_accessors_ignore_the_inert_wrap_and_out_of_range_slots() {
+    let mut e = SegmentEditor::split_evenly(12, 3);
+    e.portals[0] = Some(Portal { exit: 0, entry: 0 });
+    e.move_exit(0, 5);
+    e.move_entry(0, 5);
+    assert_eq!(e.portals()[0], Some(Portal { exit: 0, entry: 0 }));
+
+    e.unglue(1);
+    e.move_exit(9, 5);
+    e.move_entry(9, 5);
+    assert_eq!(e.portals()[1], Some(Portal { exit: 3, entry: 4 }));
 }
