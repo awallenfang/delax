@@ -395,6 +395,8 @@ impl JumpBuilder {
     }
 }
 
+const MIN_EDITOR_SIZE: usize = 8;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Portal {
     /// Describes a jump that departs from just the segments
@@ -402,13 +404,36 @@ pub struct Portal {
     pub entry: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SegmentEditor {
     /// Setup the segment structure
     pub size: usize,
     pub starts: Vec<usize>,
     pub order: Vec<usize>,
     pub portals: Vec<Option<Portal>>,
+}
+
+#[derive(Deserialize)]
+struct SegmentEditorRaw {
+    #[serde(default)]
+    size: usize,
+    #[serde(default)]
+    starts: Vec<usize>,
+    #[serde(default)]
+    order: Vec<usize>,
+    #[serde(default)]
+    portals: Vec<Option<Portal>>,
+}
+
+impl<'de> Deserialize<'de> for SegmentEditor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = SegmentEditorRaw::deserialize(deserializer)?;
+        Ok(Self::checked(raw.size, raw.starts, raw.order, raw.portals)
+            .unwrap_or_else(|| Self::split_evenly(raw.size.max(MIN_EDITOR_SIZE), 8)))
+    }
 }
 
 impl SegmentEditor {
@@ -837,6 +862,42 @@ impl SegmentEditor {
     /// Set self to a preset with n splits
     pub fn preset_split(&mut self, splits: u32) {
         *self = Self::split_evenly(self.size, splits);
+    }
+
+    pub fn checked(
+        size: usize,
+        starts: Vec<usize>,
+        order: Vec<usize>,
+        portals: Vec<Option<Portal>>,
+    ) -> Option<Self> {
+        let n = starts.len();
+        if size == 0 || n == 0 || starts[0] != 0 {
+            return None;
+        }
+        if starts.iter().any(|&s| s >= size) || starts.windows(2).any(|w| w[0] >= w[1]) {
+            return None;
+        }
+        if order.len() != n {
+            return None;
+        }
+        let mut seen = vec![false; n];
+        for &slot in &order {
+            if slot >= n || seen[slot] {
+                return None;
+            }
+            seen[slot] = true;
+        }
+        if portals.len() != n || portals[0].is_some() {
+            return None;
+        }
+        let mut order = order;
+        Self::rotate_to_zero(&mut order);
+        Some(Self {
+            size,
+            starts,
+            order,
+            portals,
+        })
     }
 
     /// Get corresponding ends to a list of starts

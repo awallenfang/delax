@@ -20,10 +20,10 @@ use slint::private_unstable_api::re_exports::ApproxEq;
 use slint::{PlatformError, SharedString};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::delay_engine::jump_builder::{Jump, JumpBuilder};
+use crate::delay_engine::jump_builder::{Jump, JumpBuilder, SegmentEditor};
 use crate::slint_ui::data_transport::BufferChannel;
 
 pub enum UiEvent {
@@ -95,80 +95,120 @@ impl<'a> PersistentField<'a, EditorState> for Arc<EditorState> {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct DerivedJumps {
+    pub version: u64,
+    pub table: Vec<Jump>,
+    pub cycle: Vec<usize>,
+}
+
 pub struct BufferEditorState {
-    pub jumps_l: Mutex<Vec<Jump>>,
-    pub size_l: AtomicUsize,
-    pub jumps_r: Mutex<Vec<Jump>>,
-    pub size_r: AtomicUsize,
     pub version_l: AtomicU64,
     pub version_r: AtomicU64,
+    pub editor_l: Mutex<SegmentEditor>,
+    pub editor_r: Mutex<SegmentEditor>,
+    pub derived_l: Mutex<Option<DerivedJumps>>,
+    pub derived_r: Mutex<Option<DerivedJumps>>,
 }
 
 impl Default for BufferEditorState {
     fn default() -> Self {
-        let init = JumpBuilder::split_evenly(8, 8).build();
+        let init = SegmentEditor::split_evenly(8, 8);
         Self {
-            jumps_l: Mutex::new(init.clone()),
-            size_l: AtomicUsize::new(8),
-            jumps_r: Mutex::new(init),
-            size_r: AtomicUsize::new(8),
             version_l: Default::default(),
             version_r: Default::default(),
+            editor_l: Mutex::new(init.clone()),
+            editor_r: Mutex::new(init),
+            derived_l: Default::default(),
+            derived_r: Default::default(),
         }
     }
 }
 
 impl BufferEditorState {
+    fn fallback_editor() -> SegmentEditor {
+        SegmentEditor::split_evenly(8, 8)
+    }
+
+    fn editor_snapshot(&self, channel: BufferChannel) -> (SegmentEditor, u64) {
+        match channel {
+            BufferChannel::Left => (
+                self.editor_l
+                    .lock()
+                    .map(|g| g.clone())
+                    .unwrap_or_else(|_| Self::fallback_editor()),
+                self.version_l.load(Ordering::Relaxed),
+            ),
+            BufferChannel::Right => (
+                self.editor_r
+                    .lock()
+                    .map(|g| g.clone())
+                    .unwrap_or_else(|_| Self::fallback_editor()),
+                self.version_r.load(Ordering::Relaxed),
+            ),
+        }
+    }
+
     pub fn snapshot_jumps(&self) -> ((Vec<Jump>, usize), (Vec<Jump>, usize)) {
-        let jl = self.jumps_l.lock().map(|g| g.clone()).unwrap_or_default();
-        let sl = self.size_l.load(Ordering::Relaxed);
-        let jr = self.jumps_r.lock().map(|g| g.clone()).unwrap_or_default();
-        let sr = self.size_r.load(Ordering::Relaxed);
-        ((jl, sl), (jr, sr))
+        let (el, _) = self.editor_snapshot(BufferChannel::Left);
+        let (er, _) = self.editor_snapshot(BufferChannel::Right);
+        ((el.build_jumps(), el.size()), (er.build_jumps(), er.size()))
     }
 
     pub fn snapshot_for(&self, channel: BufferChannel) -> (Vec<Jump>, usize) {
-        match channel {
-            BufferChannel::Left => (
-                self.jumps_l.lock().map(|g| g.clone()).unwrap_or_default(),
-                self.size_l.load(Ordering::Relaxed),
-            ),
-            BufferChannel::Right => (
-                self.jumps_r.lock().map(|g| g.clone()).unwrap_or_default(),
-                self.size_r.load(Ordering::Relaxed),
-            ),
+        let (editor, _) = self.editor_snapshot(channel);
+        (editor.build_jumps(), editor.size())
+    }
+
+    pub fn editor_for(&self, channel: BufferChannel, active_len: usize) -> SegmentEditor {
+        let (editor, _) = self.editor_snapshot(channel);
+        if editor.size() == active_len {
+            editor
+        } else {
+            editor.scaled(active_len)
         }
     }
 
-    pub fn store_jumps(&self, channel: BufferChannel, jumps: Vec<Jump>, size: usize) {
-        let (slot, len, ver) = match channel {
-            BufferChannel::Left => (&self.jumps_l, &self.size_l, &self.version_l),
-            BufferChannel::Right => (&self.jumps_r, &self.size_r, &self.version_r),
-        };
-        if let Ok(mut g) = slot.lock() {
-            *g = jumps;
+    pub fn store_editor(&self, channel: BufferChannel, editor: SegmentEditor) -> bool {
+        if !editor.validate_cycle() {
+            return false;
         }
-        len.store(size, Ordering::Relaxed);
-        ver.fetch_add(1, Ordering::Relaxed);
+        let (slot, derived, ver) = match channel {
+            BufferChannel::Left => (&self.editor_l, &self.derived_l, &self.version_l),
+            BufferChannel::Right => (&self.editor_r, &self.derived_r, &self.version_r),
+        };
+        let version = ver.load(Ordering::Relaxed) + 1;
+        if let Ok(mut g) = derived.lock() {
+            *g = Some(DerivedJumps {
+                version,
+                table: editor.build_jumps(),
+                cycle: editor.visit_cycle(),
+            });
+        }
+        if let Ok(mut g) = slot.lock() {
+            *g = editor;
+        }
+        ver.store(version, Ordering::Relaxed);
+        true
+    }
+
+    pub fn derived_for(&self, channel: BufferChannel) -> Option<DerivedJumps> {
+        let (derived, ver) = match channel {
+            BufferChannel::Left => (&self.derived_l, &self.version_l),
+            BufferChannel::Right => (&self.derived_r, &self.version_r),
+        };
+        let current = ver.load(Ordering::Relaxed);
+        let g = derived.lock().ok()?;
+        if g.as_ref()?.version != current {
+            return None;
+        }
+        g.clone()
     }
 
     pub fn builder_for(&self, channel: BufferChannel, active_len: usize) -> JumpBuilder {
         assert!(active_len > 0);
-        let (jumps, size) = self.snapshot_for(channel);
-        if jumps.is_empty() || size == 0 {
-            return JumpBuilder::split_evenly(active_len, 8);
-        }
-        if size == active_len {
-            JumpBuilder::from_jumps(active_len, &jumps)
-        } else {
-            JumpBuilder::from_jumps(size, &jumps).scaled(active_len)
-        }
-    }
-
-    pub fn store_builder(&self, channel: BufferChannel, builder: JumpBuilder) {
-        let jumps = builder.build();
-        let size = builder.size();
-        self.store_jumps(channel, jumps, size);
+        let editor = self.editor_for(channel, active_len);
+        JumpBuilder::from_jumps(active_len, &editor.build_jumps())
     }
 }
 
@@ -177,12 +217,11 @@ impl Serialize for BufferEditorState {
     where
         S: serde::ser::Serializer,
     {
-        let ((jl, sl), (jr, sr)) = self.snapshot_jumps();
-        let mut state = serializer.serialize_struct("BufferEditorState", 4)?;
-        state.serialize_field("jumps_l", &jl)?;
-        state.serialize_field("size_l", &sl)?;
-        state.serialize_field("jumps_r", &jr)?;
-        state.serialize_field("size_r", &sr)?;
+        let (el, _) = self.editor_snapshot(BufferChannel::Left);
+        let (er, _) = self.editor_snapshot(BufferChannel::Right);
+        let mut state = serializer.serialize_struct("BufferEditorState", 2)?;
+        state.serialize_field("editor_l", &el)?;
+        state.serialize_field("editor_r", &er)?;
         state.end()
     }
 }
@@ -195,6 +234,10 @@ impl<'de> Deserialize<'de> for BufferEditorState {
         #[derive(Deserialize)]
         struct Raw {
             #[serde(default)]
+            editor_l: Option<SegmentEditor>,
+            #[serde(default)]
+            editor_r: Option<SegmentEditor>,
+            #[serde(default)]
             jumps_l: Vec<Jump>,
             #[serde(default)]
             size_l: usize,
@@ -203,29 +246,38 @@ impl<'de> Deserialize<'de> for BufferEditorState {
             #[serde(default)]
             size_r: usize,
         }
+
+        fn legacy(size: usize, jumps: &[Jump]) -> SegmentEditor {
+            if size == 0 || jumps.is_empty() {
+                return SegmentEditor::split_evenly(8, 8);
+            }
+            SegmentEditor::from_jumps(size, jumps)
+        }
+
         let raw = Raw::deserialize(deserializer)?;
         Ok(Self {
-            jumps_l: Mutex::new(raw.jumps_l),
-            size_l: AtomicUsize::new(raw.size_l),
-            jumps_r: Mutex::new(raw.jumps_r),
-            size_r: AtomicUsize::new(raw.size_r),
             version_l: AtomicU64::new(0),
             version_r: AtomicU64::new(0),
+            editor_l: Mutex::new(
+                raw.editor_l
+                    .unwrap_or_else(|| legacy(raw.size_l, &raw.jumps_l)),
+            ),
+            editor_r: Mutex::new(
+                raw.editor_r
+                    .unwrap_or_else(|| legacy(raw.size_r, &raw.jumps_r)),
+            ),
+            derived_l: Default::default(),
+            derived_r: Default::default(),
         })
     }
 }
 
 impl<'a> PersistentField<'a, BufferEditorState> for Arc<BufferEditorState> {
     fn set(&self, new_value: BufferEditorState) {
-        let ((jl, sl), (jr, sr)) = new_value.snapshot_jumps();
-        if let Ok(mut g) = self.jumps_l.lock() {
-            *g = jl;
-        }
-        self.size_l.store(sl, Ordering::Relaxed);
-        if let Ok(mut g) = self.jumps_r.lock() {
-            *g = jr;
-        }
-        self.size_r.store(sr, Ordering::Relaxed);
+        let (el, _) = new_value.editor_snapshot(BufferChannel::Left);
+        let (er, _) = new_value.editor_snapshot(BufferChannel::Right);
+        self.store_editor(BufferChannel::Left, el);
+        self.store_editor(BufferChannel::Right, er);
     }
 
     fn map<F, R>(&self, f: F) -> R
@@ -435,9 +487,10 @@ impl SlintHost for DelaxSlintHost {
                     if len == 0 {
                         continue;
                     }
-                    let builder = self.params.buffer_editor_state.builder_for(ch, len);
-                    let builder = builder.swap_segments(first_id as usize, second_id as usize);
-                    self.params.buffer_editor_state.store_builder(ch, builder);
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.swap_segments(first_id as usize, second_id as usize);
+                    state.store_editor(ch, editor);
                 }
             }
         }
@@ -459,57 +512,193 @@ impl SlintHost for DelaxSlintHost {
 #[cfg(test)]
 mod tests {
     use super::BufferEditorState;
-    use crate::delay_engine::jump_builder::Jump;
     use nice_plug::params::persist::PersistentField;
     use std::sync::Arc;
+    use std::sync::atomic::Ordering;
+
+    use crate::delay_engine::jump_builder::{Jump, Portal, SegmentEditor};
+    use crate::slint_ui::data_transport::BufferChannel;
+
+    fn version(state: &BufferEditorState, ch: BufferChannel) -> u64 {
+        match ch {
+            BufferChannel::Left => state.version_l.load(Ordering::Relaxed),
+            BufferChannel::Right => state.version_r.load(Ordering::Relaxed),
+        }
+    }
+
+    fn editor(state: &BufferEditorState, ch: BufferChannel) -> SegmentEditor {
+        match ch {
+            BufferChannel::Left => state.editor_l.lock().unwrap().clone(),
+            BufferChannel::Right => state.editor_r.lock().unwrap().clone(),
+        }
+    }
 
     #[test]
     fn store_bumps_version_per_channel() {
         let state = BufferEditorState::default();
-        state.store_jumps(
-            crate::slint_ui::data_transport::BufferChannel::Left,
-            vec![Jump::new(2, 3, 0), Jump::new(5, 0, 1)],
-            6,
-        );
-        state.store_jumps(
-            crate::slint_ui::data_transport::BufferChannel::Right,
-            vec![Jump::new(1, 0, 0)],
-            2,
-        );
+        let left = SegmentEditor::split_evenly(6, 3);
+        let right = SegmentEditor::single(2);
+        assert!(state.store_editor(BufferChannel::Left, left.clone()));
+        assert!(state.store_editor(BufferChannel::Right, right.clone()));
+
         let ((jl, sl), (jr, sr)) = state.snapshot_jumps();
-        assert_eq!(jl, vec![Jump::new(2, 3, 0), Jump::new(5, 0, 1)]);
+        assert_eq!(jl, left.build_jumps());
         assert_eq!(sl, 6);
-        assert_eq!(jr, vec![Jump::new(1, 0, 0)]);
+        assert_eq!(jr, right.build_jumps());
         assert_eq!(sr, 2);
         assert_eq!(
             (
-                state.version_l.load(std::sync::atomic::Ordering::Relaxed),
-                state.version_r.load(std::sync::atomic::Ordering::Relaxed)
+                version(&state, BufferChannel::Left),
+                version(&state, BufferChannel::Right)
             ),
             (1, 1)
         );
     }
 
     #[test]
+    fn store_keeps_portals_that_a_jump_round_trip_would_drop() {
+        let state = BufferEditorState::default();
+        let mut e = SegmentEditor::split_evenly(12, 3);
+        e.unglue(1);
+        e.move_exit(1, 1);
+        assert!(state.store_editor(BufferChannel::Left, e.clone()));
+
+        let stored = editor(&state, BufferChannel::Left);
+        assert_eq!(stored.portals()[1], e.portals()[1]);
+        assert!(stored.is_unglued(1), "the portal survives the store");
+    }
+
+    #[test]
+    fn a_buffer_length_change_rescales_the_layout_instead_of_replacing_it() {
+        let state = BufferEditorState::default();
+        let mut e = SegmentEditor::split_evenly(12, 3);
+        e.swap_segments(0, 2);
+        state.store_editor(BufferChannel::Left, e.clone());
+
+        let grown = state.editor_for(BufferChannel::Left, 24);
+        assert_eq!(grown.size(), 24);
+        assert_eq!(
+            grown.starts(),
+            &[0, 8, 16],
+            "the three segments must survive the resize, not be replaced"
+        );
+        assert_eq!(grown.order(), &[0, 2, 1], "and so must their order");
+
+        let shrunk = state.editor_for(BufferChannel::Left, 2);
+        assert_eq!(shrunk.size(), 2);
+        assert!(shrunk.validate_cycle());
+    }
+
+    #[test]
+    fn store_refuses_a_table_that_fails_validation() {
+        let state = BufferEditorState::default();
+        let before = editor(&state, BufferChannel::Left);
+        let mut e = SegmentEditor::split_evenly(12, 4);
+        e.swap_segments(0, 2);
+        e.portals[1] = Some(Portal {
+            exit: 11,
+            entry: 11,
+        });
+        assert!(!e.validate_cycle(), "fixture must be invalid");
+        assert!(!state.store_editor(BufferChannel::Left, e));
+        assert_eq!(version(&state, BufferChannel::Left), 0);
+        assert_eq!(editor(&state, BufferChannel::Left), before);
+    }
+
+    #[test]
+    fn derived_cache_tracks_the_stored_version() {
+        let state = BufferEditorState::default();
+        assert!(
+            state.derived_for(BufferChannel::Left).is_none(),
+            "nothing derived yet, so the cache cannot be current"
+        );
+        let mut e = SegmentEditor::split_evenly(12, 3);
+        e.unglue(1);
+        e.move_exit(1, 1);
+        state.store_editor(BufferChannel::Left, e.clone());
+
+        let d = state.derived_for(BufferChannel::Left).expect("current");
+        assert_eq!(d.version, version(&state, BufferChannel::Left));
+        assert_eq!(d.table, e.build_jumps());
+        assert_eq!(d.cycle, e.visit_cycle());
+    }
+
+    #[test]
+    fn round_trips_welded_and_unglued_through_serde() {
+        for portals in [false, true] {
+            let mut e = SegmentEditor::split_evenly(12, 3);
+            if portals {
+                e.unglue(1);
+                e.move_exit(1, 1);
+            }
+            let state = BufferEditorState::default();
+            state.store_editor(BufferChannel::Left, e.clone());
+            state.store_editor(BufferChannel::Right, e.clone());
+
+            let json = serde_json::to_string(&state).unwrap();
+            let back: BufferEditorState = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                editor(&back, BufferChannel::Left),
+                e,
+                "left, portals={portals}"
+            );
+            assert_eq!(
+                editor(&back, BufferChannel::Right),
+                e,
+                "right, portals={portals}"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_jump_shape_still_loads() {
+        let json = r#"{"jumps_l":[{"from":2,"to":3,"rank":0},{"from":5,"to":0,"rank":1}],"size_l":6,"jumps_r":[],"size_r":0}"#;
+        let back: BufferEditorState = serde_json::from_str(json).unwrap();
+        let ((jl, sl), (jr, sr)) = back.snapshot_jumps();
+        assert_eq!(jl, vec![Jump::new(2, 3, 0), Jump::new(5, 0, 1)]);
+        assert_eq!(sl, 6);
+        // size_r == 0 historically meant "unset" and resolved to an 8-way split.
+        assert_eq!(jr, SegmentEditor::split_evenly(8, 8).build_jumps());
+        assert_eq!(sr, 8);
+    }
+
+    #[test]
     fn persistent_field_copies_without_swapping_arc() {
         let state = Arc::new(BufferEditorState::default());
-        state.store_jumps(
-            crate::slint_ui::data_transport::BufferChannel::Left,
-            vec![Jump::new(1, 0, 0)],
-            2,
-        );
+        state.store_editor(BufferChannel::Left, SegmentEditor::single(2));
         let fresh = BufferEditorState {
-            jumps_l: std::sync::Mutex::new(vec![Jump::new(0, 1, 0), Jump::new(1, 0, 1)]),
-            size_l: std::sync::atomic::AtomicUsize::new(2),
-            jumps_r: std::sync::Mutex::new(vec![]),
-            size_r: std::sync::atomic::AtomicUsize::new(0),
-            version_l: std::sync::atomic::AtomicU64::new(7),
-            version_r: std::sync::atomic::AtomicU64::new(9),
+            version_l: Default::default(),
+            version_r: Default::default(),
+            editor_l: std::sync::Mutex::new(SegmentEditor::split_evenly(2, 2)),
+            editor_r: std::sync::Mutex::new(SegmentEditor::split_evenly(2, 2)),
+            derived_l: Default::default(),
+            derived_r: Default::default(),
         };
         PersistentField::set(&state, fresh);
-        let ((jl, sl), _) = state.snapshot_jumps();
-        assert_eq!(jl, vec![Jump::new(0, 1, 0), Jump::new(1, 0, 1)]);
-        assert_eq!(sl, 2);
+        assert_eq!(
+            editor(&state, BufferChannel::Left),
+            SegmentEditor::split_evenly(2, 2)
+        );
         assert!(Arc::strong_count(&state) == 1);
+    }
+
+    #[test]
+    fn persistent_field_bumps_versions_so_a_load_reaches_the_audio_thread() {
+        let state = Arc::new(BufferEditorState::default());
+        let before = version(&state, BufferChannel::Left);
+        let fresh = BufferEditorState {
+            version_l: Default::default(),
+            version_r: Default::default(),
+            editor_l: std::sync::Mutex::new(SegmentEditor::split_evenly(9, 3)),
+            editor_r: std::sync::Mutex::new(SegmentEditor::split_evenly(9, 3)),
+            derived_l: Default::default(),
+            derived_r: Default::default(),
+        };
+        PersistentField::set(&state, fresh);
+        assert!(
+            version(&state, BufferChannel::Left) > before,
+            "a load must change the version or the audio thread ignores it"
+        );
+        assert_eq!(editor(&state, BufferChannel::Left).size(), 9);
     }
 }

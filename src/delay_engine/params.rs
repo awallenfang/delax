@@ -97,6 +97,8 @@ pub struct EngineParams {
     pub buffer_len_l: FloatParam,
     #[id = "buffer_len_r"]
     pub buffer_len_r: FloatParam,
+    #[id = "head_sync"]
+    pub head_sync: BoolParam,
 }
 
 impl Default for EngineParams {
@@ -183,6 +185,7 @@ impl Default for EngineParams {
             )
             .with_unit(" s")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            head_sync: BoolParam::new("Head Sync", true),
         }
     }
 }
