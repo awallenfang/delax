@@ -397,12 +397,14 @@ impl JumpBuilder {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Portal {
+    /// Describes a jump that departs from just the segments
     pub exit: usize,
     pub entry: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentEditor {
+    /// Setup the segment structure
     pub size: usize,
     pub starts: Vec<usize>,
     pub order: Vec<usize>,
@@ -410,6 +412,7 @@ pub struct SegmentEditor {
 }
 
 impl SegmentEditor {
+    /// Just a single full segment
     pub fn single(size: usize) -> Self {
         assert!(size > 0);
         Self {
@@ -420,6 +423,7 @@ impl SegmentEditor {
         }
     }
 
+    /// Split evently in several segments
     pub fn split_evenly(size: usize, splits: u32) -> Self {
         assert!(size > 0);
         assert!(splits > 0);
@@ -434,6 +438,7 @@ impl SegmentEditor {
         }
     }
 
+    /// Create from a list of jumps
     pub fn from_jumps(size: usize, jumps: &[Jump]) -> Self {
         assert!(size > 0);
         let mut starts: Vec<usize> = jumps.iter().map(|j| j.to).collect();
@@ -496,6 +501,7 @@ impl SegmentEditor {
         self.portals[boundary].is_some()
     }
 
+    /// The specific segments, useful for the UI rendering
     pub fn segments(&self) -> Vec<JumpSegment> {
         let ends = self.ends_all();
         let mut rank = vec![0usize; self.starts.len()];
@@ -511,7 +517,8 @@ impl SegmentEditor {
             .collect()
     }
 
-    pub fn materialize(&self) -> Vec<Jump> {
+    /// Build the resulting list of jumps
+    pub fn build_jumps(&self) -> Vec<Jump> {
         let n = self.starts.len();
         if n == 0 || self.size == 0 {
             return Vec::new();
@@ -545,18 +552,21 @@ impl SegmentEditor {
         jumps
     }
 
+    /// Validate that a list of jumps is valid
     pub fn validate_table(size: usize, jumps: &[Jump]) -> bool {
         Self::cycle_edges(size, jumps)
             .and_then(|e| Self::internal_cycle_len(size, &e))
             .is_some()
     }
 
+    /// Validate the hold table
     pub fn validate_cycle(&self) -> bool {
-        Self::validate_table(self.size, &self.materialize())
+        Self::validate_table(self.size, &self.build_jumps())
     }
 
+    /// Iterate through cycle and return the list of jump positions
     pub fn visit_cycle(&self) -> Vec<usize> {
-        let jumps = self.materialize();
+        let jumps = self.build_jumps();
         let Some(edges) = Self::cycle_edges(self.size, &jumps) else {
             return Vec::new();
         };
@@ -587,8 +597,10 @@ impl SegmentEditor {
         }
         None
     }
+
+    /// Calculate cycle length
     pub fn cycle_len(&self) -> Option<usize> {
-        let jumps = self.materialize();
+        let jumps = self.build_jumps();
         let edges = Self::cycle_edges(self.size, &jumps)?;
         Self::internal_cycle_len(self.size, &edges)
     }
@@ -645,6 +657,10 @@ impl SegmentEditor {
     }
 
     pub fn move_exit(&mut self, boundary: usize, pos: usize) {
+        let n = self.starts.len();
+        if boundary == 0 || boundary >= n {
+            return;
+        }
         if let Some(p) = self.portals[boundary] {
             let hi = self.ends_all()[boundary - 1];
             self.portals[boundary] = Some(Portal {
@@ -655,6 +671,9 @@ impl SegmentEditor {
     }
 
     pub fn move_entry(&mut self, boundary: usize, pos: usize) {
+        if boundary == 0 || boundary >= self.portals.len() {
+            return;
+        }
         if let Some(p) = self.portals[boundary] {
             self.portals[boundary] = Some(Portal {
                 entry: pos.min(self.size - 1),
@@ -672,6 +691,7 @@ impl SegmentEditor {
         Self::rotate_to_zero(&mut self.order);
     }
 
+    // Rescale the whole segments to a different buffer length
     pub fn scaled(&self, new_size: usize) -> Self {
         assert!(new_size > 0);
         let n = self.starts.len();
@@ -731,6 +751,7 @@ impl SegmentEditor {
         out
     }
 
+    /// Split a segment in half
     pub fn split_segment(&mut self, segment: usize) {
         let n = self.starts.len();
         if segment + 1 >= n {
@@ -768,6 +789,7 @@ impl SegmentEditor {
         self.reclamp_portals();
     }
 
+    /// Merge two segments together at boundary==1 combines 0 with 1
     pub fn merge_segments(&mut self, boundary: usize) {
         let n = self.starts.len();
         if n < 2 || boundary == 0 || boundary >= n {
@@ -812,10 +834,12 @@ impl SegmentEditor {
         self.reclamp_portals();
     }
 
+    /// Set self to a preset with n splits
     pub fn preset_split(&mut self, splits: u32) {
         *self = Self::split_evenly(self.size, splits);
     }
 
+    /// Get corresponding ends to a list of starts
     fn ends_of(starts: &[usize], size: usize) -> Vec<usize> {
         let n = starts.len();
         (0..n)
@@ -837,12 +861,14 @@ impl SegmentEditor {
         self.order.iter().position(|&s| s == segment).unwrap_or(0)
     }
 
+    /// Rotate until the start is at 0
     fn rotate_to_zero(order: &mut Vec<usize>) {
         if let Some(k) = order.iter().position(|&s| s == 0) {
             order.rotate_left(k);
         }
     }
 
+    /// Find the next segment
     fn table_next(jumps: &[Jump], pos: usize) -> usize {
         jumps
             .iter()
