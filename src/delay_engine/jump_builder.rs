@@ -2,6 +2,7 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::{SeedableRng, rng};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+use wgpu::naga::Statement::Continue;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Jump {
@@ -213,7 +214,10 @@ impl JumpBuilder {
         if jumps.is_empty() {
             return Self::empty(size);
         }
-        JumpBuilder { size, jumps: jumps.to_owned() }
+        JumpBuilder {
+            size,
+            jumps: jumps.to_owned(),
+        }
     }
 
     pub fn scaled(&self, new_size: usize) -> Self {
@@ -391,486 +395,476 @@ impl JumpBuilder {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::delay_engine::engine::DelayEngine;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Portal {
+    pub exit: usize,
+    pub entry: usize,
+}
 
-    fn walk_order(jumps: &[Jump], size: usize) -> (Vec<usize>, usize) {
-        let mut pos = 0;
-        let mut order = Vec::with_capacity(size);
-        for _ in 0..size {
-            order.push(pos);
-            pos = jumps
-                .iter()
-                .find(|j| j.from == pos)
-                .map(|j| j.to)
-                .unwrap_or(pos + 1);
-        }
-        (order, pos)
-    }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SegmentEditor {
+    pub size: usize,
+    pub starts: Vec<usize>,
+    pub order: Vec<usize>,
+    pub portals: Vec<Option<Portal>>,
+}
 
-    fn assert_in_bounds(jumps: &[Jump], size: usize) {
-        for j in jumps {
-            assert!(
-                j.from < size && j.to < size,
-                "jump ({}, {}) out of bounds for size {size}",
-                j.from,
-                j.to
-            );
+impl SegmentEditor {
+    pub fn single(size: usize) -> Self {
+        assert!(size > 0);
+        Self {
+            size,
+            starts: vec![0],
+            order: vec![0],
+            portals: vec![None],
         }
     }
 
-    fn assert_full_coverage(jumps: &[Jump], size: usize) {
-        let (mut order, end) = walk_order(jumps, size);
-        order.sort_unstable();
-        assert_eq!(
+    pub fn split_evenly(size: usize, splits: u32) -> Self {
+        assert!(size > 0);
+        assert!(splits > 0);
+        let n = (splits as usize).clamp(1, size);
+        let width = size / n;
+        let starts: Vec<usize> = (0..n).map(|i| (i * width).min(size - 1)).collect();
+        Self {
+            size,
+            starts,
+            order: (0..n).collect(),
+            portals: vec![None; n],
+        }
+    }
+
+    pub fn from_jumps(size: usize, jumps: &[Jump]) -> Self {
+        assert!(size > 0);
+        let mut starts: Vec<usize> = jumps.iter().map(|j| j.to).collect();
+        starts.sort_unstable();
+        starts.dedup();
+        let usable = !starts.is_empty()
+            && starts[0] == 0
+            && starts.len() == jumps.len()
+            && starts.iter().all(|&s| s < size);
+        if !usable {
+            return Self::split_evenly(size, 8);
+        }
+        let n = starts.len();
+        let ends = Self::ends_of(&starts, size);
+        let mut order = vec![0usize];
+        let mut visited = vec![false; n];
+        visited[0] = true;
+        for _ in 0..n {
+            let cur = *order.last().unwrap();
+            let dest = Self::table_next(jumps, ends[cur]);
+            match starts.iter().position(|&s| s == dest) {
+                Some(i) if !visited[i] => {
+                    visited[i] = true;
+                    order.push(i);
+                }
+                _ => break,
+            }
+        }
+        for i in 0..n {
+            if !visited[i] {
+                order.push(i);
+            }
+        }
+        Self::rotate_to_zero(&mut order);
+        Self {
+            size,
+            starts,
             order,
-            (0..size).collect::<Vec<_>>(),
-            "table has gaps or repeats"
-        );
-        assert_eq!(end, 0, "table does not wrap back to 0");
-    }
-
-    fn engine_read_order(jumps: &[Jump], size: usize) -> Vec<usize> {
-        let mut engine = DelayEngine::new(size, 44100.);
-        for i in 0..size {
-            engine.write_sample(i as f32);
-        }
-        engine.set_raw_read_jumps(jumps);
-        (0..size).map(|_| engine.pop_sample() as usize).collect()
-    }
-
-    #[test]
-    fn empty_produces_single_wrap_jump() {
-        assert_eq!(
-            JumpBuilder::empty(8).build(),
-            vec![Jump::new(7, 0, 0)]
-        );
-        assert_eq!(
-            JumpBuilder::empty(1).build(),
-            vec![Jump::new(0, 0, 0)]
-        );
-    }
-
-    #[test]
-    fn empty_traversal_visits_every_sample_once() {
-        let jumps = JumpBuilder::empty(5).build();
-        assert_in_bounds(&jumps, 5);
-        assert_eq!(engine_read_order(&jumps, 5), vec![0, 1, 2, 3, 4]);
-        let mut engine = DelayEngine::new(5, 44100.);
-        for i in 0..5 {
-            engine.write_sample(i as f32);
-        }
-        engine.set_raw_read_jumps(&jumps);
-        for i in 0..5 {
-            assert_eq!(engine.pop_sample() as usize, i);
-        }
-        assert_eq!(engine.pop_sample() as usize, 0);
-    }
-
-    #[test]
-    fn split_evenly_divisible_creates_linear_segments() {
-        let jumps = JumpBuilder::split_evenly(12, 3).build();
-        assert_eq!(
-            jumps,
-            vec![
-                Jump::new(3, 4, 0),
-                Jump::new(7, 8, 1),
-                Jump::new(11, 0, 2)
-            ]
-        );
-        assert_eq!(engine_read_order(&jumps, 12), (0..12).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn split_evenly_with_remainder_absorbs_tail() {
-        let jumps = JumpBuilder::split_evenly(10, 3).build();
-        assert_eq!(
-            jumps,
-            vec![
-                Jump::new(2, 3, 0),
-                Jump::new(5, 6, 1),
-                Jump::new(9, 0, 2)
-            ]
-        );
-        assert_in_bounds(&jumps, 10);
-        assert_full_coverage(&jumps, 10);
-    }
-
-    #[test]
-    fn split_evenly_more_splits_than_samples_clamps() {
-        let jumps = JumpBuilder::split_evenly(3, 5).build();
-        assert_eq!(
-            jumps,
-            vec![
-                Jump::new(0, 1, 0),
-                Jump::new(1, 2, 1),
-                Jump::new(2, 0, 2)
-            ]
-        );
-        assert_full_coverage(&jumps, 3);
-    }
-
-    #[test]
-    fn split_evenly_single_split_matches_empty() {
-        assert_eq!(
-            JumpBuilder::split_evenly(6, 1).build(),
-            JumpBuilder::empty(6).build()
-        );
-    }
-
-    #[test]
-    #[should_panic]
-    fn split_evenly_zero_splits_panics() {
-        let _ = JumpBuilder::split_evenly(8, 0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn empty_zero_size_panics() {
-        let _ = JumpBuilder::empty(0);
-    }
-
-    #[test]
-    fn build_returns_independent_copy() {
-        let mut builder = JumpBuilder::split_evenly(8, 2);
-        let first = builder.build();
-        builder.shuffle_seeded(42);
-        assert_eq!(
-            first,
-            vec![Jump::new(3, 4, 0), Jump::new(7, 0, 1)]
-        );
-        assert_eq!(builder.build().len(), 2);
-    }
-
-    #[test]
-    fn shuffle_seeded_is_deterministic() {
-        let a = JumpBuilder::split_evenly(12, 4).shuffle_seeded(123).build();
-        let b = JumpBuilder::split_evenly(12, 4).shuffle_seeded(123).build();
-        assert_eq!(a, b);
-    }
-
-    #[test]
-    fn shuffle_preserves_coverage_as_single_cycle() {
-        for seed in [0, 1, 2, 7, 12345] {
-            let before = JumpBuilder::split_evenly(12, 4).build();
-            let after = JumpBuilder::split_evenly(12, 4)
-                .shuffle_seeded(seed)
-                .build();
-            assert_eq!(after.len(), before.len());
-            assert_in_bounds(&after, 12);
-            let mut from_before: Vec<_> = before.iter().map(|j| j.from).collect();
-            let mut from_after: Vec<_> = after.iter().map(|j| j.from).collect();
-            from_before.sort_unstable();
-            from_after.sort_unstable();
-            assert_eq!(from_before, from_after, "seed {seed}: sources changed");
-            let mut to_before: Vec<_> = before.iter().map(|j| j.to).collect();
-            let mut to_after: Vec<_> = after.iter().map(|j| j.to).collect();
-            to_before.sort_unstable();
-            to_after.sort_unstable();
-            assert_eq!(to_before, to_after, "seed {seed}: destinations changed");
-            let mut thirds: Vec<_> = after.iter().map(|j| j.rank).collect();
-            thirds.sort_unstable();
-            assert_eq!(thirds, vec![0, 1, 2, 3], "seed {seed}: stale segment index");
-            assert_full_coverage(&after, 12);
+            portals: vec![None; n],
         }
     }
 
-    #[test]
-    fn shuffle_changes_playback_order() {
-        let linear = (0..12).collect::<Vec<_>>();
-        let mut found = None;
-        for seed in 1..=20u64 {
-            let jumps = JumpBuilder::split_evenly(12, 4)
-                .shuffle_seeded(seed)
-                .build();
-            let order = engine_read_order(&jumps, 12);
-            let mut sorted = order.clone();
-            sorted.sort_unstable();
-            assert_eq!(sorted, linear, "seed {seed}: shuffle lost samples");
-            if order != linear {
-                found = Some(seed);
-                break;
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn starts(&self) -> &[usize] {
+        &self.starts
+    }
+
+    pub fn order(&self) -> &[usize] {
+        &self.order
+    }
+
+    pub fn portals(&self) -> &[Option<Portal>] {
+        &self.portals
+    }
+
+    pub fn is_unglued(&self, boundary: usize) -> bool {
+        self.portals[boundary].is_some()
+    }
+
+    pub fn segments(&self) -> Vec<JumpSegment> {
+        let ends = self.ends_all();
+        let mut rank = vec![0usize; self.starts.len()];
+        for (slot, &seg) in self.order.iter().enumerate() {
+            rank[seg] = slot;
+        }
+        (0..self.starts.len())
+            .map(|i| JumpSegment {
+                start: self.starts[i],
+                end: ends[i],
+                order: rank[i],
+            })
+            .collect()
+    }
+
+    pub fn materialize(&self) -> Vec<Jump> {
+        let n = self.starts.len();
+        if n == 0 || self.size == 0 {
+            return Vec::new();
+        }
+
+        let mut rank = vec![0_usize; n];
+        for (slot, &seg) in self.order.iter().enumerate() {
+            rank[seg] = slot;
+        }
+
+        let ends: Vec<usize> = (0..n)
+            .map(|i| {
+                if i + 1 < n {
+                    self.starts[i + 1].saturating_sub(1)
+                } else {
+                    self.size - 1
+                }
+            })
+            .collect();
+
+        let mut jumps: Vec<Jump> = (0..n)
+            .map(|j| Jump::new(ends[self.order[j]], self.starts[self.order[(j + 1) % n]], j))
+            .collect();
+
+        for (i, portal) in self.portals.iter().enumerate() {
+            let Some(p) = portal else { continue };
+            let left = if i == 0 { n - 1 } else { i - 1 };
+            jumps[rank[left]].to = p.entry;
+            jumps[(rank[i] + n - 1) % n].from = p.exit;
+        }
+        jumps
+    }
+
+    pub fn validate_table(size: usize, jumps: &[Jump]) -> bool {
+        Self::cycle_edges(size, jumps)
+            .and_then(|e| Self::internal_cycle_len(size, &e))
+            .is_some()
+    }
+
+    pub fn validate_cycle(&self) -> bool {
+        Self::validate_table(self.size, &self.materialize())
+    }
+
+    pub fn visit_cycle(&self) -> Vec<usize> {
+        let jumps = self.materialize();
+        let Some(edges) = Self::cycle_edges(self.size, &jumps) else {
+            return Vec::new();
+        };
+        let Some(len) = Self::internal_cycle_len(self.size, &edges) else {
+            return Vec::new();
+        };
+        let mut cycle = Vec::with_capacity(len);
+        cycle.push(0);
+        let mut pos = 0usize;
+        for _ in 1..len {
+            pos = Self::step(&edges, pos);
+            cycle.push(pos);
+        }
+        cycle
+    }
+
+    fn internal_cycle_len(size: usize, edges: &[(usize, usize)]) -> Option<usize> {
+        let mut pos = 0usize;
+        for len in 1..=size {
+            let next = Self::step(edges, pos);
+            if next >= size {
+                return None;
+            }
+            if next == 0 {
+                return Some(len);
+            }
+            pos = next;
+        }
+        None
+    }
+    pub fn cycle_len(&self) -> Option<usize> {
+        let jumps = self.materialize();
+        let edges = Self::cycle_edges(self.size, &jumps)?;
+        Self::internal_cycle_len(self.size, &edges)
+    }
+
+    fn step(edges: &[(usize, usize)], pos: usize) -> usize {
+        match edges.binary_search_by_key(&pos, |&(from, _)| from) {
+            Ok(idx) => edges[idx].1,
+            Err(_) => pos + 1,
+        }
+    }
+
+    fn cycle_edges(size: usize, jumps: &[Jump]) -> Option<Vec<(usize, usize)>> {
+        if size == 0 || jumps.is_empty() {
+            return None;
+        }
+        let mut edges: Vec<(usize, usize)> = jumps.iter().map(|j| (j.from, j.to)).collect();
+        edges.sort_unstable();
+        if edges.windows(2).any(|w| w[0].0 == w[1].0) {
+            return None;
+        }
+        if edges.iter().any(|&(from, to)| from >= size || to >= size) {
+            return None;
+        }
+        Some(edges)
+    }
+
+    pub fn move_boundary(&mut self, boundary: usize, pos: usize) {
+        let n = self.starts.len();
+        if boundary == 0 || boundary >= n {
+            return;
+        }
+        let lo = self.starts[boundary - 1] + 1;
+        let hi = if boundary + 1 < n {
+            self.starts[boundary + 1] - 1
+        } else {
+            self.size - 1
+        };
+        self.starts[boundary] = pos.clamp(lo, hi);
+    }
+
+    pub fn unglue(&mut self, boundary: usize) {
+        let n = self.starts.len();
+        if boundary == 0 || boundary >= n || self.is_unglued(boundary) {
+            return;
+        }
+        if self.rank_of(boundary) != (self.rank_of(boundary - 1) + 1) % n {
+            return;
+        }
+
+        self.portals[boundary] = Some(Portal {
+            exit: self.starts[boundary] - 1,
+            entry: self.starts[boundary],
+        });
+    }
+
+    pub fn move_exit(&mut self, boundary: usize, pos: usize) {
+        if let Some(p) = self.portals[boundary] {
+            let hi = self.ends_all()[boundary - 1];
+            self.portals[boundary] = Some(Portal {
+                exit: pos.clamp(self.starts[boundary - 1], hi),
+                ..p
+            });
+        }
+    }
+
+    pub fn move_entry(&mut self, boundary: usize, pos: usize) {
+        if let Some(p) = self.portals[boundary] {
+            self.portals[boundary] = Some(Portal {
+                entry: pos.min(self.size - 1),
+                ..p
+            });
+        }
+    }
+
+    pub fn reweld(&mut self, boundary: usize) {
+        self.portals[boundary] = None;
+    }
+
+    pub fn swap_segments(&mut self, a: usize, b: usize) {
+        JumpBuilder::swap_positions(&mut self.order, a, b);
+        Self::rotate_to_zero(&mut self.order);
+    }
+
+    pub fn scaled(&self, new_size: usize) -> Self {
+        assert!(new_size > 0);
+        let n = self.starts.len();
+        let scaled: Vec<usize> = self
+            .starts
+            .iter()
+            .map(|s| s * new_size / self.size)
+            .collect();
+        let mut starts: Vec<usize> = Vec::with_capacity(n);
+        for s in scaled.iter().copied() {
+            if starts.last() != Some(&s) {
+                starts.push(s);
             }
         }
-        assert!(found.is_some(), "no seed in 1..=20 reordered playback");
-    }
-
-    #[test]
-    fn shuffle_single_segment_is_noop() {
-        let mut builder = JumpBuilder::empty(8);
-        let after = builder.shuffle_seeded(99).build();
-        assert_eq!(after, vec![Jump::new(7, 0, 0)]);
-    }
-
-    #[test]
-    fn shuffle_is_chainable_and_stays_valid() {
-        let jumps = JumpBuilder::split_evenly(12, 3).shuffle_seeded(7).build();
-        assert_eq!(jumps.len(), 3);
-        assert_in_bounds(&jumps, 12);
-        assert_full_coverage(&jumps, 12);
-
-        let jumps = JumpBuilder::split_evenly(16, 4).shuffle().build();
-        assert_eq!(jumps.len(), 4);
-        assert_in_bounds(&jumps, 16);
-        assert_full_coverage(&jumps, 16);
-    }
-
-    #[test]
-    fn jump_rank_matches_segment_order() {
-        for seed in [1, 7, 123] {
-            let builder = JumpBuilder::split_evenly(12, 4).shuffle_seeded(seed);
-            let jumps = builder.build();
-            let segs = builder.segments();
-            let ends: Vec<_> = segs.iter().map(|s| s.end).collect();
-            for (pos, j) in jumps.iter().enumerate() {
-                assert_eq!(j.rank, pos);
-                let seg = ends.iter().position(|&e| e == j.from).unwrap();
-                assert_eq!(segs[seg].order, pos);
+        if starts.len() <= 1 {
+            return Self::single(new_size);
+        }
+        let mut seen = vec![false; starts.len()];
+        let mut order: Vec<usize> = Vec::with_capacity(n);
+        for &id in &self.order {
+            if let Some(pos) = starts.iter().position(|&s| s == scaled[id]) {
+                if !seen[pos] {
+                    seen[pos] = true;
+                    order.push(pos);
+                }
             }
         }
-    }
-
-    #[test]
-    fn order_rewires_exact_cycle() {
-        let jumps = JumpBuilder::split_evenly(12, 3).order(&[2, 1, 0]).build();
-        assert_eq!(
-            jumps,
-            vec![
-                Jump::new(3, 8, 0),
-                Jump::new(11, 4, 1),
-                Jump::new(7, 0, 2)
-            ]
-        );
-        let (order, end) = walk_order(&jumps, 12);
-        assert_eq!(order, vec![0, 1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7]);
-        assert_eq!(end, 0);
-    }
-
-    #[test]
-    fn order_rotation_is_equivalent() {
-        let a = JumpBuilder::split_evenly(12, 3).order(&[1, 2, 0]).build();
-        let b = JumpBuilder::split_evenly(12, 3).order(&[0, 1, 2]).build();
-        assert_eq!(a, b);
-        let (wa, _) = walk_order(&a, 12);
-        let (wb, _) = walk_order(&b, 12);
-        assert_eq!(wa, wb);
-    }
-
-    #[test]
-    fn order_invalid_input_keeps_table() {
-        let mut builder = JumpBuilder::split_evenly(12, 3);
-        let before = builder.build();
-        builder.order(&[0, 1]);
-        builder.order(&[0, 1, 1]);
-        builder.order(&[0, 1, 3]);
-        builder.order(&[]);
-        assert_eq!(builder.build(), before);
-    }
-
-    #[test]
-    fn order_single_segment() {
-        let mut builder = JumpBuilder::empty(8);
-        assert_eq!(
-            builder.order(&[0]).build(),
-            vec![Jump::new(7, 0, 0)]
-        );
-        assert_eq!(
-            builder.order(&[1]).build(),
-            vec![Jump::new(7, 0, 0)]
-        );
-        assert_eq!(
-            builder.order(&[]).build(),
-            vec![Jump::new(7, 0, 0)]
-        );
-    }
-
-    #[test]
-    fn swap_positions_swaps_ids() {
-        let mut order = vec![0, 2, 3, 1];
-        JumpBuilder::swap_positions(&mut order, 2, 1);
-        assert_eq!(order, vec![0, 1, 3, 2]);
-        JumpBuilder::swap_positions(&mut order, 1, 1);
-        assert_eq!(order, vec![0, 1, 3, 2]);
-        JumpBuilder::swap_positions(&mut order, 1, 9);
-        assert_eq!(order, vec![0, 1, 3, 2]);
-    }
-
-    #[test]
-    fn is_covering_accepts_valid_tables() {
-        assert!(JumpBuilder::empty(8).is_covering());
-        assert!(JumpBuilder::split_evenly(12, 3).is_covering());
-        assert!(
-            JumpBuilder::split_evenly(12, 4)
-                .shuffle_seeded(7)
-                .is_covering()
-        );
-    }
-
-    #[test]
-    fn is_covering_rejects_broken_tables() {
-        assert!(!JumpBuilder::from_jumps(10, &[Jump::new(4, 0, 0)]).is_covering());
-        assert!(!JumpBuilder::from_jumps(10, &[Jump::new(2, 2, 0)]).is_covering());
-        assert!(!JumpBuilder::from_jumps(5, &[Jump::new(9, 0, 0)]).is_covering());
-        assert!(JumpBuilder::from_jumps(6, &[]).is_covering());
-    }
-
-    #[test]
-    fn order_roundtrip_with_segments() {
-        let mut builder = JumpBuilder::split_evenly(12, 4).shuffle_seeded(7);
-        builder.order(&[3, 1, 0, 2]);
-        let jumps = builder.build();
-        let segs = builder.segments();
-        assert_eq!(visit_order(12, &jumps), vec![0, 2, 3, 1]);
-        for (s, seg) in segs.iter().enumerate() {
-            let want = [0, 2, 3, 1].iter().position(|&x| x == s).unwrap();
-            assert_eq!(seg.order, want);
+        if order.len() <= 1 {
+            return Self::single(new_size);
         }
-        let ends: Vec<_> = segs.iter().map(|s| s.end).collect();
-        for (pos, j) in jumps.iter().enumerate() {
-            assert_eq!(j.rank, pos);
-            let seg = ends.iter().position(|&e| e == j.from).unwrap();
-            assert_eq!(segs[seg].order, pos);
+        Self::rotate_to_zero(&mut order);
+        let m = starts.len();
+        let mut out = Self {
+            size: new_size,
+            starts,
+            order,
+            portals: vec![None; m],
+        };
+        for i in 1..n {
+            let Some(p) = self.portals[i] else { continue };
+            let left_ok = i == 1 || scaled[i - 1] != scaled[i - 2];
+            let right_ok = i + 1 == n || scaled[i] != scaled[i + 1];
+            if !left_ok || !right_ok {
+                continue;
+            }
+            let target = scaled[i];
+            if let Some(j) = out.starts.iter().position(|&s| s == target) {
+                if j > 0 && out.portals[j].is_none() {
+                    out.portals[j] = Some(Portal {
+                        exit: p.exit * new_size / self.size,
+                        entry: p.entry * new_size / self.size,
+                    });
+                }
+            }
         }
+        out.reclamp_portals();
+        out
     }
 
-    #[test]
-    fn order_overwrites_shuffle_deterministically() {
-        let jumps = JumpBuilder::split_evenly(12, 4)
-            .shuffle_seeded(99)
-            .order(&[3, 1, 0, 2])
-            .build();
-        assert_eq!(
-            jumps,
-            vec![
-                Jump::new(2, 6, 0),
-                Jump::new(8, 9, 1),
-                Jump::new(11, 3, 2),
-                Jump::new(5, 0, 3),
-            ]
-        );
+    pub fn split_segment(&mut self, segment: usize) {
+        let n = self.starts.len();
+        if segment + 1 >= n {
+            return;
+        }
+        let ends = self.ends_all();
+        let width = ends[segment] - self.starts[segment] + 1;
+        if width < 2 {
+            return;
+        }
+        let mid = self.starts[segment] + width / 2;
+        let size = self.size;
+        let mut starts = self.starts.clone();
+        starts.insert(segment + 1, mid);
+        let mut order: Vec<usize> = self
+            .order
+            .iter()
+            .map(|&id| if id > segment { id + 1 } else { id })
+            .collect();
+        let at = order.iter().position(|&id| id == segment).unwrap_or(0);
+        order.insert(at + 1, segment + 1);
+        let mut portals = vec![None; n + 1];
+        for i in 1..n {
+            if let Some(p) = self.portals[i] {
+                let j = if i > segment { i + 1 } else { i };
+                portals[j] = Some(p);
+            }
+        }
+        *self = Self {
+            size,
+            starts,
+            order,
+            portals,
+        };
+        self.reclamp_portals();
     }
 
-    fn visit_order(size: usize, jumps: &[Jump]) -> Vec<usize> {
-        let b = JumpBuilder::from_jumps(size, jumps);
-        let starts = b.segment_starts();
-        b.cycle_order(&starts)
+    pub fn merge_segments(&mut self, boundary: usize) {
+        let n = self.starts.len();
+        if n < 2 || boundary == 0 || boundary >= n {
+            return;
+        }
+        if self.portals[boundary].is_some() {
+            return;
+        }
+        let keep = boundary - 1;
+        let size = self.size;
+        let mut starts = self.starts.clone();
+        starts.remove(boundary);
+        let mut order: Vec<usize> = Vec::with_capacity(n - 1);
+        let mut seen = vec![false; n - 1];
+        for &id in &self.order {
+            let mapped = match id.cmp(&keep) {
+                std::cmp::Ordering::Less => id,
+                std::cmp::Ordering::Equal => keep,
+                std::cmp::Ordering::Greater if id == boundary => keep,
+                std::cmp::Ordering::Greater => id - 1,
+            };
+            if !seen[mapped] {
+                seen[mapped] = true;
+                order.push(mapped);
+            }
+        }
+        let mut portals = vec![None; n - 1];
+        for i in 1..n {
+            if i == boundary {
+                continue;
+            }
+            let j = if i < boundary { i } else { i - 1 };
+            portals[j] = self.portals[i];
+        }
+        Self::rotate_to_zero(&mut order);
+        *self = Self {
+            size,
+            starts,
+            order,
+            portals,
+        };
+        self.reclamp_portals();
     }
 
-    #[test]
-    fn scaled_linear_up_is_exact() {
-        let scaled = JumpBuilder::split_evenly(12, 3).scaled(24).build();
-        assert_eq!(scaled, JumpBuilder::split_evenly(24, 3).build());
-        assert_eq!(
-            scaled,
-            vec![
-                Jump::new(7, 8, 0),
-                Jump::new(15, 16, 1),
-                Jump::new(23, 0, 2)
-            ]
-        );
+    pub fn preset_split(&mut self, splits: u32) {
+        *self = Self::split_evenly(self.size, splits);
+    }
 
-        let scaled = JumpBuilder::split_evenly(80, 8).scaled(160).build();
-        assert_eq!(scaled, JumpBuilder::split_evenly(160, 8).build());
-        assert_eq!(scaled.len(), 8);
-        for (i, j) in scaled.iter().enumerate() {
-            assert_eq!(*j, Jump::new((i + 1) * 20 - 1, (i + 1) * 20 % 160, i));
+    fn ends_of(starts: &[usize], size: usize) -> Vec<usize> {
+        let n = starts.len();
+        (0..n)
+            .map(|i| {
+                if i + 1 < n {
+                    starts[i + 1].saturating_sub(1)
+                } else {
+                    size - 1
+                }
+            })
+            .collect()
+    }
+
+    fn ends_all(&self) -> Vec<usize> {
+        Self::ends_of(&self.starts, self.size)
+    }
+
+    fn rank_of(&self, segment: usize) -> usize {
+        self.order.iter().position(|&s| s == segment).unwrap_or(0)
+    }
+
+    fn rotate_to_zero(order: &mut Vec<usize>) {
+        if let Some(k) = order.iter().position(|&s| s == 0) {
+            order.rotate_left(k);
         }
     }
 
-    #[test]
-    fn scaled_linear_down_with_remainder_is_exact() {
-        let scaled = JumpBuilder::split_evenly(12, 3).scaled(10).build();
-        assert_eq!(scaled, JumpBuilder::split_evenly(10, 3).build());
-        assert_eq!(
-            scaled,
-            vec![
-                Jump::new(2, 3, 0),
-                Jump::new(5, 6, 1),
-                Jump::new(9, 0, 2)
-            ]
-        );
+    fn table_next(jumps: &[Jump], pos: usize) -> usize {
+        jumps
+            .iter()
+            .find(|j| j.from == pos)
+            .map(|j| j.to)
+            .unwrap_or(pos + 1)
     }
 
-    #[test]
-    fn scaled_same_size_is_identity() {
-        for seed in [1, 7, 123] {
-            let before = JumpBuilder::split_evenly(12, 4).shuffle_seeded(seed);
-            let after = before.scaled(12).build();
-            assert_eq!(after, before.build());
+    fn reclamp_portals(&mut self) {
+        let n = self.starts.len();
+        for i in 1..n {
+            let Some(p) = self.portals[i] else { continue };
+            let lo = self.starts[i - 1];
+            let hi = self.ends_all()[i - 1];
+            self.portals[i] = Some(Portal {
+                exit: p.exit.clamp(lo, hi),
+                entry: p.entry.min(self.size.saturating_sub(1)),
+            });
         }
-    }
-
-    #[test]
-    fn scaled_shuffled_preserves_visit_order() {
-        for seed in [1, 7, 123] {
-            let before = JumpBuilder::split_evenly(12, 4).shuffle_seeded(seed);
-            let before_jumps = before.build();
-            let up = before.scaled(24).build();
-            assert_in_bounds(&up, 24);
-            assert_full_coverage(&up, 24);
-            assert_eq!(visit_order(24, &up), visit_order(12, &before_jumps));
-
-            let down = JumpBuilder::split_evenly(12, 4)
-                .shuffle_seeded(seed)
-                .scaled(10)
-                .build();
-            assert_in_bounds(&down, 10);
-            assert_full_coverage(&down, 10);
-            assert_eq!(
-                visit_order(10, &down),
-                visit_order(12, &before_jumps),
-                "seed {seed}: topology changed"
-            );
-        }
-    }
-
-    #[test]
-    fn scaled_down_merges_but_stays_covering() {
-        let scaled = JumpBuilder::split_evenly(12, 8).scaled(5).build();
-        assert_eq!(scaled.len(), 3);
-        assert_in_bounds(&scaled, 5);
-        assert_full_coverage(&scaled, 5);
-    }
-
-    #[test]
-    fn scaled_collapse_to_single() {
-        assert_eq!(
-            JumpBuilder::from_jumps(6, &[]).build(),
-            vec![Jump::new(5, 0, 0)]
-        );
-        assert_eq!(
-            JumpBuilder::empty(8).scaled(3).build(),
-            vec![Jump::new(2, 0, 0)]
-        );
-    }
-
-    #[test]
-    fn scaled_up_then_down_roundtrip_linear() {
-        let roundtrip = JumpBuilder::split_evenly(12, 3)
-            .scaled(24)
-            .scaled(12)
-            .build();
-        assert_eq!(roundtrip, JumpBuilder::split_evenly(12, 3).build());
-    }
-
-    #[test]
-    fn from_jumps_empty_falls_back() {
-        assert_eq!(
-            JumpBuilder::from_jumps(6, &[]).build(),
-            vec![Jump::new(5, 0, 0)]
-        );
-    }
-
-    #[test]
-    fn jump_serde_accepts_both_forms() {
-        let j = Jump::new(3, 8, 1);
-        let v = serde_json::json!({"from": j.from, "to": j.to, "rank": j.rank});
-        let back: Jump = serde_json::from_value(v).unwrap();
-        assert_eq!(back, j);
-        let legacy = serde_json::json!([3, 8, 1]);
-        let back2: Jump = serde_json::from_value(legacy).unwrap();
-        assert_eq!(back2, j);
     }
 }
+
+#[cfg(test)]
+#[path = "jump_builder_tests.rs"]
+mod jump_builder_tests;

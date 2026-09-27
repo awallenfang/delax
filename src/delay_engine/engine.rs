@@ -100,7 +100,8 @@ impl DelayEngine {
     }
 
     pub fn set_delay_amount(&mut self, delay_time: f32) {
-        let samples_f = (delay_time / 1000. * self.sample_rate).clamp(0., (self.active_len - 1) as f32);
+        let samples_f =
+            (delay_time / 1000. * self.sample_rate).clamp(0., (self.active_len - 1) as f32);
         let samples = samples_f.floor() as usize;
         let frac = samples_f.fract();
 
@@ -114,8 +115,8 @@ impl DelayEngine {
         }
 
         self.delay_samples = samples;
-        self.read_head = ((self.write_head as i32 - samples as i32)
-            .rem_euclid(self.active_len as i32)) as usize;
+        self.read_head =
+            ((self.write_head as i32 - samples as i32).rem_euclid(self.active_len as i32)) as usize;
     }
 
     /// Maximum delay in ms that fits into the current active length.

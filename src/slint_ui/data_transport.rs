@@ -23,11 +23,7 @@ pub enum BufferChannel {
 
 impl BufferChannel {
     pub fn from_i32(v: i32) -> Self {
-        if v == 0 {
-            Self::Left
-        } else {
-            Self::Right
-        }
+        if v == 0 { Self::Left } else { Self::Right }
     }
 }
 
