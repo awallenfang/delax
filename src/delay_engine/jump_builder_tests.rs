@@ -885,6 +885,60 @@ fn serde_roundtrips() {
 }
 
 #[test]
+fn checked_accepts_valid_shapes_and_rotates_a_non_zero_order() {
+    let e = SegmentEditor::checked(12, vec![0, 4, 8], vec![2, 0, 1], vec![None; 3]);
+    assert!(e.is_some(), "a permutation in any rotation is valid");
+    assert_eq!(
+        e.unwrap().order(),
+        &[0, 1, 2],
+        "normalised to order[0] == 0"
+    );
+}
+
+#[test]
+fn checked_rejects_each_broken_invariant() {
+    let good = vec![None; 3];
+    assert!(SegmentEditor::checked(0, vec![0, 4, 8], vec![0, 1, 2], good.clone()).is_none());
+    assert!(SegmentEditor::checked(12, vec![1, 4, 8], vec![0, 1, 2], good.clone()).is_none());
+    assert!(SegmentEditor::checked(12, vec![0, 4, 4], vec![0, 1, 2], good.clone()).is_none());
+    assert!(SegmentEditor::checked(12, vec![0, 4, 12], vec![0, 1, 2], good.clone()).is_none());
+    assert!(SegmentEditor::checked(12, vec![0, 4, 8], vec![0, 0, 1], good.clone()).is_none());
+    assert!(SegmentEditor::checked(12, vec![0, 4, 8], vec![0, 1, 9], good.clone()).is_none());
+    assert!(SegmentEditor::checked(12, vec![0, 4, 8], vec![0, 1], good.clone()).is_none());
+    assert!(SegmentEditor::checked(12, vec![0, 4, 8], vec![0, 1, 2], vec![None; 2]).is_none());
+    let mut wrap_portal = good.clone();
+    wrap_portal[0] = Some(Portal { exit: 0, entry: 11 });
+    assert!(SegmentEditor::checked(12, vec![0, 4, 8], vec![0, 1, 2], wrap_portal).is_none());
+}
+
+#[test]
+fn deserializing_a_corrupt_editor_degrades_instead_of_failing() {
+    for bad in [
+        r#"{"size":0,"starts":[],"order":[]}"#,
+        r#"{"size":12,"starts":[4,8],"order":[0,1]}"#,
+        r#"{"size":12,"starts":[0,4,4],"order":[0,1,2]}"#,
+        r#"{"size":12,"starts":[0,4,99],"order":[0,1,2]}"#,
+        r#"{"size":12,"starts":[0,4,8],"order":[0,0,1]}"#,
+        r#"{"size":12,"starts":[0,4,8],"order":[0,1,2],"portals":[null]}"#,
+        r#"{"size":12,"starts":[0,4,8],"order":[0,1,2],"portals":[{"exit":0,"entry":11},null,null]}"#,
+        r#"{"size":12}"#,
+        r#"{}"#,
+    ] {
+        let back: SegmentEditor = serde_json::from_str(bad).expect("must not error");
+        assert!(back.size() > 0, "{bad} degraded to size 0");
+        assert_eq!(back.portals().len(), back.starts().len(), "{bad}");
+        assert!(
+            back.portals()[0].is_none(),
+            "{bad} left the wrap portal set"
+        );
+        assert!(
+            back.validate_cycle(),
+            "{bad} degraded to a table that does not play"
+        );
+    }
+}
+
+#[test]
 fn from_jumps_recovers_and_falls_back() {
     let legacy = JumpBuilder::split_evenly(12, 3).build();
     let e = SegmentEditor::from_jumps(12, &legacy);
