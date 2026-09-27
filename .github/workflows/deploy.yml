@@ -62,16 +62,12 @@ jobs:
         cargo xtask bundle delax \
           --release \
           --target "${{ matrix.target }}"
-    - name: Build archive
+    - name: Prepare asset
       shell: bash
       run: |
-        # Replace with the name of your binary
-        binary_name="Delax.clap"
-
-        dirname="$binary_name-${{ env.VERSION }}-${{ matrix.target }}"
-        mkdir "$dirname"
-        mv "target/bundled/$binary_name" "$dirname"
-        echo "ASSET=$dirname" >> $GITHUB_ENV
+        asset="Delax-${{ env.VERSION }}-${{ matrix.target }}.clap"
+        mv "target/bundled/Delax.clap" "$asset"
+        echo "ASSET=$asset" >> $GITHUB_ENV
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
@@ -80,5 +76,4 @@ jobs:
     - name: Upload the binaries
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          ${{ env.ASSET }}
+        files: ${{ env.ASSET }}
