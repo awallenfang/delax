@@ -437,9 +437,7 @@ impl SlintHost for DelaxSlintHost {
                     }
                     let builder = self.params.buffer_editor_state.builder_for(ch, len);
                     let builder = builder.swap_segments(first_id as usize, second_id as usize);
-                    self.params
-                        .buffer_editor_state
-                        .store_builder(ch, builder);
+                    self.params.buffer_editor_state.store_builder(ch, builder);
                 }
             }
         }

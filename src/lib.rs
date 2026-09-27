@@ -16,7 +16,7 @@ use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
 use slint_ui::channels::{Channels, Heads};
 use slint_ui::data_transport::{
-    self, DataTransportTx, JumpState, EDITOR_CHUNK_SAMPLES, EditorChunk, UiState, UiFrame,
+    self, DataTransportTx, EDITOR_CHUNK_SAMPLES, EditorChunk, JumpState, UiFrame, UiState,
 };
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
@@ -24,9 +24,9 @@ use std::sync::{Arc, RwLock};
 mod delay_engine;
 mod filter_pipeline;
 pub mod filters;
+mod param_cache;
 mod params;
 mod slint_ui;
-mod param_cache;
 
 pub struct Delax {
     params: Arc<DelaxParams>,
@@ -139,7 +139,7 @@ impl Default for Delax {
             jump_builder_write_r,
             applied_jump_version_l: 0,
             applied_jump_version_r: 0,
-            param_cache_f32: ParamCache::new(32, 1e-4)
+            param_cache_f32: ParamCache::new(32, 1e-4),
         }
     }
 }
@@ -418,12 +418,16 @@ impl Plugin for Delax {
                 meters_out: Channels::new(meter_out_l, meter_out_r),
                 heads: Channels::new(
                     Heads {
-                        read: self.left_delay_engine.read_head() as f32 / active_len_l.max(1) as f32,
-                        write: self.left_delay_engine.write_head() as f32 / active_len_l.max(1) as f32,
+                        read: self.left_delay_engine.read_head() as f32
+                            / active_len_l.max(1) as f32,
+                        write: self.left_delay_engine.write_head() as f32
+                            / active_len_l.max(1) as f32,
                     },
                     Heads {
-                        read: self.right_delay_engine.read_head() as f32 / active_len_r.max(1) as f32,
-                        write: self.right_delay_engine.write_head() as f32 / active_len_r.max(1) as f32,
+                        read: self.right_delay_engine.read_head() as f32
+                            / active_len_r.max(1) as f32,
+                        write: self.right_delay_engine.write_head() as f32
+                            / active_len_r.max(1) as f32,
                     },
                 ),
                 feedback: Channels::new(last_fb_l, last_fb_r),
@@ -614,16 +618,14 @@ impl Delax {
             "pipeline:diffusor_active",
             if diffusor_active { 1.0 } else { 0.0 },
         ) {
-            self.filter_pipeline
-                .set_active("diffusor", diffusor_active);
+            self.filter_pipeline.set_active("diffusor", diffusor_active);
         }
         let shimmer_active = self.params.pipeline_params.shimmer_active.value();
         if self.param_cache_f32.changed(
             "pipeline:shimmer_active",
             if shimmer_active { 1.0 } else { 0.0 },
         ) {
-            self.filter_pipeline
-                .set_active("shimmer", shimmer_active);
+            self.filter_pipeline.set_active("shimmer", shimmer_active);
         }
 
         let shimmer_stereo = self.params.shimmer_params.shimmer_stereo.value();
@@ -643,8 +645,7 @@ impl Delax {
         } else {
             let shift_l = self.params.shimmer_params.shift_l.value();
             if stereo_changed || self.param_cache_f32.changed("shimmer:shift:l", shift_l) {
-                self.filter_pipeline
-                    .set_param("shimmer", "shift", shift_l);
+                self.filter_pipeline.set_param("shimmer", "shift", shift_l);
             }
         }
     }
@@ -723,17 +724,11 @@ impl Delax {
                     .input_svf_cutoff_high_l
                     .smoothed
                     .next();
-                if self
-                    .param_cache_f32
-                    .changed("input:low:l", cutoff_low_l)
-                {
+                if self.param_cache_f32.changed("input:low:l", cutoff_low_l) {
                     self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
                     self.input_sin_svf_low_r.set_cutoff(cutoff_low_l);
                 }
-                if self
-                    .param_cache_f32
-                    .changed("input:high:l", cutoff_high_l)
-                {
+                if self.param_cache_f32.changed("input:high:l", cutoff_high_l) {
                     self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
                     self.input_sin_svf_high_r.set_cutoff(cutoff_high_l);
                 }
@@ -776,28 +771,16 @@ impl Delax {
                     .input_svf_cutoff_high_r
                     .smoothed
                     .next();
-                if self
-                    .param_cache_f32
-                    .changed("input:low:l", cutoff_low_l)
-                {
+                if self.param_cache_f32.changed("input:low:l", cutoff_low_l) {
                     self.input_sin_svf_low_l.set_cutoff(cutoff_low_l);
                 }
-                if self
-                    .param_cache_f32
-                    .changed("input:low:r", cutoff_low_r)
-                {
+                if self.param_cache_f32.changed("input:low:r", cutoff_low_r) {
                     self.input_sin_svf_low_r.set_cutoff(cutoff_low_r);
                 }
-                if self
-                    .param_cache_f32
-                    .changed("input:high:l", cutoff_high_l)
-                {
+                if self.param_cache_f32.changed("input:high:l", cutoff_high_l) {
                     self.input_sin_svf_high_l.set_cutoff(cutoff_high_l);
                 }
-                if self
-                    .param_cache_f32
-                    .changed("input:high:r", cutoff_high_r)
-                {
+                if self.param_cache_f32.changed("input:high:r", cutoff_high_r) {
                     self.input_sin_svf_high_r.set_cutoff(cutoff_high_r);
                 }
             }
@@ -820,7 +803,10 @@ impl Delax {
             self.filter_pipeline
                 .set_param("diffusor", "size", dattorro_size);
         }
-        if self.param_cache_f32.changed("diffusor:decay", dattorro_decay) {
+        if self
+            .param_cache_f32
+            .changed("diffusor:decay", dattorro_decay)
+        {
             self.filter_pipeline
                 .set_param("diffusor", "decay", dattorro_decay);
         }
@@ -936,9 +922,6 @@ impl Delax {
                 }
             }
         }
-        
-
-        
     }
 
     /// Run the current filter chain. Input is the stereo signal, output is the resulting stereo signal.

@@ -3,9 +3,7 @@ use nice_plug::util::window::hann;
 use rustfft::num_complex::Complex32;
 use rustfft::{Fft, FftPlanner};
 
-use crate::slint_ui::data_transport::{
-    DataTransportRx, EDITOR_VIS_SIZE, UiState, UI_BUFFER_SIZE,
-};
+use crate::slint_ui::data_transport::{DataTransportRx, EDITOR_VIS_SIZE, UI_BUFFER_SIZE, UiState};
 use crate::slint_ui::uniforms::{BufferUniforms, DoubleBufferUniforms, SpectrumUniforms};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

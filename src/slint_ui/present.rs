@@ -186,8 +186,14 @@ pub fn render_all(
                 let store = crate::slint_ui::param_store().read().unwrap();
                 let is_stereo = store.get("stereo").map(|(v, _)| *v > 0.3).unwrap_or(false);
                 let is_ping_pong = store.get("stereo").map(|(v, _)| *v > 0.8).unwrap_or(false);
-                let bpm_bound_l = store.get("bpm_bound_l").map(|(v, _)| *v > 0.5).unwrap_or(false);
-                let bpm_bound_r = store.get("bpm_bound_r").map(|(v, _)| *v > 0.5).unwrap_or(false);
+                let bpm_bound_l = store
+                    .get("bpm_bound_l")
+                    .map(|(v, _)| *v > 0.5)
+                    .unwrap_or(false);
+                let bpm_bound_r = store
+                    .get("bpm_bound_r")
+                    .map(|(v, _)| *v > 0.5)
+                    .unwrap_or(false);
                 drop(store);
                 data.decay_uniform_with_flags(is_stereo, is_ping_pong, bpm_bound_l, bpm_bound_r)
                     .as_ref()
