@@ -4,7 +4,7 @@ use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::filters::dattorro::DattorroReverb;
 use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
 use crate::param_cache::ParamCache;
-use crate::slint_ui::editor::DelaxSlintHost;
+use crate::slint_ui::editor::{DelaxSlintHost, DerivedJumps};
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
     engine::{DelayEngine, DelayInterpolationMode, MAX_DELAY_SECS},
@@ -20,6 +20,8 @@ use slint_ui::data_transport::{
 };
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
+use slint_ui::data_transport::BufferChannel;
+use crate::delay_engine::params::HeadSync;
 
 mod delay_engine;
 mod filter_pipeline;
@@ -67,9 +69,9 @@ impl Default for Delax {
         // (see DelayEngine::set_active_len) and defaults to the whole buffer.
         let default_buf = (44100.0 * MAX_DELAY_SECS) as usize;
         let mut left_delay_engine = DelayEngine::new(default_buf, 44100.);
-        left_delay_engine.set_delay_amount(0.);
+        left_delay_engine.set_delay_amount(0., false);
         let mut right_delay_engine = DelayEngine::new(default_buf, 44100.);
-        right_delay_engine.set_delay_amount(0.);
+        right_delay_engine.set_delay_amount(0., false);
 
         let mut filter_pipeline = FilterPipeline::new();
         filter_pipeline.register_stereo_pair(
@@ -220,9 +222,9 @@ impl Plugin for Delax {
 
         let buffer_size = (self.sample_rate * MAX_DELAY_SECS) as usize;
         let mut left_delay_engine = DelayEngine::new(buffer_size, self.sample_rate);
-        left_delay_engine.set_delay_amount(0.);
+        left_delay_engine.set_delay_amount(0., false);
         let mut right_delay_engine = DelayEngine::new(buffer_size, self.sample_rate);
-        right_delay_engine.set_delay_amount(0.);
+        right_delay_engine.set_delay_amount(0., false);
 
         // Re-apply persisted effective lengths (secs -> samples) so a saved
         // session / sample-rate change keeps the Editor setting.
@@ -305,6 +307,8 @@ impl Plugin for Delax {
             bpm: 120.,
             clamped_l: false,
             clamped_r: false,
+            sync_active: false,
+            pos_samples: None,
         };
         let mut last_fb_l = 0.5f32;
         let mut last_fb_r = 0.5f32;
@@ -317,8 +321,13 @@ impl Plugin for Delax {
         self.poll_effect_order();
 
         self.update_block_params(_context.transport(), &mut pending);
+        let mut first_block_sample = true;
         for channel_samples in buffer.iter_samples() {
             self.update_sample_params(&mut pending);
+            if first_block_sample {
+                self.apply_transport_snap(&pending);
+                first_block_sample = false;
+            }
             had_samples = true;
             // Update all the elements to the current params
             // ########## Input ###########
@@ -446,32 +455,48 @@ struct PendingUi {
     bpm: f32,
     clamped_l: bool,
     clamped_r: bool,
+    sync_active: bool,
+    pos_samples: Option<i64>,
 }
 
 fn set_engine_len(engine: &mut DelayEngine, len: usize) -> bool {
     if len == engine.active_len() {
         return false;
     }
-    let old_len = engine.active_len();
-    let old_jumps = JumpBuilder::from_jumps(old_len, engine.read_jumps());
     engine.set_active_len(len);
-    let new_len = engine.active_len();
-    if new_len == old_len {
-        return false;
-    }
-    engine.set_raw_read_jumps(&old_jumps.scaled(new_len).build());
     true
 }
 
-fn jumps_for_active(active: usize, jumps: Vec<Jump>, size: usize) -> JumpBuilder {
-    if size == active {
-        JumpBuilder::from_jumps(active, &jumps)
-    } else {
-        JumpBuilder::from_jumps(size, &jumps).scaled(active)
-    }
-}
-
 impl Delax {
+    fn apply_transport_snap(&mut self, pending: &PendingUi) {
+        if !pending.sync_active {
+            return;
+        }
+        let Some(pos) = pending.pos_samples else {
+            return;
+        };
+        if let Some(d) = self
+            .params
+            .buffer_editor_state
+            .derived_for(BufferChannel::Left)
+        {
+            self.left_delay_engine
+                .snap_read_head_to_cycle(pos, &d.cycle);
+        } else {
+            self.left_delay_engine.snap_read_head_linear(pos);
+        }
+        if let Some(d) = self
+            .params
+            .buffer_editor_state
+            .derived_for(BufferChannel::Right)
+        {
+            self.right_delay_engine
+                .snap_read_head_to_cycle(pos, &d.cycle);
+        } else {
+            self.right_delay_engine.snap_read_head_linear(pos);
+        }
+    }
+
     fn poll_effect_order(&mut self) {
         let current: Vec<String> = match self.effect_order.try_read() {
             Ok(guard) => {
@@ -489,21 +514,20 @@ impl Delax {
     }
     fn update_jumps(&mut self) {
         let state = &self.params.buffer_editor_state;
-        let ((jumps_l, size_l), (jumps_r, size_r)) = state.snapshot_jumps();
         let ver_l = state.version_l.load(Ordering::Relaxed);
         let ver_r = state.version_r.load(Ordering::Relaxed);
+        let derived_l = state.derived_for(BufferChannel::Left);
+        let derived_r = state.derived_for(BufferChannel::Right);
 
         self.jump_builder_read_l = Self::apply_channel(
             &mut self.left_delay_engine,
-            jumps_l,
-            size_l,
+            derived_l,
             ver_l,
             self.applied_jump_version_l,
         );
         self.jump_builder_read_r = Self::apply_channel(
             &mut self.right_delay_engine,
-            jumps_r,
-            size_r,
+            derived_r,
             ver_r,
             self.applied_jump_version_r,
         );
@@ -523,21 +547,19 @@ impl Delax {
 
     fn apply_channel(
         engine: &mut DelayEngine,
-        jumps: Vec<Jump>,
-        size: usize,
+        derived: Option<DerivedJumps>,
         version: u64,
         applied_version: u64,
     ) -> JumpBuilder {
-        let active = engine.active_len();
-        let should_apply = version != applied_version && !jumps.is_empty() && size != 0;
-        if should_apply {
-            let candidate = jumps_for_active(active, jumps, size);
-            if candidate.is_covering() {
-                engine.set_raw_read_jumps(&candidate.build());
-                return candidate;
+        if version != applied_version {
+            if let Some(d) = derived {
+                if !d.table.is_empty() {
+                    engine.set_raw_read_jumps(&d.table);
+                    return JumpBuilder::from_jumps(engine.active_len(), &d.table);
+                }
             }
         }
-        JumpBuilder::from_jumps(active, engine.read_jumps())
+        JumpBuilder::from_jumps(engine.active_len(), engine.read_jumps())
     }
 
     fn publish_jump_state(&self) {
@@ -549,12 +571,26 @@ impl Delax {
                     write: self.jump_builder_write_l.build(),
                     read_segments: self.jump_builder_read_l.segments(),
                     write_segments: self.jump_builder_write_l.segments(),
+                    read_portals: self
+                        .params
+                        .buffer_editor_state
+                        .editor_l
+                        .lock()
+                        .map(|e| e.portals().to_vec())
+                        .unwrap_or_default(),
                 },
                 JumpChannelState {
                     read: self.jump_builder_read_r.build(),
                     write: self.jump_builder_write_r.build(),
                     read_segments: self.jump_builder_read_r.segments(),
                     write_segments: self.jump_builder_write_r.segments(),
+                    read_portals: self
+                        .params
+                        .buffer_editor_state
+                        .editor_r
+                        .lock()
+                        .map(|e| e.portals().to_vec())
+                        .unwrap_or_default(),
                 },
             ),
         });
@@ -564,16 +600,20 @@ impl Delax {
         if jumps.is_empty() || size == 0 {
             return JumpBuilder::split_evenly(active, 8);
         }
-        let candidate = jumps_for_active(active, jumps, size);
-        if candidate.is_covering() {
-            candidate
+        if size == active {
+            JumpBuilder::from_jumps(active, &jumps)
         } else {
-            JumpBuilder::split_evenly(active, 8)
+            JumpBuilder::from_jumps(size, &jumps).scaled(active)
         }
     }
 
     fn update_block_params(&mut self, transport: &Transport, pending: &mut PendingUi) {
         pending.bpm = transport.tempo.unwrap_or(120.) as f32;
+        {
+            let song = self.params.delay_params.head_sync.value() == HeadSync::Song;
+            pending.sync_active = song && transport.playing && transport.pos_samples.is_some();
+            pending.pos_samples = transport.pos_samples;
+        }
 
         match self.params.delay_params.stereo_delay.value() {
             DelayMode::Mono => {
@@ -667,8 +707,10 @@ impl Delax {
                 let max_ms = self.left_delay_engine.max_delay_ms();
                 let clamped = delay_amt > max_ms;
                 let delay_clamped = delay_amt.min(max_ms);
-                self.left_delay_engine.set_delay_amount(delay_clamped);
-                self.right_delay_engine.set_delay_amount(delay_clamped);
+                self.left_delay_engine
+                    .set_delay_amount(delay_clamped, pending.sync_active);
+                self.right_delay_engine
+                    .set_delay_amount(delay_clamped, pending.sync_active);
                 pending.clamped_l = clamped;
                 pending.clamped_r = clamped;
                 self.decay_time_s_l = delay_clamped / 1000.;
@@ -701,8 +743,10 @@ impl Delax {
                 let clamped_r = delay_amt_r > max_ms_r;
                 let delay_clamped_l = delay_amt_l.min(max_ms_l);
                 let delay_clamped_r = delay_amt_r.min(max_ms_r);
-                self.left_delay_engine.set_delay_amount(delay_clamped_l);
-                self.right_delay_engine.set_delay_amount(delay_clamped_r);
+                self.left_delay_engine
+                    .set_delay_amount(delay_clamped_l, pending.sync_active);
+                self.right_delay_engine
+                    .set_delay_amount(delay_clamped_r, pending.sync_active);
                 pending.clamped_l = clamped_l;
                 pending.clamped_r = clamped_r;
                 self.decay_time_s_l = delay_clamped_l / 1000.;

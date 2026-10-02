@@ -47,6 +47,41 @@ pub enum UiEvent {
         first_id: i32,
         second_id: i32,
     },
+    MoveSegmentBoundary {
+        channel: i32,
+        boundary: i32,
+        pos: i32,
+    },
+    UngluePortal {
+        channel: i32,
+        boundary: i32,
+    },
+    MovePortalExit {
+        channel: i32,
+        boundary: i32,
+        pos: i32,
+    },
+    MovePortalEntry {
+        channel: i32,
+        boundary: i32,
+        pos: i32,
+    },
+    ReweldPortal {
+        channel: i32,
+        boundary: i32,
+    },
+    PresetSplit {
+        channel: i32,
+        splits: i32,
+    },
+    SplitSegment {
+        channel: i32,
+        segment: i32,
+    },
+    MergeSegments {
+        channel: i32,
+        boundary: i32,
+    },
 }
 #[derive(Deserialize, Serialize)]
 pub struct EditorState {
@@ -402,6 +437,22 @@ impl DelaxSlintHost {
         let mut registry = wgpu.borrow_mut();
         present::render_all(&self.data, &ui.visual, app, &mut registry);
     }
+
+    /// Update segment editor scales if it was changed
+    fn poll_scaled_editors(&self) {
+        for ch in [BufferChannel::Left, BufferChannel::Right] {
+            let len = self.data.active_len_for(ch);
+            if len == 0 {
+                continue;
+            }
+            let state = &self.params.buffer_editor_state;
+            let (_, stored_size) = state.snapshot_for(ch);
+            if stored_size != len {
+                let scaled = state.editor_for(ch, len);
+                state.store_editor(ch, scaled);
+            }
+        }
+    }
 }
 
 impl SlintHost for DelaxSlintHost {
@@ -492,8 +543,109 @@ impl SlintHost for DelaxSlintHost {
                     editor.swap_segments(first_id as usize, second_id as usize);
                     state.store_editor(ch, editor);
                 }
+                UiEvent::MoveSegmentBoundary {
+                    channel,
+                    boundary,
+                    pos,
+                } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.move_boundary(boundary.max(0) as usize, pos.max(0) as usize);
+                    state.store_editor(ch, editor);
+                }
+                UiEvent::UngluePortal { channel, boundary } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.unglue(boundary.max(0) as usize);
+                    state.store_editor(ch, editor);
+                }
+                UiEvent::MovePortalExit {
+                    channel,
+                    boundary,
+                    pos,
+                } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.move_exit(boundary.max(0) as usize, pos.max(0) as usize);
+                    state.store_editor(ch, editor);
+                }
+                UiEvent::MovePortalEntry {
+                    channel,
+                    boundary,
+                    pos,
+                } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.move_entry(boundary.max(0) as usize, pos.max(0) as usize);
+                    state.store_editor(ch, editor);
+                }
+                UiEvent::ReweldPortal { channel, boundary } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.reweld(boundary.max(0) as usize);
+                    state.store_editor(ch, editor);
+                }
+                UiEvent::PresetSplit { channel, splits } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.preset_split(splits.max(1) as u32);
+                    state.store_editor(ch, editor);
+                }
+                UiEvent::SplitSegment { channel, segment } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.split_segment(segment.max(0) as usize);
+                    state.store_editor(ch, editor);
+                }
+                UiEvent::MergeSegments { channel, boundary } => {
+                    let ch = BufferChannel::from_i32(channel);
+                    let len = self.data.active_len_for(ch);
+                    if len == 0 {
+                        continue;
+                    }
+                    let state = &self.params.buffer_editor_state;
+                    let mut editor = state.editor_for(ch, len);
+                    editor.merge_segments(boundary.max(0) as usize);
+                    state.store_editor(ch, editor);
+                }
             }
         }
+        self.poll_scaled_editors();
     }
 
     fn on_frame(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>) {

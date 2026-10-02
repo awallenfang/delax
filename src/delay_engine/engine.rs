@@ -99,7 +99,7 @@ impl DelayEngine {
         &self.buffer
     }
 
-    pub fn set_delay_amount(&mut self, delay_time: f32) {
+    pub fn set_delay_amount(&mut self, delay_time: f32, sync_active: bool) {
         let samples_f =
             (delay_time / 1000. * self.sample_rate).clamp(0., (self.active_len - 1) as f32);
         let samples = samples_f.floor() as usize;
@@ -115,8 +115,15 @@ impl DelayEngine {
         }
 
         self.delay_samples = samples;
+        if sync_active {
+            return;
+        }
         self.read_head =
             ((self.write_head as i32 - samples as i32).rem_euclid(self.active_len as i32)) as usize;
+    }
+
+    pub fn delay_samples(&self) -> usize {
+        self.delay_samples
     }
 
     /// Maximum delay in ms that fits into the current active length.
@@ -146,6 +153,28 @@ impl DelayEngine {
         } else {
             self.read_head += 1;
         }
+    }
+
+    pub fn set_read_head(&mut self, pos: usize) {
+        self.read_head = pos % self.active_len.max(1);
+    }
+
+    pub fn snap_read_head_to_cycle(&mut self, pos_samples: i64, cycle: &[usize]) {
+        if cycle.is_empty() {
+            return;
+        }
+        let n = cycle.len() as i64;
+        let t = (pos_samples - self.delay_samples as i64).rem_euclid(n);
+        self.set_read_head(cycle[t as usize]);
+    }
+
+    pub fn snap_read_head_linear(&mut self, pos_samples: i64) {
+        let n = self.active_len as i64;
+        if n == 0 {
+            return;
+        }
+        let t = (pos_samples - self.delay_samples as i64).rem_euclid(n);
+        self.set_read_head(t as usize);
     }
 
     fn prev_in_cycle(&self) -> usize {
@@ -244,7 +273,7 @@ mod interpolation_tests {
     #[test]
     fn nearest_integer_delay_no_wrap() {
         let mut e = make_ramp_engine(10, 1000.);
-        e.set_delay_amount(2.);
+        e.set_delay_amount(2., false);
         let s = e.interpolate_sample(DelayInterpolationMode::Nearest);
         assert_eq!(s, 8.);
     }
@@ -255,14 +284,14 @@ mod interpolation_tests {
         for i in 0..1 {
             e.write_sample(i as f32);
         }
-        e.set_delay_amount(5.);
+        e.set_delay_amount(5., false);
         let s = e.interpolate_sample(DelayInterpolationMode::Nearest);
         assert_eq!(s, 0.);
 
         for i in 1..10 {
             e.write_sample(i as f32);
         }
-        e.set_delay_amount(3.);
+        e.set_delay_amount(3., false);
         assert_eq!(e.interpolate_sample(DelayInterpolationMode::Nearest), 7.);
     }
 
@@ -270,7 +299,7 @@ mod interpolation_tests {
     fn linear_no_panic_when_write_head_less_than_delay() {
         let mut e = DelayEngine::new(10, 1000.);
         e.write_sample(1.);
-        e.set_delay_amount(5.);
+        e.set_delay_amount(5., false);
         let s = e.interpolate_sample(DelayInterpolationMode::Linear);
         assert!(s.is_finite());
     }
@@ -279,8 +308,8 @@ mod interpolation_tests {
     fn linear_integer_delay_matches_nearest() {
         let mut a = make_ramp_engine(10, 1000.);
         let mut b = make_ramp_engine(10, 1000.);
-        a.set_delay_amount(3.);
-        b.set_delay_amount(3.);
+        a.set_delay_amount(3., false);
+        b.set_delay_amount(3., false);
         assert_eq!(
             a.interpolate_sample(DelayInterpolationMode::Nearest),
             b.interpolate_sample(DelayInterpolationMode::Linear)
@@ -291,8 +320,8 @@ mod interpolation_tests {
             e2.write_sample(i as f32 * 10.);
             e3.write_sample(i as f32 * 10.);
         }
-        e2.set_delay_amount(2.);
-        e3.set_delay_amount(2.);
+        e2.set_delay_amount(2., false);
+        e3.set_delay_amount(2., false);
         assert_eq!(e2.interpolate_sample(DelayInterpolationMode::Nearest), 30.);
         assert_eq!(e3.interpolate_sample(DelayInterpolationMode::Linear), 30.);
     }
@@ -300,19 +329,19 @@ mod interpolation_tests {
     #[test]
     fn linear_fractional_interpolation() {
         let mut e = make_ramp_engine(10, 1000.);
-        e.set_delay_amount(1.5);
+        e.set_delay_amount(1.5, false);
         let s = e.interpolate_sample(DelayInterpolationMode::Linear);
         assert!((s - 8.5).abs() < 1e-5, "got {s}");
 
         let mut e2 = make_ramp_engine(10, 10000.);
-        e2.set_delay_amount(0.15); // 1.5 samples
+        e2.set_delay_amount(0.15, false); // 1.5 samples
         assert!((e2.interpolate_sample(DelayInterpolationMode::Linear) - 8.5).abs() < 1e-5);
     }
 
     #[test]
     fn linear_wrap_across_boundary_interpolates_correctly() {
         let mut e = make_ramp_engine(10, 1000.);
-        e.set_delay_amount(0.5);
+        e.set_delay_amount(0.5, false);
         let s = e.interpolate_sample(DelayInterpolationMode::Linear);
         assert!((s - 4.5).abs() < 1e-5, "wrap interpolation got {s}");
     }
@@ -323,10 +352,10 @@ mod interpolation_tests {
         for i in 0..100 {
             e.write_sample(i as f32);
         }
-        e.set_delay_amount(1000.);
+        e.set_delay_amount(1000., false);
         let s = e.interpolate_sample(DelayInterpolationMode::Nearest);
         assert!(s.is_finite());
-        e.set_delay_amount(5000.);
+        e.set_delay_amount(5000., false);
         let s2 = e.interpolate_sample(DelayInterpolationMode::Nearest);
         assert!(s2.is_finite());
     }
@@ -350,7 +379,7 @@ mod interpolation_tests {
         for i in 0..100 {
             eng.write_sample(i as f32);
         }
-        eng.set_delay_amount(500.);
+        eng.set_delay_amount(500., false);
         assert!(
             eng.interpolate_sample(DelayInterpolationMode::Nearest)
                 .is_finite()
@@ -369,7 +398,7 @@ mod tests {
     fn prev_in_cycle_follows_jumps() {
         let mut engine = DelayEngine::new(10, 1000.);
         engine.set_raw_read_jumps(&[Jump::new(9, 0, 0), Jump::new(2, 5, 1)]);
-        engine.set_delay_amount(0.);
+        engine.set_delay_amount(0., false);
         assert_eq!(engine.prev_in_cycle(), 9);
         for _ in 0..4 {
             engine.pop_sample();
@@ -412,8 +441,8 @@ mod tests {
         }
         a.set_raw_read_jumps(&[Jump::new(9, 0, 0), Jump::new(4, 5, 1)]);
         b.set_raw_read_jumps(&[Jump::new(9, 0, 0), Jump::new(4, 5, 1)]);
-        a.set_delay_amount(2.);
-        b.set_delay_amount(2.);
+        a.set_delay_amount(2., false);
+        b.set_delay_amount(2., false);
         assert_eq!(
             a.interpolate_sample(DelayInterpolationMode::Nearest),
             b.interpolate_sample(DelayInterpolationMode::Linear)
@@ -432,7 +461,7 @@ mod tests {
             Jump::new(7, 3, 2),
             Jump::new(4, 8, 3),
         ]);
-        engine.set_delay_amount(2.5);
+        engine.set_delay_amount(2.5, false);
         let s = engine.interpolate_sample(DelayInterpolationMode::Linear);
         assert!((s - 6.).abs() < 1e-5);
     }
@@ -449,11 +478,11 @@ mod tests {
             Jump::new(8, 3, 2),
             Jump::new(5, 9, 3),
         ]);
-        engine.set_delay_amount(0.);
+        engine.set_delay_amount(0., false);
 
         let mut got = Vec::with_capacity(12);
         for _ in 0..12 {
-            engine.set_delay_amount(0.);
+            engine.set_delay_amount(0., false);
             got.push(engine.pop_sample() as usize);
         }
         assert_eq!(got, vec![0, 1, 2, 6, 7, 8, 3, 4, 5, 9, 10, 11]);
@@ -471,12 +500,12 @@ mod tests {
             Jump::new(8, 3, 2),
             Jump::new(5, 9, 3),
         ]);
-        engine.set_delay_amount(0.);
+        engine.set_delay_amount(0., false);
         for _ in 0..12 {
-            engine.set_delay_amount(0.);
+            engine.set_delay_amount(0., false);
             engine.pop_sample();
         }
-        engine.set_delay_amount(3.);
+        engine.set_delay_amount(3., false);
         assert_eq!(engine.pop_sample() as usize, 9);
     }
 

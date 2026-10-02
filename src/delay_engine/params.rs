@@ -16,6 +16,11 @@ pub enum NoteDiv {
     Quarter,
     Half,
 }
+#[derive(Enum, PartialEq, Clone, Copy)]
+pub enum HeadSync {
+    Off,
+    Song,
+}
 
 impl NoteDiv {
     pub fn factor(self) -> f32 {
@@ -98,7 +103,7 @@ pub struct EngineParams {
     #[id = "buffer_len_r"]
     pub buffer_len_r: FloatParam,
     #[id = "head_sync"]
-    pub head_sync: BoolParam,
+    pub head_sync: EnumParam<HeadSync>,
 }
 
 impl Default for EngineParams {
@@ -185,7 +190,7 @@ impl Default for EngineParams {
             )
             .with_unit(" s")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
-            head_sync: BoolParam::new("Head Sync", true),
+            head_sync: EnumParam::new("Head Sync", HeadSync::Song),
         }
     }
 }
