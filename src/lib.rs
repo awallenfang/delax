@@ -18,6 +18,7 @@ use slint_ui::channels::{Channels, Heads};
 use slint_ui::data_transport::{
     self, DataTransportTx, EDITOR_CHUNK_SAMPLES, EditorChunk, JumpState, UiFrame, UiState,
 };
+use slint_ui::{HeaderData, HeaderDataSender};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 use slint_ui::data_transport::BufferChannel;
@@ -45,6 +46,7 @@ pub struct Delax {
     input_sin_svf_high_r: SimperSinSVF,
     input_data: Arc<UiState>,
     ui_block_input: triple_buffer::Input<UiFrame>,
+    header_input: HeaderDataSender,
     transport_tx: DataTransportTx,
     peak_in_l: PeakFollower,
     peak_in_r: PeakFollower,
@@ -93,6 +95,9 @@ impl Default for Delax {
 
         let (transport_tx, _dropped_rx) = data_transport::channel();
 
+        let (header_input, header_output) = HeaderData::channel(HeaderData::default());
+        slint_ui::new_transport::StorageSingleton.insert(header_output.inner);
+
         let default_order = vec![
             "filter".to_string(),
             "shimmer".to_string(),
@@ -122,6 +127,7 @@ impl Default for Delax {
             input_sin_svf_high_r: input_high_r,
             input_data: Arc::new(UiState::with_output(ui_block_output)),
             ui_block_input,
+            header_input,
             transport_tx,
             peak_in_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
@@ -422,6 +428,12 @@ impl Plugin for Delax {
         if had_samples {
             let active_len_l = self.left_delay_engine.active_len();
             let active_len_r = self.right_delay_engine.active_len();
+            self.header_input.send(HeaderData {
+                in_level_l: meter_in_l,
+                in_level_r: meter_in_r,
+                out_level_l: meter_out_l,
+                out_level_r: meter_out_r,
+            });
             self.ui_block_input.write(UiFrame {
                 meters_in: Channels::new(meter_in_l, meter_in_r),
                 meters_out: Channels::new(meter_out_l, meter_out_r),

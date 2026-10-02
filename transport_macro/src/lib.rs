@@ -56,11 +56,11 @@ fn expand_triple_buffered(
 
     Ok(quote! {
         pub struct #sender_name {
-            inner: ::triple_buffer::Input<#state_name>,
+            pub inner: ::triple_buffer::Input<#state_name>,
         }
 
         pub struct #receiver_name {
-            inner: ::triple_buffer::Output<#state_name>,
+            pub inner: ::triple_buffer::Output<#state_name>,
         }
 
         impl #state_name {
