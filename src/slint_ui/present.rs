@@ -6,6 +6,7 @@ use crate::slint_ui::elements::ElementId;
 use crate::slint_ui::renderer::WgpuRegistry;
 use crate::slint_ui::snapshot::{EditorChannel, UiVisualState};
 use crate::slint_ui::{self, EditorData, HeaderData, UIJump, UIJumpSegment};
+use crate::slint_ui::new_transport::StorageSingleton;
 
 fn normalize_ratio(value: usize, active_len: usize) -> f32 {
     value as f32 / active_len.max(1) as f32
@@ -31,6 +32,15 @@ fn normalize_segments(segments: &[JumpSegment], active_len: usize) -> Vec<UIJump
             order: s.order as i32,
         })
         .collect()
+}
+
+pub fn poll_buffered<T: Clone + Send + Sync + 'static>(
+    app: &slint_ui::AppWindow,
+    setter: impl Fn(&slint_ui::AppWindow, &T),
+) {
+    if let Some(data) = StorageSingleton.read::<T>() {
+        setter(app, &data);
+    }
 }
 
 pub fn poll_and_present(

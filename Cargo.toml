@@ -8,7 +8,7 @@ homepage = "https://windsonix.com"
 description = "A delay plugin with a few bells and whistles"
 
 [workspace]
-members = ["transport","xtask"]
+members = ["transport_macro", "xtask"]
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -23,6 +23,8 @@ rustfft = "6.4.1"
 rtrb = "0.4.0"
 rand = "0.10.3"
 triple_buffer = "9.0.0"
+anymap3 = "1.1.0"
+transport_macro = { path = "transport_macro" }
 wgpu = {version = "30.0.1", features = ["vulkan-portability"]}
 bytemuck = "1.25.2"
 pollster = "1.0.1"
