@@ -9,7 +9,7 @@ use baseview::{
 use slint::platform::WindowAdapter;
 use slint::private_unstable_api::re_exports::ApproxEq;
 use slint::{PlatformError, platform};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -26,6 +26,7 @@ pub struct BaseviewWindow<T: slint::ComponentHandle> {
     root: RefCell<T>,
     last_pos: RefCell<slint::LogicalPosition>,
     wgpu_registry: RefCell<WgpuRegistry>,
+    scale_factor: Cell<f64>,
     on_event_closure: Arc<dyn Fn(&T, &RefCell<WgpuRegistry>) + Send + Sync>,
     on_frame_closure: Arc<dyn Fn(&T, &RefCell<WgpuRegistry>) + Send + Sync>,
     on_resize_closure: Arc<dyn Fn(&T, &RefCell<WgpuRegistry>, u32, u32) + Send + Sync>,
@@ -55,6 +56,22 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
         root.show()
             .map_err(|e| PlatformError::Other(format!("Failed to show Slint component: {e}")))?;
 
+        {
+            let scale = window_context.scale_factor();
+            let phys = window_context.size().physical;
+            adapter.window().dispatch_event(
+                platform::WindowEvent::ScaleFactorChanged {
+                    scale_factor: scale as f32,
+                },
+            );
+            adapter.window().dispatch_event(platform::WindowEvent::Resized {
+                size: slint::LogicalSize::new(
+                    phys.width as f32 / scale as f32,
+                    phys.height as f32 / scale as f32,
+                ),
+            });
+        }
+
         let gpu_context = match GpuContext::ensure_initialized() {
             Ok(ctx) => ctx,
             Err(e) => {
@@ -77,6 +94,7 @@ impl<T: slint::ComponentHandle + 'static> BaseviewWindow<T> {
             on_event_closure: on_event.clone(),
             on_frame_closure: on_frame.clone(),
             on_resize_closure: on_resize.clone(),
+            scale_factor: Cell::new(window_context.scale_factor())
         })
     }
 }
@@ -103,11 +121,27 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
     }
 
     fn resized(&self, new_size: WindowSize) -> Result<(), HandlerError> {
-        let w = new_size.physical.width;
-        let h = new_size.physical.height;
+        let phys_w = new_size.physical.width;
+        let phys_h = new_size.physical.height;
+        let scale = new_size.scale_factor;
+        let old_scale = self.scale_factor.get();
+        self.scale_factor.set(scale);
+        // Host/editor state tracks logical pixels; SlintPhysical size goes to the adapter.
+        let logical_w = (phys_w as f64 / scale).round() as u32;
+        let logical_h = (phys_h as f64 / scale).round() as u32;
         let root = self.root.borrow();
-        (self.on_resize_closure)(&root, &self.wgpu_registry, w, h);
-        self.adapter.resize(w, h);
+        (self.on_resize_closure)(&root, &self.wgpu_registry, logical_w, logical_h);
+        self.adapter.resize(phys_w, phys_h);
+        if (scale - old_scale).abs() > f64::EPSILON {
+            self.adapter.window().dispatch_event(
+                platform::WindowEvent::ScaleFactorChanged {
+                    scale_factor: scale as f32,
+                },
+            );
+        }
+        self.adapter.window().dispatch_event(platform::WindowEvent::Resized {
+            size: slint::LogicalSize::new(logical_w as f32, logical_h as f32),
+        });
         Ok(())
     }
 
@@ -125,8 +159,11 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
             Event::Mouse(mouse_event) => {
                 let slint_event = match mouse_event {
                     MouseEvent::CursorMoved { position, .. } => {
-                        let log_pos =
-                            slint::LogicalPosition::new(position.x as f32, position.y as f32);
+                        let scale = self.scale_factor.get();
+                        let log_pos = slint::LogicalPosition::new(
+                            (position.x / scale) as f32,
+                            (position.y / scale) as f32,
+                        );
                         if self.last_pos.borrow().x.approx_eq(&log_pos.x)
                             && self.last_pos.borrow().y.approx_eq(&log_pos.y)
                         {
@@ -167,10 +204,11 @@ impl<T: slint::ComponentHandle + 'static> WindowHandler for BaseviewWindow<T> {
                             })
                         }
                         ScrollDelta::Pixels { x, y } => {
+                            let scale = self.scale_factor.get() as f32;
                             Some(platform::WindowEvent::PointerScrolled {
                                 position: *self.last_pos.borrow(),
-                                delta_x: x,
-                                delta_y: y,
+                                delta_x: x / scale,
+                                delta_y: y / scale,
                             })
                         }
                     },

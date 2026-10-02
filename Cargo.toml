@@ -23,7 +23,7 @@ rustfft = "6.4.1"
 rtrb = "0.4.0"
 rand = "0.10.3"
 triple_buffer = "9.0.0"
-wgpu = "30.0.1"
+wgpu = {version = "30.0.1", features = ["vulkan-portability"]}
 bytemuck = "1.25.2"
 pollster = "1.0.1"
 rustc-hash = "2.1.3"

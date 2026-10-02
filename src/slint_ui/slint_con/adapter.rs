@@ -14,6 +14,16 @@ pub struct SlintAdapter {
 
 impl SlintAdapter {
     pub(crate) fn new(width: u32, height: u32, window_context: &WindowContext) -> Rc<Self> {
+        let scale = window_context.scale_factor();
+        let phys = window_context.size().physical;
+        let (init_w, init_h) = if phys.width > 0 && phys.height > 0 {
+            (phys.width, phys.height)
+        } else {
+            (
+                (width as f64 * scale).round() as u32,
+                (height as f64 * scale).round() as u32,
+            )
+        };
         Rc::new_cyclic(|weak_adapter| {
             let gl = SlintOpenGLInterface::new(window_context.clone(), width, height).unwrap();
             let window = Window::new(weak_adapter.clone() as _);
@@ -23,7 +33,7 @@ impl SlintAdapter {
             Self {
                 window,
                 renderer: cell,
-                size: RefCell::new(PhysicalSize::new(width, height)),
+                size: RefCell::new(PhysicalSize::new(init_w, init_h)),
             }
         })
     }

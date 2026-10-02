@@ -12,7 +12,7 @@ static GPU_CONTEXT: OnceLock<Arc<GpuContext>> = OnceLock::new();
 impl GpuContext {
     fn init_blocking() -> Result<Self, String> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN,
+            backends: wgpu::Backends::PRIMARY,
             ..wgpu::InstanceDescriptor::new_without_display_handle_from_env()
         });
 
