@@ -54,13 +54,11 @@ pub fn poll_and_present(
     push_waveforms(visual, app);
     visual.poll_editor(rx, data);
 
-    let block = data.read_block();
-    app.set_header_data(HeaderData {
-        in_level_l: block.meters_in.left,
-        in_level_r: block.meters_in.right,
-        out_level_l: block.meters_out.left,
-        out_level_r: block.meters_out.right,
+    poll_buffered(app, |app, data: &HeaderData| {
+        app.set_header_data(data.clone());
     });
+
+    let block = data.read_block();
     app.set_bpm(block.bpm);
 
     let mut editor = EditorData {

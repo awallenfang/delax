@@ -23,6 +23,7 @@ export struct FilterData {
     filter_order: [string],
 }
 
+@rust-attr(derive(::transport_macro::TripleBuffered))
 export struct HeaderData {
     in_level_l: float,
     in_level_r: float,

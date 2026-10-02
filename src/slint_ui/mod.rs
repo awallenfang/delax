@@ -23,6 +23,8 @@ use std::sync::{Arc, OnceLock, RwLock};
 
 slint::include_modules!();
 
+pub use slint_generatedAppWindow::HeaderDataSender;
+
 /*
 impl GpuImageSink for AppWindow {
     fn set_element_image(&self, element: ElementId, image: slint::Image) {
