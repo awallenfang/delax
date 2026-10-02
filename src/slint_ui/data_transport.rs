@@ -2,7 +2,7 @@ use nice_plug::util::gain_to_db;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
-use crate::delay_engine::jump_builder::{Jump, JumpSegment};
+use crate::delay_engine::jump_builder::{Jump, JumpSegment, Portal};
 use crate::slint_ui::channels::{Channels, Heads};
 use crate::slint_ui::uniforms::DecayUniforms;
 
@@ -166,6 +166,7 @@ pub struct JumpChannelState {
     pub write: Vec<Jump>,
     pub read_segments: Vec<JumpSegment>,
     pub write_segments: Vec<JumpSegment>,
+    pub read_portals: Vec<Option<Portal>>
 }
 
 #[derive(Debug, Clone, Default)]
@@ -178,6 +179,7 @@ pub struct JumpCache {
     write_jumps: Channels<Mutex<Vec<Jump>>>,
     read_segments: Channels<Mutex<Vec<JumpSegment>>>,
     write_segments: Channels<Mutex<Vec<JumpSegment>>>,
+    read_portals: Channels<Mutex<Vec<Option<Portal>>>>,
     version: AtomicU64,
 }
 
@@ -188,6 +190,7 @@ impl Default for JumpCache {
             write_jumps: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
             read_segments: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
             write_segments: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
+            read_portals: Channels::new(Mutex::new(vec![]), Mutex::new(vec![])),
             version: AtomicU64::new(0),
         }
     }
@@ -209,6 +212,10 @@ impl JumpCache {
             if let Ok(mut g) = self.write_segments.get(ch).lock() {
                 *g = s.write_segments.clone();
             }
+            if let Ok(mut g) = self.read_portals.get(ch).lock() {
+                *g = s.read_portals.clone();
+            }
+            
         }
         self.version.fetch_add(1, Relaxed);
     }
@@ -243,6 +250,14 @@ impl JumpCache {
 
     pub fn write_segments(&self, ch: BufferChannel) -> Vec<JumpSegment> {
         self.write_segments
+            .get(ch)
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn read_portals(&self, ch: BufferChannel) -> Vec<Option<Portal>> {
+        self.read_portals
             .get(ch)
             .lock()
             .map(|g| g.clone())
