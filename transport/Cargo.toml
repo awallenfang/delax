@@ -1,0 +1,13 @@
+[package]
+name = "transport"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+syn = "3.0.6"
+quote = "1.0.47"
+proc-macro2 = "1.0.107"
+triple_buffer = "9.0.0"
+
+[lib]
+proc-macro = true
