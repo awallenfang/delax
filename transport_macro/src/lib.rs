@@ -11,6 +11,16 @@ use syn::{
 };
 
 #[proc_macro_derive(TripleBuffered)]
+/// Derives TripleBuffered for a struct with named fields.
+///
+/// Usage:
+/// #[derive(TripleBuffered)]
+/// struct TestData {
+/// x: f32
+/// }
+///
+/// let (send, recv) = TestData::channel(TestData{x: 0.0});
+///
 pub fn derive_triple_buffered(input: CompilerTokenStream) -> CompilerTokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -80,3 +90,4 @@ fn expand_triple_buffered(
         }
     })
 }
+

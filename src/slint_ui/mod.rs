@@ -11,6 +11,7 @@ pub mod renderer;
 mod slint_con;
 pub mod snapshot;
 pub mod uniforms;
+pub mod new_transport;
 
 use crate::slint_ui::editor::UiEvent;
 use crate::slint_ui::param_component::ParamComponent;
