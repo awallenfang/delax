@@ -201,6 +201,13 @@ where
                 .cloned()
                 .unwrap_or(0.0)
         });
+
+        let drag_api = self.global::<DragApi>();
+        drag_api.on_string_to_transfer(Into::into);
+        drag_api.on_transfer_to_string(|data| data.plain_text().unwrap_or_default());
+        drag_api.on_can_drop(|data| {
+            data.has_plain_text()
+        });
     }
 
     fn set_param_from_host(&self, param_id: &str, value: f32, display: SharedString) {

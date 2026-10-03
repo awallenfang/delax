@@ -17,3 +17,9 @@ export global ParamBus {
         return get_default_by_key(key);
     }
 }
+
+export global DragApi {
+    pure callback string-to-transfer(string) -> data-transfer;
+    pure callback transfer-to-string(data-transfer) -> string;
+    pure callback can-drop(data-transfer) -> bool;
+}
