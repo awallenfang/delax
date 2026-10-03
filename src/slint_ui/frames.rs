@@ -54,7 +54,6 @@ pub struct JumpChannelState {
     pub write: Vec<Jump>,
     pub read_segments: Vec<JumpSegment>,
     pub write_segments: Vec<JumpSegment>,
-    #[allow(dead_code)]
     pub read_portals: Vec<Option<Portal>>,
 }
 

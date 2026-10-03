@@ -10,7 +10,7 @@ import {
 import { ParamKnob } from "components/param_knob.slint";
 import { ParamBus } from "events.slint";
 import { ParamSwitch } from "components/param_switch.slint";
-import { Palette, UIJump, UIJumpSegment } from "./global.slint";
+import { Palette, UIJump, UIJumpSegment, UIPortal } from "./global.slint";
 import { PeakMeter } from "components/peak_meter.slint";
 import { SpectrumAnalyzer } from "components/spectrum_analyzer.slint";
 import { Button } from "components/button.slint";
@@ -53,6 +53,8 @@ export struct EditorData {
     read_segments_r: [UIJumpSegment],
     write_segments_l: [UIJumpSegment],
     write_segments_r: [UIJumpSegment], 
+    read_portals_l: [UIPortal],
+    read_portals_r: [UIPortal],
 }
 export struct Textures {
     spectrum: image,
@@ -86,6 +88,14 @@ export component AppWindow inherits Window {
 
     callback effect-order-changed([string]);
     callback segment-swapped(int, int, int);
+    callback segment-boundary-moved(int, int, float);
+    callback portal-unglued(int, int);
+    callback portal-reweld(int, int);
+    callback portal-exit-moved(int, int, float);
+    callback portal-entry-moved(int, int, float);
+    callback segment-split(int, int);
+    callback segments-merged(int, int);
+    callback preset-split(int, int);
 
     private property <int> tab: 0;
 
@@ -226,7 +236,17 @@ export component AppWindow inherits Window {
                     read_segments_r: root.editor_data.read_segments_r;
                     write_segments_l: root.editor_data.write_segments_l;
                     write_segments_r: root.editor_data.write_segments_r;
+                    read_portals_l: root.editor_data.read_portals_l;
+                    read_portals_r: root.editor_data.read_portals_r;
                     segment-swapped(c, a, b) => { root.segment-swapped(c, a, b); }
+                    segment-boundary-moved(c, b, x) => { root.segment-boundary-moved(c, b, x); }
+                    portal-unglued(c, b) => { root.portal-unglued(c, b); }
+                    portal-reweld(c, b) => { root.portal-reweld(c, b); }
+                    portal-exit-moved(c, b, x) => { root.portal-exit-moved(c, b, x); }
+                    portal-entry-moved(c, b, x) => { root.portal-entry-moved(c, b, x); }
+                    segment-split(c, s) => { root.segment-split(c, s); }
+                    segments-merged(c, b) => { root.segments-merged(c, b); }
+                    preset-split(c, n) => { root.preset-split(c, n); }
                 }
             if tab == 3:
                 AboutPage {

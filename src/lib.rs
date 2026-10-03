@@ -1,10 +1,11 @@
 use crate::delay_engine::delay_time_from_bpm_and_16th;
-use crate::delay_engine::jump_builder::{Jump, JumpBuilder};
+use crate::delay_engine::jump_builder::{JumpBuilder, SegmentEditor};
+use crate::delay_engine::params::HeadSync;
 use crate::filter_pipeline::pipeline::FilterPipeline;
 use crate::filters::dattorro::DattorroReverb;
 use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
 use crate::param_cache::ParamCache;
-use crate::slint_ui::editor::{DelaxSlintHost, DerivedJumps};
+use crate::slint_ui::editor::DelaxSlintHost;
 use crate::slint_ui::frames::JumpChannelState;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
@@ -23,7 +24,6 @@ use slint_ui::frames::{
 use slint_ui::transport::{BufferChannel, FRAME_STORE};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
-use crate::delay_engine::params::HeadSync;
 
 mod delay_engine;
 mod filter_pipeline;
@@ -36,9 +36,9 @@ pub struct Delax {
     params: Arc<DelaxParams>,
     left_delay_engine: DelayEngine,
     right_delay_engine: DelayEngine,
-    jump_builder_read_l: JumpBuilder,
+    editor_read_l: SegmentEditor,
+    editor_read_r: SegmentEditor,
     jump_builder_write_l: JumpBuilder,
-    jump_builder_read_r: JumpBuilder,
     jump_builder_write_r: JumpBuilder,
     sample_rate: f32,
     input_sin_svf_low_l: SimperSinSVF,
@@ -130,8 +130,8 @@ impl Default for Delax {
         input_high_l.set_mode(SVFFilterMode::High);
         input_high_r.set_mode(SVFFilterMode::High);
 
-        let jump_builder_read_l = JumpBuilder::empty(default_buf);
-        let jump_builder_read_r = JumpBuilder::empty(default_buf);
+        let editor_read_l = SegmentEditor::single(default_buf);
+        let editor_read_r = SegmentEditor::single(default_buf);
         let jump_builder_write_l = JumpBuilder::empty(default_buf);
         let jump_builder_write_r = JumpBuilder::empty(default_buf);
         Self {
@@ -155,8 +155,8 @@ impl Default for Delax {
             editor_tick: 0,
             effect_order: Arc::new(RwLock::new(default_order.clone())),
             applied_effect_order: default_order,
-            jump_builder_read_l,
-            jump_builder_read_r,
+            editor_read_l,
+            editor_read_r,
             jump_builder_write_l,
             jump_builder_write_r,
             applied_jump_version_l: 0,
@@ -267,24 +267,17 @@ impl Plugin for Delax {
         let active_r = (self.params.delay_params.buffer_len_r.value() * self.sample_rate) as usize;
         left_delay_engine.set_active_len(active_l);
         right_delay_engine.set_active_len(active_r);
-        let ((jumps_l, size_l), (jumps_r, size_r)) =
-            self.params.buffer_editor_state.snapshot_jumps();
-        self.jump_builder_read_l = Self::resolve_stored(active_l, jumps_l, size_l);
-        self.jump_builder_read_r = Self::resolve_stored(active_r, jumps_r, size_r);
+        let state = &self.params.buffer_editor_state;
+        let editor_read_l = state.editor_for(BufferChannel::Left, active_l);
+        let editor_read_r = state.editor_for(BufferChannel::Right, active_r);
+        left_delay_engine.set_raw_read_jumps(&editor_read_l.build_jumps());
+        right_delay_engine.set_raw_read_jumps(&editor_read_r.build_jumps());
+        self.editor_read_l = editor_read_l;
+        self.editor_read_r = editor_read_r;
         self.jump_builder_write_l = JumpBuilder::empty(active_l);
         self.jump_builder_write_r = JumpBuilder::empty(active_r);
-        self.applied_jump_version_l = self
-            .params
-            .buffer_editor_state
-            .version_l
-            .load(Ordering::Relaxed);
-        self.applied_jump_version_r = self
-            .params
-            .buffer_editor_state
-            .version_r
-            .load(Ordering::Relaxed);
-        left_delay_engine.set_raw_read_jumps(&self.jump_builder_read_l.build());
-        right_delay_engine.set_raw_read_jumps(&self.jump_builder_read_r.build());
+        self.applied_jump_version_l = state.version_l.load(Ordering::Relaxed);
+        self.applied_jump_version_r = state.version_r.load(Ordering::Relaxed);
         left_delay_engine.set_raw_write_jumps(&self.jump_builder_write_l.build());
         right_delay_engine.set_raw_write_jumps(&self.jump_builder_write_r.build());
 
@@ -635,21 +628,28 @@ impl Delax {
         let state = &self.params.buffer_editor_state;
         let ver_l = state.version_l.load(Ordering::Relaxed);
         let ver_r = state.version_r.load(Ordering::Relaxed);
-        let derived_l = state.derived_for(BufferChannel::Left);
-        let derived_r = state.derived_for(BufferChannel::Right);
 
-        self.jump_builder_read_l = Self::apply_channel(
-            &mut self.left_delay_engine,
-            derived_l,
-            ver_l,
-            self.applied_jump_version_l,
-        );
-        self.jump_builder_read_r = Self::apply_channel(
-            &mut self.right_delay_engine,
-            derived_r,
-            ver_r,
-            self.applied_jump_version_r,
-        );
+        if ver_l != self.applied_jump_version_l {
+            if let Some(d) = state.derived_for(BufferChannel::Left) {
+                if !d.table.is_empty() {
+                    self.left_delay_engine.set_raw_read_jumps(&d.table);
+                }
+            }
+            self.applied_jump_version_l = ver_l;
+        }
+        if ver_r != self.applied_jump_version_r {
+            if let Some(d) = state.derived_for(BufferChannel::Right) {
+                if !d.table.is_empty() {
+                    self.right_delay_engine.set_raw_read_jumps(&d.table);
+                }
+            }
+            self.applied_jump_version_r = ver_r;
+        }
+
+        self.editor_read_l =
+            state.editor_for(BufferChannel::Left, self.left_delay_engine.active_len());
+        self.editor_read_r =
+            state.editor_for(BufferChannel::Right, self.right_delay_engine.active_len());
 
         self.jump_builder_write_l = JumpBuilder::from_jumps(
             self.left_delay_engine.active_len(),
@@ -660,25 +660,6 @@ impl Delax {
             self.right_delay_engine.write_jumps(),
         );
         self.publish_jump_state();
-        self.applied_jump_version_l = ver_l;
-        self.applied_jump_version_r = ver_r;
-    }
-
-    fn apply_channel(
-        engine: &mut DelayEngine,
-        derived: Option<DerivedJumps>,
-        version: u64,
-        applied_version: u64,
-    ) -> JumpBuilder {
-        if version != applied_version {
-            if let Some(d) = derived {
-                if !d.table.is_empty() {
-                    engine.set_raw_read_jumps(&d.table);
-                    return JumpBuilder::from_jumps(engine.active_len(), &d.table);
-                }
-            }
-        }
-        JumpBuilder::from_jumps(engine.active_len(), engine.read_jumps())
     }
 
     fn publish_jump_state(&mut self) {
@@ -686,45 +667,22 @@ impl Delax {
         self.jumps_tx.write(JumpSnapshot {
             channels: Channels::new(
                 JumpChannelState {
-                    read: self.jump_builder_read_l.build(),
+                    read: self.left_delay_engine.read_jumps().to_vec(),
                     write: self.jump_builder_write_l.build(),
-                    read_segments: self.jump_builder_read_l.segments(),
+                    read_segments: self.editor_read_l.segments(),
                     write_segments: self.jump_builder_write_l.segments(),
-                    read_portals: self
-                        .params
-                        .buffer_editor_state
-                        .editor_l
-                        .lock()
-                        .map(|e| e.portals().to_vec())
-                        .unwrap_or_default(),
+                    read_portals: self.editor_read_l.portals().to_vec(),
                 },
                 JumpChannelState {
-                    read: self.jump_builder_read_r.build(),
+                    read: self.right_delay_engine.read_jumps().to_vec(),
                     write: self.jump_builder_write_r.build(),
-                    read_segments: self.jump_builder_read_r.segments(),
+                    read_segments: self.editor_read_r.segments(),
                     write_segments: self.jump_builder_write_r.segments(),
-                    read_portals: self
-                        .params
-                        .buffer_editor_state
-                        .editor_r
-                        .lock()
-                        .map(|e| e.portals().to_vec())
-                        .unwrap_or_default(),
+                    read_portals: self.editor_read_r.portals().to_vec(),
                 },
             ),
             version: self.jump_version,
         });
-    }
-
-    fn resolve_stored(active: usize, jumps: Vec<Jump>, size: usize) -> JumpBuilder {
-        if jumps.is_empty() || size == 0 {
-            return JumpBuilder::split_evenly(active, 8);
-        }
-        if size == active {
-            JumpBuilder::from_jumps(active, &jumps)
-        } else {
-            JumpBuilder::from_jumps(size, &jumps).scaled(active)
-        }
     }
 
     fn update_block_params(&mut self, transport: &Transport, pending: &mut PendingUi) {
