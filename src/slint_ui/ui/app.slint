@@ -8,7 +8,7 @@ import {
     HorizontalBox,
 } from "std-widgets.slint";
 import { ParamKnob } from "components/param_knob.slint";
-import { ParamBus } from "events.slint";
+import { ParamBus, DragApi } from "events.slint";
 import { ParamSwitch } from "components/param_switch.slint";
 import { Palette, UIJump, UIJumpSegment, UIPortal } from "./global.slint";
 import { PeakMeter } from "components/peak_meter.slint";
@@ -18,7 +18,7 @@ import { AboutPage } from "pages/about_page.slint";
 import { EditorPage } from "pages/editor_page.slint";
 import { FilterPage } from "pages/effects_page.slint";
 import { DelayPage } from "pages/delay_page.slint";
-export { ParamBus }
+export { ParamBus, DragApi }
 export struct FilterData {
     filter_order: [string],
 }

@@ -1,5 +1,5 @@
 import { VerticalBox, Slider } from "std-widgets.slint";
-import { ParamBus } from "../events.slint";
+import { ParamBus, DragApi } from "../events.slint";
 import { Palette, UIJump, UIJumpSegment, UIPortal } from "../global.slint";
 import { IconButton } from "icon_button.slint";
 
@@ -24,6 +24,8 @@ export component EditorBufferVisualizer inherits Rectangle {
     callback segments-merged(int);
 
     private property <int> selected: -1;
+    private property <int> drag-over-idx: -1;
+    private property <bool> is-dragging: false;
     VerticalLayout {
         if !left_channel:
         Rectangle {
@@ -69,61 +71,124 @@ export component EditorBufferVisualizer inherits Rectangle {
                 clip: false;
             }
             for segment[idx] in read_segments:
-            Rectangle {
+            drop-zone := DropArea {
                 x: segment.start * root.width;
-                height: parent.height / 2;
+                height: parent.height;
                 y: 0;
                 width: (segment.end - segment.start) * root.width;
-                background: @linear-gradient(90deg, Palette.primary.transparentize(0.8) 0%, #00000000 50%, Palette.primary.transparentize(0.8) 100%);
-                clip: false;
-                border-width: root.selected == idx ? 2px : 0px;
-                border-color: Palette.primary;
-                property <bool> hovered: false;
-                Text {                   
-                    x: parent.width / 2;
-                    y: parent.height / 2;
-                    text: segment.order + 1;
-                    color: Palette.text-muted;
+                
+                can-drop(event) => {
+                    root.drag-over-idx = idx;
+                    return DragAction.move;
                 }
-                split-ta := TouchArea {
-                    mouse-cursor: pointer;
-                }
-                split-btn := IconButton {
-                    visible: split-ta.has-hover || split-btn.hovered;
-                    width: 20px;
-                    height: 20px;
-                    enabled: true;
-                    x: (parent.width / 2) - (self.width / 2);
-                    y: parent.height - (self.height / 2);
-                    Image {
-                        source: @image-url("../assets/split.svg");
-                        image-fit: contain;
-                    }
 
-                    clicked => {
-                        root.segment-split(idx)
+                dropped(event) => {
+                    let payload = DragApi.transfer-to-string(event.data);
+                    if (payload != "") {
+                        let source-idx = payload.to-float().floor();
+                        if (source-idx != idx) {
+                            root.segment-swapped(source-idx, idx);
+                        }
                     }
+                    root.drag-over-idx = -1;
+                    root.is-dragging = false;
+                    return DragAction.move;
                 }
-                merge-ta := TouchArea {
-                    x: - self.width / 2;
-                    height: parent.height;
-                    width: 20px;
+                Rectangle {
+                    x: 0; 
+                    height: parent.height / 2;
+                    y: 0;
+                    width: parent.width;
+                    background: root.drag-over-idx == idx ? Palette.secondary.transparentize(0.5) 
+                        : @linear-gradient(90deg, Palette.primary.transparentize(0.8) 0%, #00000000 50%, Palette.primary.transparentize(0.8) 100%);
+                    
+                    clip: false;
 
-                }
-                merge-btn := IconButton {
-                    visible: idx > 0 && (merge-ta.has-hover || merge-btn.hovered);
-                    width: 20px;
-                    height: 20px;
-                    enabled: true;
-                    x: - self.width / 2;
-                    y: (parent.height / 2) - (self.height / 2);
-                    Image {
-                        source: @image-url("../assets/merge.svg");
-                        image-fit: contain;
+                    border-width: (root.selected == idx || root.drag-over-idx == idx) ? 2px : 0px;
+                    border-color: root.drag-over-idx == idx ? Palette.secondary : Palette.primary;
+
+                    animate background { duration: 150ms; }
+                    animate border-color { duration: 150ms; }
+                    drag-area := DragArea {
+                        width: 100%;
+                        height: 100%;
+                        data: DragApi.string-to-transfer(idx.to-string-unlocalized());
+                        allow-move: true;
+                        enabled: !root.is-dragging || drag-area.dragging;
+
+                        drag-finished(action) => {
+                            root.is-dragging = false;
+                            root.drag-over-idx = -1;
+                        }
+                        changed dragging => {
+                            if (self.dragging) {
+                                root.is-dragging = true;
+                            }
+                        }
+                        Rectangle {
+                            width: 100%;
+                            height: 100%;
+                            Text {                   
+                                x: drag-area.width / 2 - self.width / 2;
+                                y: drag-area.height / 2 - self.height / 2;
+                                text: segment.order + 1;
+                                color: Palette.text-muted;
+                            }
+                        }
                     }
+                    split-ta := TouchArea {
+                        width: 40px;
+                        height: 20px;
+                        x: (parent.width / 2) - (self.width / 2);
+                        y: parent.height - self.height;
+                        mouse-cursor: pointer;
+                        enabled: !root.is-dragging;
+                        Rectangle {
+                            width: 100%;
+                            height: 100%;
+                        }
+                    }
+                    
+                    split-btn := IconButton {
+                        visible: split-ta.has-hover || split-btn.hovered;
+                        width: 20px;
+                        height: 20px;
+                        enabled: true;
+                        x: (parent.width / 2) - (self.width / 2);
+                        y: parent.height - (self.height / 2);
+                        Image {
+                            source: @image-url("../assets/split.svg");
+                            image-fit: contain;
+                        }
+                        clicked => {
+                            root.segment-split(idx)
+                        }
+                    }
+                    merge-ta := TouchArea {
+                        x: - self.width / 2;
+                        height: parent.height;
+                        width: 20px;
+                        enabled: !root.is-dragging;
+                        Rectangle {
+                            width: 100%;
+                            height: 100%;
+                        }
+                    }
+                    merge-btn := IconButton {
+                        visible: idx > 0 && (merge-ta.has-hover || merge-btn.hovered);
+                        width: 20px;
+                        height: 20px;
+                        enabled: true;
+                        x: - self.width / 2;
+                        y: (parent.height / 2) - (self.height / 2);
+                        Image {
+                            source: @image-url("../assets/merge.svg");
+                            image-fit: contain;
+                        }
 
-                    clicked => {
-                        root.segments-merged(idx)
+                        clicked => {
+                            root.segments-merged(idx)
+                        }
                     }
                 }
             }
