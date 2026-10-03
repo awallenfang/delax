@@ -1023,3 +1023,100 @@ fn portal_accessors_ignore_the_inert_wrap_and_out_of_range_slots() {
     e.move_entry(9, 5);
     assert_eq!(e.portals()[1], Some(Portal { exit: 3, entry: 4 }));
 }
+
+#[test]
+fn the_last_segment_can_be_halved() {
+    let mut e = SegmentEditor::split_evenly(12, 3);
+    assert!(e.can_split(2));
+    assert!(e.split_segment(2));
+    assert_eq!(e.starts(), &[0, 4, 8, 10]);
+    assert_eq!(e.order().len(), 4);
+    assert_full_coverage(&e.build_jumps(), 12);
+
+    let segs = e.segments();
+    let left = segs[2].order;
+    assert_eq!(segs[3].order, left + 1);
+    assert_eq!(segs[2].end + 1, segs[3].start);
+}
+
+#[test]
+fn a_single_segment_can_still_be_halved() {
+    let mut e = SegmentEditor::split_evenly(12, 3);
+    for boundary in [2, 1] {
+        assert!(e.can_merge(boundary));
+        assert!(e.merge_segments(boundary));
+    }
+    assert_eq!(e.starts(), &[0]);
+    assert!(e.can_merge(1) == false, "nothing left to merge");
+
+    assert!(e.can_split(0), "the lone segment must be splittable");
+    assert!(e.split_segment(0));
+    assert_eq!(e.starts(), &[0, 6]);
+    assert_full_coverage(&e.build_jumps(), 12);
+
+    for expected in [3, 4, 5] {
+        let last = e.starts().len() - 1;
+        assert!(e.split_segment(last));
+        assert_eq!(e.starts().len(), expected);
+    }
+    assert_full_coverage(&e.build_jumps(), 12);
+}
+
+#[test]
+fn a_one_sample_segment_still_refuses_to_halve() {
+    let mut e = SegmentEditor::split_evenly(4, 4);
+    for i in 0..4 {
+        assert!(!e.can_split(i), "segment {i} is one sample wide");
+        assert!(!e.split_segment(i));
+    }
+    assert_eq!(e.starts(), &[0, 1, 2, 3]);
+
+    assert!(!e.can_split(4), "out of range");
+    assert!(!e.split_segment(4));
+    assert!(!e.split_segment(usize::MAX));
+}
+
+#[test]
+fn out_of_range_boundaries_are_refused_rather_than_panicking() {
+    let mut e = SegmentEditor::split_evenly(12, 3);
+    e.unglue(1);
+
+    assert!(e.is_unglued(1));
+    assert!(!e.is_unglued(9));
+    assert!(!e.is_unglued(usize::MAX));
+
+    assert!(e.can_reweld(1));
+    assert!(e.reweld(1));
+    assert!(!e.can_reweld(1), "already welded");
+    assert!(!e.reweld(1), "rewelding twice is a no-op");
+    assert!(!e.can_reweld(0), "the wrap carries no portal");
+    assert!(!e.reweld(0));
+    assert!(!e.reweld(9));
+    assert!(!e.reweld(usize::MAX));
+    assert_eq!(e.portals().len(), e.starts().len());
+}
+
+#[test]
+fn predicates_predict_what_the_mutators_will_do() {
+    let mut e = SegmentEditor::split_evenly(12, 3);
+    for boundary in 0..=8 {
+        let can = e.can_unglue(boundary);
+        assert_eq!(can, e.unglue(boundary), "unglue({boundary})");
+    }
+    assert!(e.can_move_exit(1) && e.can_move_entry(1));
+    assert!(!e.can_unglue(1), "already unglued");
+    assert!(!e.unglue(1));
+    assert!(!e.can_merge(1), "unglued borders cannot merge");
+    assert!(!e.merge_segments(1));
+    assert!(e.can_reweld(1) && e.reweld(1));
+    assert!(e.can_merge(1) && e.merge_segments(1));
+
+    for boundary in 0..=8 {
+        let can = e.can_move_boundary(boundary);
+        let before = e.starts().to_vec();
+        assert_eq!(can, e.move_boundary(boundary, 6), "move({boundary})");
+        if !can {
+            assert_eq!(before, e.starts().to_vec(), "move({boundary}) mutated");
+        }
+    }
+}

@@ -117,12 +117,20 @@ pub struct FrameReads {
 
 impl FrameReads {
     pub fn read() -> Self {
-        Self {
-            frame: FRAME_STORE.read().unwrap_or_default(),
-            wave: FRAME_STORE.read().unwrap_or_default(),
-            spectrum_raw: FRAME_STORE.read(),
-            editor: FRAME_STORE.read().unwrap_or_default(),
-            jumps: FRAME_STORE.read(),
-        }
+        FRAME_STORE.with_store(|map| {
+            macro_rules! take {
+                ($t:ty) => {
+                    map.get_mut::<triple_buffer::Output<$t>>()
+                        .map(|output| output.read().clone())
+                };
+            }
+            Self {
+                frame: take!(UiFrame).unwrap_or_default(),
+                wave: take!(WaveSnapshot).unwrap_or_default(),
+                spectrum_raw: take!(SpectrumRaw),
+                editor: take!(EditorSnapshot).unwrap_or_default(),
+                jumps: take!(JumpSnapshot),
+            }
+        })
     }
 }
