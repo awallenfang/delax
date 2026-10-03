@@ -155,7 +155,7 @@ pub struct BufferEditorState {
 
 impl Default for BufferEditorState {
     fn default() -> Self {
-        let init = SegmentEditor::split_evenly(8, 8);
+        let init = SegmentEditor::single(8);
         Self {
             version_l: Default::default(),
             version_r: Default::default(),
@@ -169,7 +169,7 @@ impl Default for BufferEditorState {
 
 impl BufferEditorState {
     fn fallback_editor() -> SegmentEditor {
-        SegmentEditor::split_evenly(8, 8)
+        SegmentEditor::single(8)
     }
 
     fn editor_snapshot(&self, channel: BufferChannel) -> (SegmentEditor, u64) {
@@ -755,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn store_with_validate_never_skips_the_d4_walk() {
+    fn store_with_validate_never_skips_walk() {
         let state = BufferEditorState::default();
 
         let mut broken = SegmentEditor::split_evenly(12, 4);

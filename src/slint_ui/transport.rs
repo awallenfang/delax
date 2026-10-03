@@ -33,6 +33,11 @@ impl BufferStorage {
             .get_mut::<triple_buffer::Output<T>>()
             .map(|output| output.read().clone())
     }
+
+    pub fn with_store<R>(&self, f: impl FnOnce(&mut Map<dyn Any + Send + Sync>) -> R) -> R {
+        let mut map = self.map.lock().unwrap();
+        f(&mut map)
+    }
 }
 
 pub fn active_len_for(ch: BufferChannel) -> usize {

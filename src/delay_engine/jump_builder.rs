@@ -523,7 +523,17 @@ impl SegmentEditor {
     }
 
     pub fn is_unglued(&self, boundary: usize) -> bool {
-        self.portals[boundary].is_some()
+        self.portals.get(boundary).is_some_and(|p| p.is_some())
+    }
+
+    pub fn can_unglue(&self, boundary: usize) -> bool {
+        let n = self.starts.len();
+        boundary > 0 && boundary < n && !self.is_unglued(boundary) && self.is_adjacent(boundary)
+    }
+
+    fn is_adjacent(&self, boundary: usize) -> bool {
+        let n = self.starts.len();
+        n > 0 && boundary > 0 && self.rank_of(boundary) == (self.rank_of(boundary - 1) + 1) % n
     }
 
     /// The specific segments, useful for the UI rendering
@@ -652,11 +662,15 @@ impl SegmentEditor {
         Some(edges)
     }
 
-    pub fn move_boundary(&mut self, boundary: usize, pos: usize) {
-        let n = self.starts.len();
-        if boundary == 0 || boundary >= n {
-            return;
+    pub fn can_move_boundary(&self, boundary: usize) -> bool {
+        boundary > 0 && boundary < self.starts.len()
+    }
+
+    pub fn move_boundary(&mut self, boundary: usize, pos: usize) -> bool {
+        if !self.can_move_boundary(boundary) {
+            return false;
         }
+        let n = self.starts.len();
         let lo = self.starts[boundary - 1] + 1;
         let hi = if boundary + 1 < n {
             self.starts[boundary + 1] - 1
@@ -664,51 +678,67 @@ impl SegmentEditor {
             self.size - 1
         };
         self.starts[boundary] = pos.clamp(lo, hi);
+        true
     }
 
-    pub fn unglue(&mut self, boundary: usize) {
-        let n = self.starts.len();
-        if boundary == 0 || boundary >= n || self.is_unglued(boundary) {
-            return;
+    pub fn unglue(&mut self, boundary: usize) -> bool {
+        if !self.can_unglue(boundary) {
+            return false;
         }
-        if self.rank_of(boundary) != (self.rank_of(boundary - 1) + 1) % n {
-            return;
-        }
-
         self.portals[boundary] = Some(Portal {
             exit: self.starts[boundary] - 1,
             entry: self.starts[boundary],
         });
+        true
     }
 
-    pub fn move_exit(&mut self, boundary: usize, pos: usize) {
-        let n = self.starts.len();
-        if boundary == 0 || boundary >= n {
-            return;
-        }
-        if let Some(p) = self.portals[boundary] {
-            let hi = self.ends_all()[boundary - 1];
-            self.portals[boundary] = Some(Portal {
-                exit: pos.clamp(self.starts[boundary - 1], hi),
-                ..p
-            });
-        }
+    pub fn can_move_exit(&self, boundary: usize) -> bool {
+        boundary > 0 && boundary < self.starts.len() && self.is_unglued(boundary)
     }
 
-    pub fn move_entry(&mut self, boundary: usize, pos: usize) {
-        if boundary == 0 || boundary >= self.portals.len() {
-            return;
+    pub fn move_exit(&mut self, boundary: usize, pos: usize) -> bool {
+        if !self.can_move_exit(boundary) {
+            return false;
         }
-        if let Some(p) = self.portals[boundary] {
-            self.portals[boundary] = Some(Portal {
-                entry: pos.min(self.size - 1),
-                ..p
-            });
-        }
+        let Some(p) = self.portals[boundary] else {
+            return false;
+        };
+        let hi = self.ends_all()[boundary - 1];
+        self.portals[boundary] = Some(Portal {
+            exit: pos.clamp(self.starts[boundary - 1], hi),
+            ..p
+        });
+        true
     }
 
-    pub fn reweld(&mut self, boundary: usize) {
+    pub fn can_move_entry(&self, boundary: usize) -> bool {
+        self.can_move_exit(boundary)
+    }
+
+    pub fn move_entry(&mut self, boundary: usize, pos: usize) -> bool {
+        if !self.can_move_entry(boundary) {
+            return false;
+        }
+        let Some(p) = self.portals[boundary] else {
+            return false;
+        };
+        self.portals[boundary] = Some(Portal {
+            entry: pos.min(self.size.saturating_sub(1)),
+            ..p
+        });
+        true
+    }
+
+    pub fn can_reweld(&self, boundary: usize) -> bool {
+        boundary > 0 && boundary < self.portals.len() && self.is_unglued(boundary)
+    }
+
+    pub fn reweld(&mut self, boundary: usize) -> bool {
+        if !self.can_reweld(boundary) {
+            return false;
+        }
         self.portals[boundary] = None;
+        true
     }
 
     pub fn swap_segments(&mut self, a: usize, b: usize) {
@@ -776,17 +806,29 @@ impl SegmentEditor {
         out
     }
 
-    /// Split a segment in half
-    pub fn split_segment(&mut self, segment: usize) {
+    fn width_of(&self, segment: usize) -> usize {
         let n = self.starts.len();
-        if segment + 1 >= n {
-            return;
+        let hi = if segment + 1 < n {
+            self.starts[segment + 1]
+        } else {
+            self.size
+        };
+        hi.saturating_sub(self.starts.get(segment).copied().unwrap_or(self.size))
+    }
+
+    pub fn can_split(&self, segment: usize) -> bool {
+        segment < self.starts.len() && self.width_of(segment) >= 2
+    }
+
+    pub fn split_segment(&mut self, segment: usize) -> bool {
+        if segment >= self.starts.len() {
+            return false;
         }
-        let ends = self.ends_all();
-        let width = ends[segment] - self.starts[segment] + 1;
+        let width = self.width_of(segment);
         if width < 2 {
-            return;
+            return false;
         }
+        let n = self.starts.len();
         let mid = self.starts[segment] + width / 2;
         let size = self.size;
         let mut starts = self.starts.clone();
@@ -812,17 +854,21 @@ impl SegmentEditor {
             portals,
         };
         self.reclamp_portals();
+        true
     }
 
-    /// Merge two segments together at boundary==1 combines 0 with 1
-    pub fn merge_segments(&mut self, boundary: usize) {
+    pub fn can_merge(&self, boundary: usize) -> bool {
+        self.starts.len() >= 2
+            && boundary > 0
+            && boundary < self.starts.len()
+            && !self.is_unglued(boundary)
+    }
+
+    pub fn merge_segments(&mut self, boundary: usize) -> bool {
+        if !self.can_merge(boundary) {
+            return false;
+        }
         let n = self.starts.len();
-        if n < 2 || boundary == 0 || boundary >= n {
-            return;
-        }
-        if self.portals[boundary].is_some() {
-            return;
-        }
         let keep = boundary - 1;
         let size = self.size;
         let mut starts = self.starts.clone();
@@ -857,6 +903,7 @@ impl SegmentEditor {
             portals,
         };
         self.reclamp_portals();
+        true
     }
 
     /// Set self to a preset with n splits
