@@ -5,6 +5,7 @@ use crate::filters::dattorro::DattorroReverb;
 use crate::filters::{params::SVFFilterMode, shifter::FrequencyShifter};
 use crate::param_cache::ParamCache;
 use crate::slint_ui::editor::{DelaxSlintHost, DerivedJumps};
+use crate::slint_ui::frames::JumpChannelState;
 use crate::slint_ui::plug_con::editor::SlintEditor;
 use delay_engine::{
     engine::{DelayEngine, DelayInterpolationMode, MAX_DELAY_SECS},
@@ -15,13 +16,13 @@ use filters::simper::SimperSinSVF;
 use nice_plug::{editor::dpi::NativeSize, prelude::*};
 use params::DelaxParams;
 use slint_ui::channels::{Channels, Heads};
-use slint_ui::data_transport::{
-    self, DataTransportTx, EDITOR_CHUNK_SAMPLES, EditorChunk, JumpState, UiFrame, UiState,
+use slint_ui::frames::{
+    EDITOR_CHUNK_SAMPLES, EDITOR_VIS_SIZE, EditorSnapshot, JumpSnapshot, SPEC_DECIM,
+    SPECTRUM_RAW_SIZE, SpectrumRaw, UI_BUFFER_SIZE, UiFrame, WAVE_DECIM, WaveSnapshot,
 };
-use slint_ui::{HeaderData, HeaderDataSender};
+use slint_ui::transport::{BufferChannel, FRAME_STORE};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
-use slint_ui::data_transport::BufferChannel;
 use crate::delay_engine::params::HeadSync;
 
 mod delay_engine;
@@ -44,10 +45,6 @@ pub struct Delax {
     input_sin_svf_high_l: SimperSinSVF,
     input_sin_svf_low_r: SimperSinSVF,
     input_sin_svf_high_r: SimperSinSVF,
-    input_data: Arc<UiState>,
-    ui_block_input: triple_buffer::Input<UiFrame>,
-    header_input: HeaderDataSender,
-    transport_tx: DataTransportTx,
     peak_in_l: PeakFollower,
     peak_in_r: PeakFollower,
     peak_out_l: PeakFollower,
@@ -63,6 +60,27 @@ pub struct Delax {
     applied_jump_version_l: u64,
     applied_jump_version_r: u64,
     param_cache_f32: param_cache::ParamCache,
+
+    // UI Transport
+    meters_tx: triple_buffer::Input<UiFrame>,
+    jumps_tx: triple_buffer::Input<JumpSnapshot>,
+    wave_tx: triple_buffer::Input<WaveSnapshot>,
+    spectrum_tx: triple_buffer::Input<SpectrumRaw>,
+    editor_tx: triple_buffer::Input<EditorSnapshot>,
+    editor_levels_l: [f32; EDITOR_VIS_SIZE],
+    editor_levels_r: [f32; EDITOR_VIS_SIZE],
+    editor_seen_len: (usize, usize),
+    wave_peak_dry: f32,
+    wave_peak_wet: f32,
+    wave_count: u32,
+    wave_hist_dry: [f32; UI_BUFFER_SIZE],
+    wave_hist_wet: [f32; UI_BUFFER_SIZE],
+    wave_pos: usize,
+    wave_filled: usize,
+    spec_sum: f32,
+    spec_count: u32,
+    spec_buf: [f32; SPECTRUM_RAW_SIZE],
+    jump_version: u64,
 }
 
 impl Default for Delax {
@@ -93,10 +111,11 @@ impl Default for Delax {
             "diffusor",
         );
 
-        let (transport_tx, _dropped_rx) = data_transport::channel();
-
-        let (header_input, header_output) = HeaderData::channel(HeaderData::default());
-        slint_ui::new_transport::StorageSingleton.insert(header_output.inner);
+        let meters_tx = FRAME_STORE.channel(UiFrame::default());
+        let jumps_tx = FRAME_STORE.channel(JumpSnapshot::default());
+        let wave_tx = FRAME_STORE.channel(WaveSnapshot::default());
+        let spectrum_tx = FRAME_STORE.channel(SpectrumRaw::default());
+        let editor_tx = FRAME_STORE.channel(EditorSnapshot::default());
 
         let default_order = vec![
             "filter".to_string(),
@@ -115,7 +134,6 @@ impl Default for Delax {
         let jump_builder_read_r = JumpBuilder::empty(default_buf);
         let jump_builder_write_l = JumpBuilder::empty(default_buf);
         let jump_builder_write_r = JumpBuilder::empty(default_buf);
-        let (ui_block_input, ui_block_output) = data_transport::ui_block_channel();
         Self {
             params: Arc::new(DelaxParams::default()),
             left_delay_engine,
@@ -125,10 +143,6 @@ impl Default for Delax {
             input_sin_svf_low_r: input_low_r,
             input_sin_svf_high_l: input_high_l,
             input_sin_svf_high_r: input_high_r,
-            input_data: Arc::new(UiState::with_output(ui_block_output)),
-            ui_block_input,
-            header_input,
-            transport_tx,
             peak_in_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_in_r: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
             peak_out_l: PeakFollower::new(0.0008, 0.1, 44100., 0.2),
@@ -148,6 +162,25 @@ impl Default for Delax {
             applied_jump_version_l: 0,
             applied_jump_version_r: 0,
             param_cache_f32: ParamCache::new(32, 1e-4),
+            meters_tx,
+            jumps_tx,
+            wave_tx,
+            spectrum_tx,
+            editor_tx,
+            editor_levels_l: [0.; EDITOR_VIS_SIZE],
+            editor_levels_r: [0.; EDITOR_VIS_SIZE],
+            editor_seen_len: (0, 0),
+            wave_peak_dry: 0.,
+            wave_peak_wet: 0.,
+            wave_count: 0,
+            wave_hist_dry: [0.; UI_BUFFER_SIZE],
+            wave_hist_wet: [0.; UI_BUFFER_SIZE],
+            wave_pos: 0,
+            wave_filled: 0,
+            spec_sum: 0.,
+            spec_count: 0,
+            spec_buf: [0.; SPECTRUM_RAW_SIZE],
+            jump_version: 0,
         }
     }
 }
@@ -196,12 +229,8 @@ impl Plugin for Delax {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        let (transport_tx, transport_rx) = data_transport::channel();
-        self.transport_tx = transport_tx;
         let host = Arc::new(DelaxSlintHost::new(
             self.params.clone(),
-            self.input_data.clone(),
-            transport_rx,
             self.effect_order.clone(),
         ));
         let (w, h) = self.params.editor_state.size();
@@ -284,8 +313,6 @@ impl Plugin for Delax {
     }
 
     fn reset(&mut self) {
-        // Reset buffers and envelopes here. This can be called from the audio thread and may not
-        // allocate. You can remove this function if you do not need it.
         self.left_delay_engine.reset();
         self.right_delay_engine.reset();
         self.peak_in_l.peak = 0.;
@@ -299,8 +326,11 @@ impl Plugin for Delax {
         self.editor_peak_l = 0.;
         self.editor_peak_r = 0.;
         self.editor_tick = 0;
-        self.transport_tx.reset_decim();
-        self.input_data.reset();
+        self.wave_peak_dry = 0.;
+        self.wave_peak_wet = 0.;
+        self.wave_count = 0;
+        self.spec_sum = 0.;
+        self.spec_count = 0;
     }
 
     fn process(
@@ -405,21 +435,32 @@ impl Plugin for Delax {
 
             let wet_l = *left_sample;
             let wet_r = *right_sample;
-            self.transport_tx
-                .push_wave_sample(dry_l, dry_r, pop_left, pop_right);
-            self.transport_tx
-                .push_spectrum_sample((pop_left * wetness + pop_right * wetness) * 0.5);
+            self.push_wave_sample(dry_l, dry_r, pop_left, pop_right);
+            self.push_spectrum_sample((pop_left * wetness + pop_right * wetness) * 0.5);
 
             (meter_out_l, meter_out_r) = self.meter_out(wet_l, wet_r);
 
             self.editor_tick = self.editor_tick.wrapping_add(1);
             if self.editor_tick.is_multiple_of(EDITOR_CHUNK_SAMPLES as u32) {
-                self.transport_tx.push_editor_chunk(EditorChunk {
-                    l: self.editor_peak_l,
-                    r: self.editor_peak_r,
-                    pos_l: self.left_delay_engine.write_head() as u32,
-                    pos_r: self.right_delay_engine.write_head() as u32,
-                });
+                let active_l = self.left_delay_engine.active_len();
+                let active_r = self.right_delay_engine.active_len();
+                if (active_l, active_r) != self.editor_seen_len {
+                    self.editor_seen_len = (active_l, active_r);
+                    self.editor_levels_l.fill(0.);
+                    self.editor_levels_r.fill(0.);
+                }
+                if active_l > 0 {
+                    let bin = ((self.left_delay_engine.write_head() as usize * EDITOR_VIS_SIZE)
+                        / active_l)
+                        .min(EDITOR_VIS_SIZE - 1);
+                    self.editor_levels_l[bin] = self.editor_peak_l.clamp(0., 1.);
+                }
+                if active_r > 0 {
+                    let bin = ((self.right_delay_engine.write_head() as usize * EDITOR_VIS_SIZE)
+                        / active_r)
+                        .min(EDITOR_VIS_SIZE - 1);
+                    self.editor_levels_r[bin] = self.editor_peak_r.clamp(0., 1.);
+                }
                 self.editor_peak_l = 0.;
                 self.editor_peak_r = 0.;
             }
@@ -428,13 +469,7 @@ impl Plugin for Delax {
         if had_samples {
             let active_len_l = self.left_delay_engine.active_len();
             let active_len_r = self.right_delay_engine.active_len();
-            self.header_input.send(HeaderData {
-                in_level_l: meter_in_l,
-                in_level_r: meter_in_r,
-                out_level_l: meter_out_l,
-                out_level_r: meter_out_r,
-            });
-            self.ui_block_input.write(UiFrame {
+            self.meters_tx.write(UiFrame {
                 meters_in: Channels::new(meter_in_l, meter_in_r),
                 meters_out: Channels::new(meter_out_l, meter_out_r),
                 heads: Channels::new(
@@ -457,9 +492,81 @@ impl Plugin for Delax {
                 clamped: Channels::new(pending.clamped_l, pending.clamped_r),
                 active_len: Channels::new(active_len_l, active_len_r),
             });
+            self.wave_tx.write(WaveSnapshot {
+                dry: self.ordered_wave_dry(),
+                wet: self.ordered_wave_wet(),
+            });
+            self.spectrum_tx.write(SpectrumRaw {
+                samples: self.spec_buf,
+            });
+            self.editor_tx.write(EditorSnapshot {
+                levels_l: self.editor_levels_l,
+                levels_r: self.editor_levels_r,
+            });
         }
 
         ProcessStatus::Normal
+    }
+}
+
+impl Delax {
+    fn push_wave_sample(&mut self, dry_l: f32, dry_r: f32, wet_l: f32, wet_r: f32) {
+        let dm = ((dry_l + dry_r) * 0.5).abs();
+        let wm = ((wet_l + wet_r) * 0.5).abs();
+        self.wave_peak_dry = self.wave_peak_dry.max(dm);
+        self.wave_peak_wet = self.wave_peak_wet.max(wm);
+        self.wave_count += 1;
+        if self.wave_count >= WAVE_DECIM {
+            let dry = (1. + nice_plug::util::gain_to_db(self.wave_peak_dry.max(1e-5)) / 100.)
+                .clamp(0., 1.5);
+            let wet = (1. + nice_plug::util::gain_to_db(self.wave_peak_wet.max(1e-5)) / 100.)
+                .clamp(0., 1.5);
+            self.wave_hist_dry[self.wave_pos] = dry;
+            self.wave_hist_wet[self.wave_pos] = wet;
+            self.wave_pos = (self.wave_pos + 1) % UI_BUFFER_SIZE;
+            self.wave_filled = (self.wave_filled + 1).min(UI_BUFFER_SIZE);
+            self.wave_peak_dry = 0.;
+            self.wave_peak_wet = 0.;
+            self.wave_count = 0;
+        }
+    }
+
+    fn push_spectrum_sample(&mut self, mono: f32) {
+        self.spec_sum += mono;
+        self.spec_count += 1;
+        if self.spec_count >= SPEC_DECIM {
+            let avg = self.spec_sum / SPEC_DECIM as f32;
+            self.spec_buf.rotate_left(1);
+            self.spec_buf[SPECTRUM_RAW_SIZE - 1] = avg;
+            self.spec_sum = 0.;
+            self.spec_count = 0;
+        }
+    }
+
+    fn ordered_wave_dry(&self) -> [f32; UI_BUFFER_SIZE] {
+        let mut out = [0.0f32; UI_BUFFER_SIZE];
+        let start = if self.wave_filled < UI_BUFFER_SIZE {
+            0
+        } else {
+            self.wave_pos
+        };
+        for i in 0..UI_BUFFER_SIZE {
+            out[i] = self.wave_hist_dry[(start + i) % UI_BUFFER_SIZE];
+        }
+        out
+    }
+
+    fn ordered_wave_wet(&self) -> [f32; UI_BUFFER_SIZE] {
+        let mut out = [0.0f32; UI_BUFFER_SIZE];
+        let start = if self.wave_filled < UI_BUFFER_SIZE {
+            0
+        } else {
+            self.wave_pos
+        };
+        for i in 0..UI_BUFFER_SIZE {
+            out[i] = self.wave_hist_wet[(start + i) % UI_BUFFER_SIZE];
+        }
+        out
     }
 }
 
@@ -574,9 +681,9 @@ impl Delax {
         JumpBuilder::from_jumps(engine.active_len(), engine.read_jumps())
     }
 
-    fn publish_jump_state(&self) {
-        use crate::slint_ui::data_transport::JumpChannelState;
-        self.input_data.publish_jump_state(JumpState {
+    fn publish_jump_state(&mut self) {
+        self.jump_version = self.jump_version.wrapping_add(1);
+        self.jumps_tx.write(JumpSnapshot {
             channels: Channels::new(
                 JumpChannelState {
                     read: self.jump_builder_read_l.build(),
@@ -605,6 +712,7 @@ impl Delax {
                         .unwrap_or_default(),
                 },
             ),
+            version: self.jump_version,
         });
     }
 

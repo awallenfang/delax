@@ -1,4 +1,4 @@
-use crate::slint_ui::data_transport::BufferChannel;
+use crate::slint_ui::frames::BufferChannel;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Channels<T> {

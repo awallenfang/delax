@@ -1,17 +1,18 @@
 mod baseview_con;
+pub mod bind;
 pub mod channels;
-pub mod data_transport;
+pub mod derived;
 pub mod editor;
 pub mod elements;
+pub mod frames;
 pub mod gpu_context;
 pub mod param_component;
 pub mod plug_con;
-pub mod present;
+pub mod render;
 pub mod renderer;
 mod slint_con;
-pub mod snapshot;
 pub mod uniforms;
-pub mod new_transport;
+pub mod transport;
 
 use crate::slint_ui::editor::UiEvent;
 use crate::slint_ui::param_component::ParamComponent;
@@ -22,8 +23,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
 slint::include_modules!();
-
-pub use slint_generatedAppWindow::HeaderDataSender;
 
 /*
 impl GpuImageSink for AppWindow {

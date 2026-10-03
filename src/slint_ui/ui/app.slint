@@ -23,14 +23,12 @@ export struct FilterData {
     filter_order: [string],
 }
 
-@rust-attr(derive(::transport_macro::TripleBuffered))
 export struct HeaderData {
     in_level_l: float,
     in_level_r: float,
     out_level_l: float,
     out_level_r: float,
 }
-
 export struct MetaData {
     is_stereo: bool,
     is_ping_pong: bool,
@@ -40,7 +38,6 @@ export struct MetaData {
     version: string,
     bpm: float
 }
-
 
 
 export struct EditorData {
@@ -57,7 +54,6 @@ export struct EditorData {
     write_segments_l: [UIJumpSegment],
     write_segments_r: [UIJumpSegment], 
 }
-
 export struct Textures {
     spectrum: image,
     buffer: image,
