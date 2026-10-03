@@ -1,12 +1,14 @@
 use crate::params::DelaxParams;
 use crate::slint_ui;
-use crate::slint_ui::data_transport::{DataTransportRx, UiState};
+use crate::slint_ui::bind;
+use crate::slint_ui::derived::{JumpCursor, SpectrumState};
+use crate::slint_ui::frames::{BufferChannel, FrameReads};
+use crate::slint_ui::render;
+use crate::slint_ui::transport::active_len_for;
 use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::param_store;
 use crate::slint_ui::plug_con::host::SlintHost;
-use crate::slint_ui::present;
 use crate::slint_ui::renderer::WgpuRegistry;
-use crate::slint_ui::snapshot::UiVisualState;
 use baseview::dpi::PhysicalSize;
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{Receiver, Sender, unbounded};
@@ -24,7 +26,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::delay_engine::jump_builder::{Jump, JumpBuilder, SegmentEditor};
-use crate::slint_ui::data_transport::BufferChannel;
 
 pub enum UiEvent {
     ParamChanged {
@@ -324,13 +325,12 @@ impl<'a> PersistentField<'a, BufferEditorState> for Arc<BufferEditorState> {
 }
 
 pub struct UiConnection {
-    rx: DataTransportRx,
-    visual: UiVisualState,
+    spectrum: SpectrumState,
+    jumps: JumpCursor,
 }
 
 pub struct DelaxSlintHost {
     params: Arc<DelaxParams>,
-    data: Arc<UiState>,
     ui: std::sync::Mutex<UiConnection>,
     event_tx: Sender<UiEvent>,
     event_rx: Receiver<UiEvent>,
@@ -341,8 +341,6 @@ pub struct DelaxSlintHost {
 impl DelaxSlintHost {
     pub fn new(
         params: Arc<DelaxParams>,
-        input_data: Arc<UiState>,
-        transport_rx: DataTransportRx,
         effect_order: Arc<std::sync::RwLock<Vec<String>>>,
     ) -> Self {
         let (event_tx, event_rx) = unbounded();
@@ -365,10 +363,9 @@ impl DelaxSlintHost {
         }
         Self {
             params,
-            data: input_data,
             ui: std::sync::Mutex::new(UiConnection {
-                rx: transport_rx,
-                visual: UiVisualState::default(),
+                spectrum: SpectrumState::default(),
+                jumps: JumpCursor::default(),
             }),
             event_tx,
             event_rx,
@@ -433,15 +430,18 @@ impl DelaxSlintHost {
         app: &<DelaxSlintHost as SlintHost>::Component,
         wgpu: &RefCell<WgpuRegistry>,
     ) {
-        let Ok(ui) = self.ui.lock() else { return };
+        let Ok(mut ui) = self.ui.lock() else { return };
+        let frames = FrameReads::read();
+        let UiConnection { spectrum, jumps } = &mut *ui;
+        bind::sync_slint(app, &frames, &mut *spectrum, &mut *jumps);
         let mut registry = wgpu.borrow_mut();
-        present::render_all(&self.data, &ui.visual, app, &mut registry);
+        render::render_textures(app, &mut registry, &frames, spectrum);
     }
 
     /// Update segment editor scales if it was changed
     fn poll_scaled_editors(&self) {
         for ch in [BufferChannel::Left, BufferChannel::Right] {
-            let len = self.data.active_len_for(ch);
+            let len = active_len_for(ch);
             if len == 0 {
                 continue;
             }
@@ -534,7 +534,7 @@ impl SlintHost for DelaxSlintHost {
                     second_id,
                 } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -549,7 +549,7 @@ impl SlintHost for DelaxSlintHost {
                     pos,
                 } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -560,7 +560,7 @@ impl SlintHost for DelaxSlintHost {
                 }
                 UiEvent::UngluePortal { channel, boundary } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -575,7 +575,7 @@ impl SlintHost for DelaxSlintHost {
                     pos,
                 } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -590,7 +590,7 @@ impl SlintHost for DelaxSlintHost {
                     pos,
                 } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -601,7 +601,7 @@ impl SlintHost for DelaxSlintHost {
                 }
                 UiEvent::ReweldPortal { channel, boundary } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -612,7 +612,7 @@ impl SlintHost for DelaxSlintHost {
                 }
                 UiEvent::PresetSplit { channel, splits } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -623,7 +623,7 @@ impl SlintHost for DelaxSlintHost {
                 }
                 UiEvent::SplitSegment { channel, segment } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -634,7 +634,7 @@ impl SlintHost for DelaxSlintHost {
                 }
                 UiEvent::MergeSegments { channel, boundary } => {
                     let ch = BufferChannel::from_i32(channel);
-                    let len = self.data.active_len_for(ch);
+                    let len = active_len_for(ch);
                     if len == 0 {
                         continue;
                     }
@@ -651,9 +651,10 @@ impl SlintHost for DelaxSlintHost {
     fn on_frame(&self, app: &Self::Component, wgpu: &RefCell<WgpuRegistry>) {
         self.sync_params_to_ui(app);
         let Ok(mut ui) = self.ui.lock() else { return };
-        let UiConnection { rx, visual } = &mut *ui;
-        present::poll_and_present(&self.data, visual, rx, app);
-        present::render_all(&self.data, visual, app, &mut wgpu.borrow_mut());
+        let UiConnection { spectrum, jumps } = &mut *ui;
+        let frames = FrameReads::read();
+        bind::sync_slint(app, &frames, &mut *spectrum, &mut *jumps);
+        render::render_textures(app, &mut wgpu.borrow_mut(), &frames, spectrum);
     }
 
     fn on_resized(&self, width: u32, height: u32) {
@@ -669,7 +670,7 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     use crate::delay_engine::jump_builder::{Jump, Portal, SegmentEditor};
-    use crate::slint_ui::data_transport::BufferChannel;
+    use crate::slint_ui::frames::BufferChannel;
 
     fn version(state: &BufferEditorState, ch: BufferChannel) -> u64 {
         match ch {

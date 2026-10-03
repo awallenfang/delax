@@ -3,6 +3,12 @@ use crate::slint_ui::uniforms::{
     BufferUniforms, DecayUniforms, DoubleBufferUniforms, SpectrumUniforms,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorChannel {
+    Left,
+    Right,
+}
+
 pub const SPECTRUM_SHADER: &str = include_str!("ui/shaders/spectrum.wgsl");
 pub const DOUBLE_BUFFER_SHADER: &str = include_str!("ui/shaders/double_buffer_vis.wgsl");
 pub const BUFFER_SHADER: &str = include_str!("ui/shaders/buffer_vis.wgsl");
