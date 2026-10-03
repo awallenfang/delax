@@ -4,6 +4,7 @@ import { Palette } from "../global.slint";
 export component IconButton inherits Rectangle {
     in property <bool> checked: false;
     in property <bool> enabled: true;
+    out property <bool> hovered: touch.has-hover;
     callback clicked();
 
     background: checked ? Palette.primary-muted : Palette.secondary-muted;
