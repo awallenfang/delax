@@ -1,6 +1,7 @@
 import { VerticalBox, Slider } from "std-widgets.slint";
 import { ParamBus } from "../events.slint";
 import { Palette, UIJump, UIJumpSegment, UIPortal } from "../global.slint";
+import { IconButton } from "icon_button.slint";
 
 export component EditorBufferVisualizer inherits Rectangle {
     in-out property <image> texture;
@@ -73,29 +74,46 @@ export component EditorBufferVisualizer inherits Rectangle {
                 height: parent.height / 2;
                 y: 0;
                 width: (segment.end - segment.start) * root.width;
-                background: @linear-gradient(90deg, Palette.primary 0%, #00000000 50%, Palette.primary 100%);
-                opacity: 0.2;
+                background: @linear-gradient(90deg, Palette.primary.transparentize(0.8) 0%, #00000000 50%, Palette.primary.transparentize(0.8) 100%);
                 clip: false;
                 border-width: root.selected == idx ? 2px : 0px;
                 border-color: Palette.primary;
+                property <bool> hovered: false;
                 Text {                   
                     x: parent.width / 2;
                     y: parent.height / 2;
                     text: segment.order + 1;
                     color: Palette.text-muted;
                 }
-                TouchArea {
+                ta := TouchArea {
+                    mouse-cursor: pointer;
+
                     pointer-event(event) => {
-                        if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
-                            root.segment-split(idx)
-                        }
+                        // if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                        //     root.segment-split(idx)
+                        // }
                         
                         if event.kind == PointerEventKind.up && event.button == PointerEventButton.right {
                             root.segments-merged(idx)
                         }
-                        
                     }
                     
+                }
+                split-btn := IconButton {
+                    visible: ta.has-hover || split-btn.hovered;
+                    width: 20px;
+                    height: 20px;
+                    enabled: true;
+                    x: (parent.width / 2) - (self.width / 2);
+                    y: parent.height - (self.height / 2);
+                    Image {
+                        source: @image-url("../assets/split.svg");
+                        image-fit: contain;
+                    }
+
+                    clicked => {
+                        root.segment-split(idx)
+                    }
                 }
             }
             for segment in write_segments:

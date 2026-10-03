@@ -565,7 +565,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.move_boundary(boundary.max(0) as usize, ratio_to_sample(pos, len));
+                    if !editor.move_boundary(boundary.max(0) as usize, ratio_to_sample(pos, len)) {
+                        continue;
+                    }
                     state.store_editor_with(ch, editor, Validate::Never);
                 }
                 UiEvent::UngluePortal { channel, boundary } => {
@@ -574,7 +576,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.unglue(boundary.max(0) as usize);
+                    if !editor.unglue(boundary.max(0) as usize) {
+                        continue;
+                    }
                     state.store_editor(ch, editor);
                 }
                 UiEvent::MovePortalExit {
@@ -587,7 +591,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.move_exit(boundary.max(0) as usize, ratio_to_sample(pos, len));
+                    if !editor.move_exit(boundary.max(0) as usize, ratio_to_sample(pos, len)) {
+                        continue;
+                    }
                     state.store_editor(ch, editor);
                 }
                 UiEvent::MovePortalEntry {
@@ -600,7 +606,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.move_entry(boundary.max(0) as usize, ratio_to_sample(pos, len));
+                    if !editor.move_entry(boundary.max(0) as usize, ratio_to_sample(pos, len)) {
+                        continue;
+                    }
                     state.store_editor(ch, editor);
                 }
                 UiEvent::ReweldPortal { channel, boundary } => {
@@ -609,7 +617,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.reweld(boundary.max(0) as usize);
+                    if !editor.reweld(boundary.max(0) as usize) {
+                        continue;
+                    }
                     state.store_editor(ch, editor);
                 }
                 UiEvent::PresetSplit { channel, splits } => {
@@ -627,7 +637,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.split_segment(segment.max(0) as usize);
+                    if !editor.split_segment(segment.max(0) as usize) {
+                        continue;
+                    }
                     state.store_editor(ch, editor);
                 }
                 UiEvent::MergeSegments { channel, boundary } => {
@@ -636,7 +648,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.merge_segments(boundary.max(0) as usize);
+                    if !editor.merge_segments(boundary.max(0) as usize) {
+                        continue;
+                    }
                     state.store_editor(ch, editor);
                 }
             }
@@ -715,6 +729,30 @@ mod tests {
         let stored = editor(&state, BufferChannel::Left);
         assert_eq!(stored.portals()[1], e.portals()[1]);
         assert!(stored.is_unglued(1), "the portal survives the store");
+    }
+
+    #[test]
+    fn a_refused_gesture_bumps_no_version_and_changes_nothing() {
+        let state = BufferEditorState::default();
+        let mut e = SegmentEditor::split_evenly(12, 3);
+        e.unglue(1);
+        assert!(state.store_editor(BufferChannel::Left, e.clone()));
+        let base = version(&state, BufferChannel::Left);
+        let before = editor(&state, BufferChannel::Left);
+
+        let mut probe = before.clone();
+        for boundary in [0usize, 9, usize::MAX] {
+            assert!(!probe.merge_segments(boundary), "merge({boundary})");
+            assert!(!probe.unglue(boundary), "unglue({boundary})");
+            assert!(!probe.reweld(boundary), "reweld({boundary})");
+            assert!(!probe.move_boundary(boundary, 6), "move({boundary})");
+        }
+        assert!(!probe.move_exit(0, 6), "the wrap carries no portal");
+        assert!(!probe.move_entry(9, 6));
+        assert_eq!(probe, before, "no refusal may mutate the editor");
+
+        assert_eq!(version(&state, BufferChannel::Left), base);
+        assert_eq!(editor(&state, BufferChannel::Left), before);
     }
 
     #[test]
