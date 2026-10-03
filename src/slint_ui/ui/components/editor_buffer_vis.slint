@@ -85,22 +85,11 @@ export component EditorBufferVisualizer inherits Rectangle {
                     text: segment.order + 1;
                     color: Palette.text-muted;
                 }
-                ta := TouchArea {
+                split-ta := TouchArea {
                     mouse-cursor: pointer;
-
-                    pointer-event(event) => {
-                        // if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
-                        //     root.segment-split(idx)
-                        // }
-                        
-                        if event.kind == PointerEventKind.up && event.button == PointerEventButton.right {
-                            root.segments-merged(idx)
-                        }
-                    }
-                    
                 }
                 split-btn := IconButton {
-                    visible: ta.has-hover || split-btn.hovered;
+                    visible: split-ta.has-hover || split-btn.hovered;
                     width: 20px;
                     height: 20px;
                     enabled: true;
@@ -113,6 +102,28 @@ export component EditorBufferVisualizer inherits Rectangle {
 
                     clicked => {
                         root.segment-split(idx)
+                    }
+                }
+                merge-ta := TouchArea {
+                    x: - self.width / 2;
+                    height: parent.height;
+                    width: 20px;
+
+                }
+                merge-btn := IconButton {
+                    visible: idx > 0 && (merge-ta.has-hover || merge-btn.hovered);
+                    width: 20px;
+                    height: 20px;
+                    enabled: true;
+                    x: - self.width / 2;
+                    y: (parent.height / 2) - (self.height / 2);
+                    Image {
+                        source: @image-url("../assets/merge.svg");
+                        image-fit: contain;
+                    }
+
+                    clicked => {
+                        root.segments-merged(idx)
                     }
                 }
             }
