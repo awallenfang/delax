@@ -151,7 +151,7 @@ export component EditorBufferVisualizer inherits Rectangle {
                         }
                     }
                     split-ta := TouchArea {
-                        width: 40px;
+                        width: parent.width;
                         height: 20px;
                         x: (parent.width / 2) - (self.width / 2);
                         y: parent.height - self.height;
