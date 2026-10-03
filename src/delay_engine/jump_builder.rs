@@ -94,8 +94,26 @@ impl<'de> Deserialize<'de> for Jump {
 pub struct JumpSegment {
     pub start: usize,
     pub end: usize,
-    /// Playback order of this segment (0 == first visited).
     pub order: usize,
+}
+
+fn order_from_ranks(starts: &[usize], ends: &[usize], jumps: &[Jump]) -> Option<Vec<usize>> {
+    let n = starts.len();
+    if n == 0 || jumps.len() != n {
+        return None;
+    }
+    let mut order: Vec<Option<usize>> = vec![None; n];
+    for j in jumps {
+        if j.rank >= n {
+            return None;
+        }
+        let seg = ends.iter().position(|&e| e == j.from)?;
+        if order[j.rank].is_some() {
+            return None;
+        }
+        order[j.rank] = Some(seg);
+    }
+    order.into_iter().collect()
 }
 
 #[derive(Clone, Debug)]
@@ -144,21 +162,18 @@ impl JumpBuilder {
             let ends = Self::segment_ends(&starts, self.size);
             let mut order: Vec<usize> = (0..n).collect();
             order.shuffle(rng);
-            Self::rotate_to_zero(&mut order);
             self.jumps = Self::assemble_jumps(&starts, &ends, &order);
         }
         self.clone()
     }
 
-    /// Reorder segments according to `order` (permutation of segment ids, 0-anchored after normalization).
+    /// Reorder segments according to `order` (a permutation of segment ids).
     pub fn order(&mut self, order: &[usize]) -> Self {
         let n = self.jumps.len();
         if Self::is_valid_order(order, n) {
-            let mut norm = order.to_vec();
-            Self::rotate_to_zero(&mut norm);
             let starts = self.segment_starts_validated();
             let ends = Self::segment_ends(&starts, self.size);
-            self.jumps = Self::assemble_jumps(&starts, &ends, &norm);
+            self.jumps = Self::assemble_jumps(&starts, &ends, order);
         }
         self.clone()
     }
@@ -185,12 +200,6 @@ impl JumpBuilder {
             seen[s] = true;
         }
         true
-    }
-
-    fn rotate_to_zero(order: &mut Vec<usize>) {
-        if let Some(k) = order.iter().position(|&s| s == 0) {
-            order.rotate_left(k);
-        }
     }
 
     fn assemble_jumps(starts: &[usize], ends: &[usize], order: &[usize]) -> Vec<Jump> {
@@ -252,7 +261,6 @@ impl JumpBuilder {
         if new_order.len() <= 1 {
             return Self::empty(new_size);
         }
-        Self::rotate_to_zero(&mut new_order);
         let ends = Self::segment_ends(&new_starts, new_size);
         let jumps = Self::assemble_jumps(&new_starts, &ends, &new_order);
         JumpBuilder {
@@ -280,6 +288,9 @@ impl JumpBuilder {
             return (0..n).collect();
         }
         let ends = Self::segment_ends(starts, self.size);
+        if let Some(order) = order_from_ranks(starts, &ends, &self.jumps) {
+            return order;
+        }
         let mut order = vec![0];
         let mut visited = vec![false; n];
         visited[0] = true;
@@ -478,26 +489,31 @@ impl SegmentEditor {
         }
         let n = starts.len();
         let ends = Self::ends_of(&starts, size);
-        let mut order = vec![0usize];
-        let mut visited = vec![false; n];
-        visited[0] = true;
-        for _ in 0..n {
-            let cur = *order.last().unwrap();
-            let dest = Self::table_next(jumps, ends[cur]);
-            match starts.iter().position(|&s| s == dest) {
-                Some(i) if !visited[i] => {
-                    visited[i] = true;
-                    order.push(i);
+        let order = match order_from_ranks(&starts, &ends, jumps) {
+            Some(order) => order,
+            None => {
+                let mut order = vec![0usize];
+                let mut visited = vec![false; n];
+                visited[0] = true;
+                for _ in 0..n {
+                    let cur = *order.last().unwrap();
+                    let dest = Self::table_next(jumps, ends[cur]);
+                    match starts.iter().position(|&s| s == dest) {
+                        Some(i) if !visited[i] => {
+                            visited[i] = true;
+                            order.push(i);
+                        }
+                        _ => break,
+                    }
                 }
-                _ => break,
+                for i in 0..n {
+                    if !visited[i] {
+                        order.push(i);
+                    }
+                }
+                order
             }
-        }
-        for i in 0..n {
-            if !visited[i] {
-                order.push(i);
-            }
-        }
-        Self::rotate_to_zero(&mut order);
+        };
         Self {
             size,
             starts,
@@ -741,9 +757,16 @@ impl SegmentEditor {
         true
     }
 
-    pub fn swap_segments(&mut self, a: usize, b: usize) {
+    pub fn can_swap(&self, a: usize, b: usize) -> bool {
+        a != b && a < self.order.len() && b < self.order.len()
+    }
+
+    pub fn swap_segments(&mut self, a: usize, b: usize) -> bool {
+        if !self.can_swap(a, b) {
+            return false;
+        }
         JumpBuilder::swap_positions(&mut self.order, a, b);
-        Self::rotate_to_zero(&mut self.order);
+        true
     }
 
     // Rescale the whole segments to a different buffer length
@@ -777,7 +800,6 @@ impl SegmentEditor {
         if order.len() <= 1 {
             return Self::single(new_size);
         }
-        Self::rotate_to_zero(&mut order);
         let m = starts.len();
         let mut out = Self {
             size: new_size,
@@ -895,7 +917,6 @@ impl SegmentEditor {
             let j = if i < boundary { i } else { i - 1 };
             portals[j] = self.portals[i];
         }
-        Self::rotate_to_zero(&mut order);
         *self = Self {
             size,
             starts,
@@ -937,8 +958,6 @@ impl SegmentEditor {
         if portals.len() != n || portals[0].is_some() {
             return None;
         }
-        let mut order = order;
-        Self::rotate_to_zero(&mut order);
         Some(Self {
             size,
             starts,
@@ -967,13 +986,6 @@ impl SegmentEditor {
 
     fn rank_of(&self, segment: usize) -> usize {
         self.order.iter().position(|&s| s == segment).unwrap_or(0)
-    }
-
-    /// Rotate until the start is at 0
-    fn rotate_to_zero(order: &mut Vec<usize>) {
-        if let Some(k) = order.iter().position(|&s| s == 0) {
-            order.rotate_left(k);
-        }
     }
 
     /// Find the next segment
