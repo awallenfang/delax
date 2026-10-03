@@ -1,6 +1,8 @@
 use slint::{Model, ModelRc, VecModel};
 
-use crate::slint_ui::derived::{JumpCursor, SpectrumState, normalize_jumps, normalize_segments};
+use crate::slint_ui::derived::{
+    JumpCursor, SpectrumState, normalize_jumps, normalize_portals, normalize_segments,
+};
 use crate::slint_ui::frames::{BufferChannel, FrameReads};
 use crate::slint_ui::{self};
 
@@ -38,6 +40,8 @@ pub fn sync_slint(
         read_segments_r: app.get_editor_data().read_segments_r,
         write_segments_l: app.get_editor_data().write_segments_l,
         write_segments_r: app.get_editor_data().write_segments_r,
+        read_portals_l: app.get_editor_data().read_portals_l,
+        read_portals_r: app.get_editor_data().read_portals_r,
     };
 
     if let Some(snap) = frames.jumps.as_ref().and_then(|j| jumps.fresh(j)) {
@@ -45,20 +49,23 @@ pub fn sync_slint(
         for ch in [BufferChannel::Left, BufferChannel::Right] {
             let len = *lens.get(ch);
             let s = snap.channels.get(ch);
-            let (target_read, target_write, target_read_seg, target_write_seg) = match ch {
-                BufferChannel::Left => (
-                    &mut editor.read_jumps_l,
-                    &mut editor.write_jumps_l,
-                    &mut editor.read_segments_l,
-                    &mut editor.write_segments_l,
-                ),
-                BufferChannel::Right => (
-                    &mut editor.read_jumps_r,
-                    &mut editor.write_jumps_r,
-                    &mut editor.read_segments_r,
-                    &mut editor.write_segments_r,
-                ),
-            };
+            let (target_read, target_write, target_read_seg, target_write_seg, target_portals) =
+                match ch {
+                    BufferChannel::Left => (
+                        &mut editor.read_jumps_l,
+                        &mut editor.write_jumps_l,
+                        &mut editor.read_segments_l,
+                        &mut editor.write_segments_l,
+                        &mut editor.read_portals_l,
+                    ),
+                    BufferChannel::Right => (
+                        &mut editor.read_jumps_r,
+                        &mut editor.write_jumps_r,
+                        &mut editor.read_segments_r,
+                        &mut editor.write_segments_r,
+                        &mut editor.read_portals_r,
+                    ),
+                };
             *target_read = push_model(
                 std::mem::replace(target_read, ModelRc::new(VecModel::from(vec![]))),
                 normalize_jumps(&s.read, len),
@@ -74,6 +81,10 @@ pub fn sync_slint(
             *target_write_seg = push_model(
                 std::mem::replace(target_write_seg, ModelRc::new(VecModel::from(vec![]))),
                 normalize_segments(&s.write_segments, len),
+            );
+            *target_portals = push_model(
+                std::mem::replace(target_portals, ModelRc::new(VecModel::from(vec![]))),
+                normalize_portals(&s.read_portals, len),
             );
         }
     }

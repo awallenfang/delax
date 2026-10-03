@@ -11,8 +11,8 @@ pub mod plug_con;
 pub mod render;
 pub mod renderer;
 mod slint_con;
-pub mod uniforms;
 pub mod transport;
+pub mod uniforms;
 
 use crate::slint_ui::editor::UiEvent;
 use crate::slint_ui::param_component::ParamComponent;
@@ -113,6 +113,66 @@ where
                     first_id: first,
                     second_id: second,
                 });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_segment_boundary_moved(move |channel, boundary, pos| {
+                let _ = tx.send(UiEvent::MoveSegmentBoundary {
+                    channel,
+                    boundary,
+                    pos,
+                });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_portal_unglued(move |channel, boundary| {
+                let _ = tx.send(UiEvent::UngluePortal { channel, boundary });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_portal_reweld(move |channel, boundary| {
+                let _ = tx.send(UiEvent::ReweldPortal { channel, boundary });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_portal_exit_moved(move |channel, boundary, pos| {
+                let _ = tx.send(UiEvent::MovePortalExit {
+                    channel,
+                    boundary,
+                    pos,
+                });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_portal_entry_moved(move |channel, boundary, pos| {
+                let _ = tx.send(UiEvent::MovePortalEntry {
+                    channel,
+                    boundary,
+                    pos,
+                });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_segment_split(move |channel, segment| {
+                let _ = tx.send(UiEvent::SplitSegment { channel, segment });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_segments_merged(move |channel, boundary| {
+                let _ = tx.send(UiEvent::MergeSegments { channel, boundary });
+            });
+        }
+        {
+            let tx = tx.clone();
+            self.on_preset_split(move |channel, splits| {
+                let _ = tx.send(UiEvent::PresetSplit { channel, splits });
             });
         }
         bus.on_get_val_by_key(|key, _version| {

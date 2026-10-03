@@ -8,7 +8,7 @@ import {
 import { ParamKnob } from "../components/param_knob.slint";
 import { ParamBus } from "../events.slint";
 import { ParamSwitch } from "../components/param_switch.slint";
-import { Palette, UIJump, UIJumpSegment } from "../global.slint";
+import { Palette, UIJump, UIJumpSegment, UIPortal } from "../global.slint";
 import { PeakMeter } from "../components/peak_meter.slint";
 import { SpectrumAnalyzer } from "../components/spectrum_analyzer.slint";
 import { Button } from "../components/button.slint";
@@ -32,7 +32,17 @@ export component EditorPage inherits VerticalLayout {
     in property <[UIJumpSegment]> read_segments_r;
     in property <[UIJumpSegment]> write_segments_l;
     in property <[UIJumpSegment]> write_segments_r;
+    in property <[UIPortal]> read_portals_l;
+    in property <[UIPortal]> read_portals_r;
     callback segment-swapped(int, int, int);
+    callback segment-boundary-moved(int, int, float);
+    callback portal-unglued(int, int);
+    callback portal-reweld(int, int);
+    callback portal-exit-moved(int, int, float);
+    callback portal-entry-moved(int, int, float);
+    callback segment-split(int, int);
+    callback segments-merged(int, int);
+    callback preset-split(int, int);
 
     VerticalLayout {
         vertical-stretch: 1;
@@ -47,7 +57,15 @@ export component EditorPage inherits VerticalLayout {
             write_jumps: root.write_jumps_l;
             read_segments: root.read_segments_l;
             write_segments: root.write_segments_l;
+            read_portals: root.read_portals_l;
             segment-swapped(a, b) => { root.segment-swapped(0, a, b); }
+            segment-boundary-moved(b, x) => { root.segment-boundary-moved(0, b, x); }
+            portal-unglued(b) => { root.portal-unglued(0, b); }
+            portal-reweld(b) => { root.portal-reweld(0, b); }
+            portal-exit-moved(b, x) => { root.portal-exit-moved(0, b, x); }
+            portal-entry-moved(b, x) => { root.portal-entry-moved(0, b, x); }
+            segment-split(s) => { root.segment-split(0, s); }
+            segments-merged(b) => { root.segments-merged(0, b); }
         }
         EditorBufferVisualizer {
             horizontal-stretch: 1;
@@ -59,7 +77,15 @@ export component EditorPage inherits VerticalLayout {
             write_jumps: root.write_jumps_r;
             read_segments: root.read_segments_r;
             write_segments: root.write_segments_r;
+            read_portals: root.read_portals_r;
             segment-swapped(a, b) => { root.segment-swapped(1, a, b); }
+            segment-boundary-moved(b, x) => { root.segment-boundary-moved(1, b, x); }
+            portal-unglued(b) => { root.portal-unglued(1, b); }
+            portal-reweld(b) => { root.portal-reweld(1, b); }
+            portal-exit-moved(b, x) => { root.portal-exit-moved(1, b, x); }
+            portal-entry-moved(b, x) => { root.portal-entry-moved(1, b, x); }
+            segment-split(s) => { root.segment-split(1, s); }
+            segments-merged(b) => { root.segments-merged(1, b); }
         }
     }
     Text {

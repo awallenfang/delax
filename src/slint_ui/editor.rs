@@ -1,14 +1,14 @@
 use crate::params::DelaxParams;
 use crate::slint_ui;
 use crate::slint_ui::bind;
-use crate::slint_ui::derived::{JumpCursor, SpectrumState};
+use crate::slint_ui::derived::{JumpCursor, SpectrumState, ratio_to_sample};
 use crate::slint_ui::frames::{BufferChannel, FrameReads};
-use crate::slint_ui::render;
-use crate::slint_ui::transport::active_len_for;
 use crate::slint_ui::param_component::ParamComponent;
 use crate::slint_ui::param_store;
 use crate::slint_ui::plug_con::host::SlintHost;
+use crate::slint_ui::render;
 use crate::slint_ui::renderer::WgpuRegistry;
+use crate::slint_ui::transport::active_len_for;
 use baseview::dpi::PhysicalSize;
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{Receiver, Sender, unbounded};
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::delay_engine::jump_builder::{Jump, JumpBuilder, SegmentEditor};
+use crate::delay_engine::jump_builder::{Jump, SegmentEditor};
 
 pub enum UiEvent {
     ParamChanged {
@@ -51,7 +51,7 @@ pub enum UiEvent {
     MoveSegmentBoundary {
         channel: i32,
         boundary: i32,
-        pos: i32,
+        pos: f32,
     },
     UngluePortal {
         channel: i32,
@@ -60,12 +60,12 @@ pub enum UiEvent {
     MovePortalExit {
         channel: i32,
         boundary: i32,
-        pos: i32,
+        pos: f32,
     },
     MovePortalEntry {
         channel: i32,
         boundary: i32,
-        pos: i32,
+        pos: f32,
     },
     ReweldPortal {
         channel: i32,
@@ -138,6 +138,12 @@ pub struct DerivedJumps {
     pub cycle: Vec<usize>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Validate {
+    Always,
+    Never,
+}
+
 pub struct BufferEditorState {
     pub version_l: AtomicU64,
     pub version_r: AtomicU64,
@@ -206,7 +212,16 @@ impl BufferEditorState {
     }
 
     pub fn store_editor(&self, channel: BufferChannel, editor: SegmentEditor) -> bool {
-        if !editor.validate_cycle() {
+        self.store_editor_with(channel, editor, Validate::Always)
+    }
+
+    pub fn store_editor_with(
+        &self,
+        channel: BufferChannel,
+        editor: SegmentEditor,
+        validate: Validate,
+    ) -> bool {
+        if validate == Validate::Always && !editor.validate_cycle() {
             return false;
         }
         let (slot, derived, ver) = match channel {
@@ -239,12 +254,6 @@ impl BufferEditorState {
             return None;
         }
         g.clone()
-    }
-
-    pub fn builder_for(&self, channel: BufferChannel, active_len: usize) -> JumpBuilder {
-        assert!(active_len > 0);
-        let editor = self.editor_for(channel, active_len);
-        JumpBuilder::from_jumps(active_len, &editor.build_jumps())
     }
 }
 
@@ -472,6 +481,11 @@ impl SlintHost for DelaxSlintHost {
     }
 
     fn on_event(&self, _app: &Self::Component, gui_context: &GuiContext) {
+        let target = |channel: i32| {
+            let ch = BufferChannel::from_i32(channel);
+            let len = active_len_for(ch);
+            (len > 0).then_some((ch, len))
+        };
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
                 UiEvent::ParamChanged { id, value } => {
@@ -533,11 +547,9 @@ impl SlintHost for DelaxSlintHost {
                     first_id,
                     second_id,
                 } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
                     editor.swap_segments(first_id as usize, second_id as usize);
@@ -548,22 +560,18 @@ impl SlintHost for DelaxSlintHost {
                     boundary,
                     pos,
                 } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.move_boundary(boundary.max(0) as usize, pos.max(0) as usize);
-                    state.store_editor(ch, editor);
+                    editor.move_boundary(boundary.max(0) as usize, ratio_to_sample(pos, len));
+                    state.store_editor_with(ch, editor, Validate::Never);
                 }
                 UiEvent::UngluePortal { channel, boundary } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
                     editor.unglue(boundary.max(0) as usize);
@@ -574,14 +582,12 @@ impl SlintHost for DelaxSlintHost {
                     boundary,
                     pos,
                 } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.move_exit(boundary.max(0) as usize, pos.max(0) as usize);
+                    editor.move_exit(boundary.max(0) as usize, ratio_to_sample(pos, len));
                     state.store_editor(ch, editor);
                 }
                 UiEvent::MovePortalEntry {
@@ -589,55 +595,45 @@ impl SlintHost for DelaxSlintHost {
                     boundary,
                     pos,
                 } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.move_entry(boundary.max(0) as usize, pos.max(0) as usize);
+                    editor.move_entry(boundary.max(0) as usize, ratio_to_sample(pos, len));
                     state.store_editor(ch, editor);
                 }
                 UiEvent::ReweldPortal { channel, boundary } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
                     editor.reweld(boundary.max(0) as usize);
                     state.store_editor(ch, editor);
                 }
                 UiEvent::PresetSplit { channel, splits } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
                     editor.preset_split(splits.max(1) as u32);
                     state.store_editor(ch, editor);
                 }
                 UiEvent::SplitSegment { channel, segment } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
                     editor.split_segment(segment.max(0) as usize);
                     state.store_editor(ch, editor);
                 }
                 UiEvent::MergeSegments { channel, boundary } => {
-                    let ch = BufferChannel::from_i32(channel);
-                    let len = active_len_for(ch);
-                    if len == 0 {
+                    let Some((ch, len)) = target(channel) else {
                         continue;
-                    }
+                    };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
                     editor.merge_segments(boundary.max(0) as usize);
@@ -664,12 +660,12 @@ impl SlintHost for DelaxSlintHost {
 
 #[cfg(test)]
 mod tests {
-    use super::BufferEditorState;
+    use super::{BufferEditorState, Validate};
     use nice_plug::params::persist::PersistentField;
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
-    use crate::delay_engine::jump_builder::{Jump, Portal, SegmentEditor};
+    use crate::delay_engine::jump_builder::{Jump, JumpBuilder, Portal, SegmentEditor};
     use crate::slint_ui::frames::BufferChannel;
 
     fn version(state: &BufferEditorState, ch: BufferChannel) -> u64 {
@@ -756,6 +752,68 @@ mod tests {
         assert!(!state.store_editor(BufferChannel::Left, e));
         assert_eq!(version(&state, BufferChannel::Left), 0);
         assert_eq!(editor(&state, BufferChannel::Left), before);
+    }
+
+    #[test]
+    fn store_with_validate_never_skips_the_d4_walk() {
+        let state = BufferEditorState::default();
+
+        let mut broken = SegmentEditor::split_evenly(12, 4);
+        broken.swap_segments(0, 2);
+        broken.portals[1] = Some(Portal {
+            exit: 11,
+            entry: 11,
+        });
+        assert!(!broken.validate_cycle());
+        assert!(
+            state.store_editor_with(BufferChannel::Left, broken.clone(), Validate::Never),
+            "Validate::Never must not run the walk at all"
+        );
+        assert_eq!(editor(&state, BufferChannel::Left), broken);
+        assert_eq!(version(&state, BufferChannel::Left), 1);
+
+        // Which is why only covering-preserving edits may take that path.
+        let mut resized = SegmentEditor::split_evenly(12, 3);
+        resized.move_boundary(1, 5);
+        assert!(
+            resized.validate_cycle(),
+            "a boundary move preserves covering by construction"
+        );
+        assert!(state.store_editor_with(BufferChannel::Right, resized, Validate::Never));
+    }
+
+    #[test]
+    fn a_portal_move_leaves_the_rendered_segments_alone() {
+        let mut e = SegmentEditor::split_evenly(12, 3);
+        let before = e.segments();
+        e.unglue(1);
+        e.move_exit(1, 1);
+        e.move_entry(1, 1);
+        assert_eq!(
+            e.segments(),
+            before,
+            "moving a portal knob must not move the segment rectangles"
+        );
+    }
+
+    #[test]
+    fn the_jump_table_round_trip_cannot_reconstruct_a_portal_layout() {
+        let mut e = SegmentEditor::split_evenly(12, 3);
+        e.unglue(1);
+        e.move_entry(1, 1);
+
+        let round_tripped = JumpBuilder::from_jumps(e.size(), &e.build_jumps()).segments();
+        assert_ne!(
+            round_tripped,
+            e.segments(),
+            "the round trip must be demonstrably wrong here, or this test is not testing anything"
+        );
+
+        let welded = SegmentEditor::split_evenly(12, 3);
+        assert_eq!(
+            JumpBuilder::from_jumps(welded.size(), &welded.build_jumps()).segments(),
+            welded.segments()
+        );
     }
 
     #[test]

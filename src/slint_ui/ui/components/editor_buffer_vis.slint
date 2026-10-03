@@ -1,6 +1,6 @@
 import { VerticalBox, Slider } from "std-widgets.slint";
 import { ParamBus } from "../events.slint";
-import { Palette, UIJump, UIJumpSegment } from "../global.slint";
+import { Palette, UIJump, UIJumpSegment, UIPortal } from "../global.slint";
 
 export component EditorBufferVisualizer inherits Rectangle {
     in-out property <image> texture;
@@ -11,7 +11,17 @@ export component EditorBufferVisualizer inherits Rectangle {
     in property <[UIJump]> write_jumps;
     in property <[UIJumpSegment]> read_segments;
     in property <[UIJumpSegment]> write_segments;
+    in property <[UIPortal]> read_portals;
+
     callback segment-swapped(int, int);
+    callback segment-boundary-moved(int, float);
+    callback portal-unglued(int);
+    callback portal-reweld(int);
+    callback portal-exit-moved(int, float);
+    callback portal-entry-moved(int, float);
+    callback segment-split(int);
+    callback segments-merged(int);
+
     private property <int> selected: -1;
     VerticalLayout {
         if !left_channel:
@@ -75,16 +85,17 @@ export component EditorBufferVisualizer inherits Rectangle {
                     color: Palette.text-muted;
                 }
                 TouchArea {
-                    clicked => {
-                        if (root.selected == -1) {
-                            root.selected = idx;
-                        } else {
-                            if (root.selected != idx) {
-                                root.segment-swapped(root.selected, idx);
-                            }
-                            root.selected = -1;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                            root.segment-split(idx)
                         }
+                        
+                        if event.kind == PointerEventKind.up && event.button == PointerEventButton.right {
+                            root.segments-merged(idx)
+                        }
+                        
                     }
+                    
                 }
             }
             for segment in write_segments:
