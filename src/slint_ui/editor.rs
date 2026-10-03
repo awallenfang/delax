@@ -552,7 +552,9 @@ impl SlintHost for DelaxSlintHost {
                     };
                     let state = &self.params.buffer_editor_state;
                     let mut editor = state.editor_for(ch, len);
-                    editor.swap_segments(first_id as usize, second_id as usize);
+                    if !editor.swap_segments(first_id.max(0) as usize, second_id.max(0) as usize) {
+                        continue;
+                    }
                     state.store_editor(ch, editor);
                 }
                 UiEvent::MoveSegmentBoundary {
@@ -749,10 +751,40 @@ mod tests {
         }
         assert!(!probe.move_exit(0, 6), "the wrap carries no portal");
         assert!(!probe.move_entry(9, 6));
+        for (a, b) in [(0usize, 0usize), (1, 9), (9, 9), (usize::MAX, 0)] {
+            assert!(!probe.can_swap(a, b), "can_swap({a}, {b})");
+            assert!(!probe.swap_segments(a, b), "swap({a}, {b})");
+        }
         assert_eq!(probe, before, "no refusal may mutate the editor");
 
         assert_eq!(version(&state, BufferChannel::Left), base);
         assert_eq!(editor(&state, BufferChannel::Left), before);
+    }
+
+    #[test]
+    fn a_swap_reaches_the_published_segments_and_the_jump_table() {
+        let state = BufferEditorState::default();
+        let mut e = SegmentEditor::split_evenly(12, 4);
+        assert!(state.store_editor(BufferChannel::Left, e.clone()));
+        let base = version(&state, BufferChannel::Left);
+
+        assert!(e.swap_segments(0, 2));
+        assert!(state.store_editor(BufferChannel::Left, e.clone()));
+        assert_eq!(version(&state, BufferChannel::Left), base + 1);
+
+        let published = editor(&state, BufferChannel::Left);
+        assert_eq!(published.order(), &[2, 1, 0, 3]);
+        assert_eq!(
+            published
+                .segments()
+                .iter()
+                .map(|s| s.order)
+                .collect::<Vec<_>>(),
+            vec![2, 1, 0, 3],
+            "the labels the UI renders come straight from this"
+        );
+        let d = state.derived_for(BufferChannel::Left).unwrap();
+        assert_eq!(d.table, e.build_jumps(), "and so does the audio table");
     }
 
     #[test]
@@ -769,7 +801,7 @@ mod tests {
             &[0, 8, 16],
             "the three segments must survive the resize, not be replaced"
         );
-        assert_eq!(grown.order(), &[0, 2, 1], "and so must their order");
+        assert_eq!(grown.order(), &[2, 1, 0], "and so must their order");
 
         let shrunk = state.editor_for(BufferChannel::Left, 2);
         assert_eq!(shrunk.size(), 2);

@@ -2,6 +2,7 @@ import { VerticalBox, Slider } from "std-widgets.slint";
 import { ParamBus, DragApi } from "../events.slint";
 import { Palette, UIJump, UIJumpSegment, UIPortal } from "../global.slint";
 import { IconButton } from "icon_button.slint";
+import { SegmentHandle } from "segment_handle.slint";
 
 export component EditorBufferVisualizer inherits Rectangle {
     in-out property <image> texture;
@@ -109,6 +110,19 @@ export component EditorBufferVisualizer inherits Rectangle {
 
                     animate background { duration: 150ms; }
                     animate border-color { duration: 150ms; }
+
+                    seg-ta := TouchArea {
+                        mouse-cursor: pointer;
+                    }
+
+                    handle := SegmentHandle {
+                        x: (parent.width / 2) - (self.width / 2);
+                        y: 0;
+                        width: parent.width;
+                        hovered: seg-ta.has-hover || drag-area.dragging;
+                        active: drag-area.dragging;
+                    }
+
                     drag-area := DragArea {
                         width: 100%;
                         height: 100%;

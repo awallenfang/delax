@@ -229,16 +229,16 @@ fn order_rewiring() {
     let jumps = JumpBuilder::split_evenly(12, 3).order(&[2, 1, 0]).build();
     assert_eq!(
         jumps,
-        vec![Jump::new(3, 8, 0), Jump::new(11, 4, 1), Jump::new(7, 0, 2)]
+        vec![Jump::new(11, 4, 0), Jump::new(7, 0, 1), Jump::new(3, 8, 2)]
     );
     let (order, end) = walk_order(&jumps, 12);
     assert_eq!(order, vec![0, 1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7]);
     assert_eq!(end, 0);
 
-    // rotation is equivalent (0-anchored normalization)
+    // rotations describe the same cycle but keep distinct ranks
     let a = JumpBuilder::split_evenly(12, 3).order(&[1, 2, 0]).build();
     let b = JumpBuilder::split_evenly(12, 3).order(&[0, 1, 2]).build();
-    assert_eq!(a, b);
+    assert_ne!(a, b);
     assert_eq!(walk_order(&a, 12), walk_order(&b, 12));
 
     // invalid input keeps the table
@@ -277,9 +277,9 @@ fn order_rank_consistency() {
     builder.order(&[3, 1, 0, 2]);
     let jumps = builder.build();
     let segs = builder.segments();
-    assert_eq!(visit_order(12, &jumps), vec![0, 2, 3, 1]);
+    assert_eq!(visit_order(12, &jumps), vec![3, 1, 0, 2]);
     for (s, seg) in segs.iter().enumerate() {
-        let want = [0, 2, 3, 1].iter().position(|&x| x == s).unwrap();
+        let want = [3, 1, 0, 2].iter().position(|&x| x == s).unwrap();
         assert_eq!(seg.order, want);
     }
     assert_ranks_match(&builder);
@@ -291,10 +291,10 @@ fn order_rank_consistency() {
     assert_eq!(
         jumps,
         vec![
-            Jump::new(2, 6, 0),
-            Jump::new(8, 9, 1),
-            Jump::new(11, 3, 2),
-            Jump::new(5, 0, 3),
+            Jump::new(11, 3, 0),
+            Jump::new(5, 0, 1),
+            Jump::new(2, 6, 2),
+            Jump::new(8, 9, 3),
         ]
     );
 }
@@ -439,7 +439,7 @@ fn construction_invariants() {
     let segs = e.segments();
     assert_eq!(
         segs.iter().map(|s| s.order).collect::<Vec<_>>(),
-        vec![0, 3, 1, 2]
+        vec![1, 0, 2, 3]
     );
     assert_eq!((segs[0].start, segs[0].end), (0, 2));
 
@@ -524,8 +524,14 @@ fn visit_cycle_properties() {
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.swap_segments(0, 1);
     let segs = e.segments();
+    let anchor = e.order().iter().position(|&s| s == 0).unwrap();
+    let rotated: Vec<usize> = e.order()[anchor..]
+        .iter()
+        .chain(&e.order()[..anchor])
+        .copied()
+        .collect();
     let mut want = Vec::new();
-    for &slot in e.order().iter() {
+    for &slot in rotated.iter() {
         for p in segs[slot].start..=segs[slot].end {
             want.push(p);
         }
@@ -660,10 +666,10 @@ fn portal_entry_exit_behavior() {
 fn swap_segments_properties() {
     let mut e = SegmentEditor::split_evenly(12, 3);
     e.swap_segments(0, 1);
-    assert_eq!(e.order(), &[0, 2, 1]);
+    assert_eq!(e.order(), &[1, 0, 2]);
     assert_eq!(
         e.build_jumps(),
-        vec![Jump::new(3, 8, 0), Jump::new(11, 4, 1), Jump::new(7, 0, 2)]
+        vec![Jump::new(7, 0, 0), Jump::new(3, 8, 1), Jump::new(11, 4, 2)]
     );
     assert_eq!(e.visit_cycle(), vec![0, 1, 2, 3, 8, 9, 10, 11, 4, 5, 6, 7]);
 
@@ -885,13 +891,13 @@ fn serde_roundtrips() {
 }
 
 #[test]
-fn checked_accepts_valid_shapes_and_rotates_a_non_zero_order() {
+fn checked_keeps_the_order_it_is_given() {
     let e = SegmentEditor::checked(12, vec![0, 4, 8], vec![2, 0, 1], vec![None; 3]);
-    assert!(e.is_some(), "a permutation in any rotation is valid");
+    assert!(e.is_some(), "any permutation is valid");
     assert_eq!(
         e.unwrap().order(),
-        &[0, 1, 2],
-        "normalised to order[0] == 0"
+        &[2, 0, 1],
+        "order is unanchored, so `checked` must not rotate it"
     );
 }
 
@@ -1119,4 +1125,58 @@ fn predicates_predict_what_the_mutators_will_do() {
             assert_eq!(before, e.starts().to_vec(), "move({boundary}) mutated");
         }
     }
+
+    for (a, b) in [(0usize, 1usize), (1, 1), (1, 3), (0, 9), (9, 9)] {
+        let can = e.can_swap(a, b);
+        assert_eq!(can, e.swap_segments(a, b), "swap({a}, {b})");
+    }
+}
+
+#[test]
+fn a_swap_moves_both_labels_and_rotates_nothing() {
+    let mut e = SegmentEditor::split_evenly(12, 4);
+    assert!(e.can_swap(0, 2));
+    assert!(e.swap_segments(0, 2));
+    assert_eq!(e.order(), &[2, 1, 0, 3]);
+    assert_eq!(
+        e.segments().iter().map(|s| s.order).collect::<Vec<_>>(),
+        vec![2, 1, 0, 3],
+        "the labels the user dragged are the labels that move"
+    );
+    assert!(e.validate_cycle());
+}
+
+#[test]
+fn a_swap_survives_every_later_edit() {
+    let mut e = SegmentEditor::split_evenly(12, 4);
+    assert!(e.swap_segments(0, 2));
+    let swapped = e.order().to_vec();
+
+    let resized = e.scaled(24);
+    assert_eq!(resized.order(), &swapped, "a resize must not undo the swap");
+    assert_eq!(
+        resized.scaled(12).order(),
+        &swapped,
+        "and it must be reversible"
+    );
+
+    let mut merged = SegmentEditor::split_evenly(12, 4);
+    assert!(merged.swap_segments(0, 2));
+    assert!(merged.merge_segments(1));
+    assert_eq!(
+        merged.order(),
+        &[1, 0, 2],
+        "merging drops the deleted segment's rank but must not rotate the rest"
+    );
+    assert!(merged.validate_cycle());
+
+    let mut split = SegmentEditor::split_evenly(12, 4);
+    assert!(split.swap_segments(0, 3));
+    assert_eq!(split.order()[0], 3);
+    assert!(split.split_segment(1));
+    let order = split.order().to_vec();
+    assert_ne!(order[0], 0, "splitting must not re-anchor the order");
+    let left = order.iter().position(|&s| s == 1).unwrap();
+    assert_eq!(order[left + 1], 2, "the halves stay adjacent in playback");
+    assert!(split.validate_cycle());
 }
