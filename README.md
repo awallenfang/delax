@@ -1,6 +1,8 @@
 # Delax
 
-Delax is a delay plugin built so that in the future operations can be on on the delay buffer, allowing for glitch effects.
+![Delax delay page](delax_delay.png)
+
+Delax is a delay plugin built for vast soundscapes stemming from a pipeline of effects and the ability to slice the delay buffer.
 
 ## Building
 
